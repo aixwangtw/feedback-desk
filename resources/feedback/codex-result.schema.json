@@ -1,0 +1,20 @@
+{
+    "type": "object",
+    "properties": {
+        "outcome": {
+            "type": "string",
+            "enum": ["completed", "needs_input", "failed"]
+        },
+        "summary": {
+            "type": "string"
+        },
+        "tests": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        }
+    },
+    "required": ["outcome", "summary", "tests"],
+    "additionalProperties": false
+}

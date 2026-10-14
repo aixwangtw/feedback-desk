@@ -48,7 +48,7 @@
             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
                 <select name="status" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="">全部</option>
-                    @foreach (\App\Enums\FeedbackReportStatus::cases() as $statusOption)
+                    @foreach (\App\Enums\FeedbackReportStatus::selectable() as $statusOption)
                         <option value="{{ $statusOption->value }}" @selected($selectedStatus === $statusOption)>{{ $statusOption->label() }}</option>
                     @endforeach
                 </select>

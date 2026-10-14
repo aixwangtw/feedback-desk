@@ -30,7 +30,15 @@ class FeedbackPortalController extends Controller
         $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject);
         $totalCount = count($sequenceNumbers);
 
+        $statusCounts = $feedbackProject->feedbackReports()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+
         return view('feedback.portal', [
+            'statusCounts' => $statusCounts,
             'sequenceNumbers' => array_map(fn (int $index): int => $index + 1, $sequenceNumbers),
             'totalCount' => $totalCount,
             'project' => $feedbackProject,

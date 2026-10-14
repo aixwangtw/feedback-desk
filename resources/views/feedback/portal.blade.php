@@ -31,7 +31,17 @@
     <section class="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="issue-list-heading">
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
-        <p class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus)（篩選後 {{ $reports->total() }} 題）@endif</p>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus)（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
+                @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
+                    @php $summaryCount = $statusCounts[$summaryStatus->value] ?? 0; @endphp
+                    @if ($summaryCount > 0 || in_array($summaryStatus, \App\Enums\FeedbackReportStatus::selectable(), true))
+                        <li><a href="{{ route('feedback.portal', $project) }}?status={{ $summaryStatus->value }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
+                    @endif
+                @endforeach
+            </ul>
+        </div>
 
         <form method="GET" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態

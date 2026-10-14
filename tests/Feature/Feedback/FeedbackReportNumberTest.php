@@ -65,6 +65,27 @@ class FeedbackReportNumberTest extends TestCase
             ->assertSee('data-report-number>2<', false);
     }
 
+    public function test_status_summary_counts_whole_project_and_hides_empty_optional_statuses(): void
+    {
+        [$project, $first, $second, $third] = $this->projectWithReports();
+        $second->update(['status' => FeedbackReportStatus::Completed]);
+        $third->update(['status' => FeedbackReportStatus::Completed]);
+        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create(['status' => FeedbackReportStatus::Failed]);
+
+        foreach (['', '?status=completed'] as $query) {
+            $this->get(route('feedback.portal', $project).$query)
+                ->assertSee('待處理 1 題', false)
+                ->assertSee('待補充 0 題', false)
+                ->assertSee('已完成 2 題', false)
+                ->assertDontSee('data-status-summary-item="in_progress"', false)
+                ->assertDontSee('data-status-summary-item="failed"', false)
+                ->assertSee('?status=completed" class="rounded', false);
+        }
+
+        $first->update(['status' => FeedbackReportStatus::Failed]);
+        $this->get(route('feedback.portal', $project))->assertSee('data-status-summary-item="failed"', false);
+    }
+
     /**
      * @return array{FeedbackProject, FeedbackReport, FeedbackReport, FeedbackReport}
      */

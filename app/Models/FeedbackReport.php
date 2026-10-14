@@ -87,6 +87,20 @@ class FeedbackReport extends Model
             ->all());
     }
 
+    /**
+     * @return array<string, int> 狀態值 => 整個專案該狀態的題數
+     */
+    public static function statusCountsForProject(FeedbackProject $project): array
+    {
+        return static::query()
+            ->where('feedback_project_id', $project->id)
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+    }
+
     protected function casts(): array
     {
         return [

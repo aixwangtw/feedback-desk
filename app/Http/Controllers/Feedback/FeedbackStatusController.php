@@ -30,6 +30,7 @@ class FeedbackStatusController extends Controller
             return response()->json([
                 'status' => $status->value,
                 'label' => $status->label(),
+                'counts' => FeedbackReport::statusCountsForProject($feedbackProject),
                 'message' => "狀態已更新為「{$status->label()}」。",
             ]);
         }

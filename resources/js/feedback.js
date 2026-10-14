@@ -232,6 +232,7 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
             const result = await response.json();
             savedValue = result.status;
             select.querySelector('[data-automation-status]')?.remove();
+            updateStatusSummary(result.counts);
             feedback.textContent = '已儲存';
         } catch {
             select.value = savedValue;
@@ -241,3 +242,20 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
         }
     });
 });
+
+function updateStatusSummary(counts) {
+    if (!counts) {
+        return;
+    }
+
+    document.querySelectorAll('[data-status-summary-item]').forEach((link) => {
+        const count = counts[link.dataset.statusSummaryItem] ?? 0;
+        const item = link.closest('li');
+
+        link.textContent = `${link.dataset.label} ${count} 題`;
+
+        if (item?.dataset.summaryOptional === '1') {
+            item.hidden = count === 0;
+        }
+    });
+}

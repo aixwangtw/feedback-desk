@@ -35,10 +35,11 @@
             <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus)（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
-                    @php $summaryCount = $statusCounts[$summaryStatus->value] ?? 0; @endphp
-                    @if ($summaryCount > 0 || in_array($summaryStatus, \App\Enums\FeedbackReportStatus::selectable(), true))
-                        <li><a href="{{ route('feedback.portal', $project) }}?status={{ $summaryStatus->value }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
-                    @endif
+                    @php
+                        $summaryCount = $statusCounts[$summaryStatus->value] ?? 0;
+                        $summaryOptional = ! $summaryStatus->isSelectable();
+                    @endphp
+                    <li data-summary-status="{{ $summaryStatus->value }}" data-summary-optional="{{ $summaryOptional ? '1' : '0' }}"{!! $summaryOptional && $summaryCount === 0 ? ' hidden' : '' !!}><a href="{{ route('feedback.portal', $project) }}?status={{ $summaryStatus->value }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
                 @endforeach
             </ul>
         </div>

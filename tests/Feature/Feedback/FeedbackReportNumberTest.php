@@ -88,13 +88,30 @@ class FeedbackReportNumberTest extends TestCase
                 ->assertSee('待處理 1 題', false)
                 ->assertSee('待補充 0 題', false)
                 ->assertSee('已完成 2 題', false)
-                ->assertDontSee('data-status-summary-item="in_progress"', false)
-                ->assertDontSee('data-status-summary-item="failed"', false)
+                ->assertSee('data-summary-status="in_progress" data-summary-optional="1" hidden', false)
+                ->assertSee('data-summary-status="failed" data-summary-optional="1" hidden', false)
                 ->assertSee('?status=completed" class="rounded', false);
         }
 
         $first->update(['status' => FeedbackReportStatus::Failed]);
-        $this->get(route('feedback.portal', $project))->assertSee('data-status-summary-item="failed"', false);
+        $this->get(route('feedback.portal', $project))->assertDontSee('data-summary-status="failed" data-summary-optional="1" hidden', false)
+            ->assertSee('處理失敗 1 題', false);
+    }
+
+    public function test_status_update_json_returns_project_status_counts(): void
+    {
+        [$project, $first, $second] = $this->projectWithReports();
+        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create();
+
+        $this->patchJson(route('feedback.reports.status.update', [$project, $first]), ['status' => 'completed'])
+            ->assertOk()
+            ->assertJsonPath('counts.new', 2)
+            ->assertJsonPath('counts.completed', 1)
+            ->assertJsonMissingPath('counts.failed');
+
+        $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'needs_input'])
+            ->assertOk()
+            ->assertJson(['counts' => ['new' => 1, 'needs_input' => 1, 'completed' => 1]]);
     }
 
     /**

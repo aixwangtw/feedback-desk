@@ -89,7 +89,6 @@
                             <td class="block sm:table-cell sm:px-5 sm:py-4">
                                 <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="font-semibold text-slate-950 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $report->title }}</a>
                                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{{ $report->description }}</p>
-                                <p class="mt-1 font-mono text-[11px] text-slate-400">#{{ substr($report->public_id, 0, 8) }}</p>
                             </td>
                             <td class="block sm:table-cell sm:px-4 sm:py-4">
                                 <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid gap-1">

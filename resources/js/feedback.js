@@ -200,6 +200,12 @@ document.addEventListener('click', (event) => {
     event.target.closest('[data-dialog-close]')?.closest('dialog')?.close();
 });
 
+document.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLDialogElement) {
+        event.target.close();
+    }
+});
+
 document.querySelectorAll('dialog[data-open-on-load]').forEach((dialog) => dialog.showModal());
 
 document.querySelectorAll('[data-status-autosave]').forEach((select) => {

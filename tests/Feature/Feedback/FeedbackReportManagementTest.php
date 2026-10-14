@@ -320,6 +320,60 @@ class FeedbackReportManagementTest extends TestCase
             ->assertSee('保留的內容');
     }
 
+    public function test_new_issue_form_lives_in_a_dialog_not_at_the_page_bottom(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $this->actingAsTeacher($project);
+
+        $content = $this->get(route('feedback.portal', $project))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-dialog-open="new-issues"', $content);
+        $this->assertMatchesRegularExpression('/<dialog id="new-issues"[^>]*data-issue-entry/', $content);
+        $this->assertDoesNotMatchRegularExpression('/<dialog id="new-issues"[^>]*data-open-on-load/', $content);
+        $this->assertStringNotContainsString('<section id="new-issues"', $content);
+        $this->assertStringNotContainsString('href="#new-issues"', $content);
+        $this->assertSame(1, substr_count($content, 'data-issue-form'));
+    }
+
+    public function test_failed_creation_reopens_the_new_issue_dialog_only(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $report = FeedbackReport::factory()->for($project)->create();
+        $this->actingAsTeacher($project);
+
+        $this->from(route('feedback.portal', $project))
+            ->post(route('feedback.reports.store', $project), [
+                'issues' => [['title' => '', 'description' => '保留的新增內容']],
+            ])
+            ->assertRedirect(route('feedback.portal', $project));
+
+        $content = $this->get(route('feedback.portal', $project))->assertOk()
+            ->assertSee('保留的新增內容')
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<dialog id="new-issues"[^>]*data-open-on-load/', $content);
+        $this->assertDoesNotMatchRegularExpression('/<dialog id="edit-report-'.$report->public_id.'"[^>]*data-open-on-load/', $content);
+    }
+
+    public function test_failed_edit_does_not_open_the_new_issue_dialog(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $report = FeedbackReport::factory()->for($project)->create();
+        $this->actingAsTeacher($project);
+
+        $this->from(route('feedback.portal', $project))
+            ->put(route('feedback.reports.update', [$project, $report]), [
+                'editing_report' => $report->public_id,
+                'title' => '',
+                'description' => 'x',
+            ]);
+
+        $content = $this->get(route('feedback.portal', $project))->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<dialog id="new-issues"[^>]*data-open-on-load/', $content);
+        $this->assertMatchesRegularExpression('/<dialog id="edit-report-'.$report->public_id.'"[^>]*data-open-on-load/', $content);
+    }
+
     public function test_teacher_cannot_delete_reports(): void
     {
         $project = FeedbackProject::factory()->create();

@@ -74,7 +74,7 @@
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
                         <th class="w-16 px-4 py-3.5">編號</th>
-                        <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題／內容 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
+                        <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
                         <th class="w-44 px-4 py-3.5">圖片</th>
                         <th class="w-32 px-4 py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 <span aria-hidden="true">{{ $sortMark('created_at') }}</span></a></th>
@@ -84,27 +84,26 @@
                 </thead>
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
-                        <tr class="block space-y-3 p-4 align-top transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0" data-report-row="{{ $report->public_id }}">
-                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-4 sm:py-4"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
-                            <td class="block sm:table-cell sm:px-5 sm:py-4">
-                                <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="font-semibold text-slate-950 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $report->title }}</a>
-                                <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{{ $report->description }}</p>
+                        <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle" data-report-row="{{ $report->public_id }}">
+                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
+                            <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
+                                <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                             </td>
-                            <td class="block sm:table-cell sm:px-4 sm:py-4">
-                                <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid gap-1">
+                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
+                                <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid">
                                     @csrf
                                     @method('PATCH')
                                     <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
-                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full" data-status-select data-status-autosave />
+                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
                                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
-                                    <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
+                                    <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            <td class="block empty:hidden sm:table-cell sm:px-4 sm:py-4">
+                            <td class="block empty:hidden sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
-                                    <div class="flex flex-wrap gap-1.5">
+                                    <div class="flex flex-wrap gap-1">
                                         @foreach ($report->feedbackAttachments as $attachment)
-                                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
+                                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
                                                 <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
                                             </a>
                                         @endforeach
@@ -113,13 +112,13 @@
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
                             </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-4"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-4"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
-                            <td class="block sm:table-cell sm:px-4 sm:py-4">
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
+                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 <div class="flex flex-wrap gap-2">
-                                    <button type="button" class="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
+                                    <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
                                     @if ($isOwner)
-                                        <button type="button" class="inline-flex min-h-9 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>刪除</button>
+                                        <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>刪除</button>
                                     @endif
                                 </div>
                             </td>
@@ -139,6 +138,32 @@
             $isEditing = $editingReport === $report->public_id;
             $editErrors = $isEditing ? $errors->getBag('editReport') : null;
         @endphp
+        <dialog id="detail-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="detail-report-title-{{ $report->public_id }}" data-report-detail>
+            <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}</p>
+                        <h2 id="detail-report-title-{{ $report->public_id }}" class="mt-1 break-words text-lg font-bold text-slate-950">{{ $report->title }}</h2>
+                    </div>
+                    <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
+                </div>
+                <p class="whitespace-pre-line break-words text-sm leading-6 text-slate-700">{{ $report->description }}</p>
+                @if ($report->feedbackAttachments->isNotEmpty())
+                    <div class="flex flex-wrap gap-2">
+                        @foreach ($report->feedbackAttachments as $attachment)
+                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
+                                <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
+                <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
+                <div class="flex justify-end border-t border-slate-100 pt-4">
+                    <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
+                </div>
+            </div>
+        </dialog>
+
         <dialog id="edit-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="edit-report-title-{{ $report->public_id }}" @if ($editErrors?->any()) data-open-on-load @endif>
             <form method="POST" action="{{ route('feedback.reports.update', [$project, $report]) }}" enctype="multipart/form-data" class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-5 overflow-y-auto p-5 sm:p-7">
                 @csrf

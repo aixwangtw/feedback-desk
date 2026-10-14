@@ -66,6 +66,29 @@ class FeedbackReportManagementTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_list_hides_description_and_opens_it_in_a_detail_dialog(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $report = FeedbackReport::factory()->for($project)->create([
+            'title' => '清單標題',
+            'description' => "第一行說明\n第二行說明",
+        ]);
+
+        $this->actingAsTeacher($project);
+        $html = $this->get(route('feedback.portal', $project))->assertOk()->getContent();
+
+        $row = Str::between($html, 'data-report-row="'.$report->public_id.'"', '</tr>');
+        $this->assertStringNotContainsString('第一行說明', $row);
+        $this->assertStringContainsString('data-dialog-open="detail-report-'.$report->public_id.'"', $row);
+        $this->assertStringNotContainsString('href="'.route('feedback.reports.show', [$project, $report]).'"', $row);
+
+        $dialog = Str::between($html, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
+        $this->assertStringContainsString("第一行說明\n第二行說明", $dialog);
+        $this->assertStringContainsString('清單標題', $dialog);
+        $this->assertStringContainsString('查看留言紀錄', $dialog);
+        $this->assertStringContainsString(route('feedback.reports.show', [$project, $report]), $dialog);
+    }
+
     public function test_teacher_and_engineer_share_the_same_table_page(): void
     {
         $project = FeedbackProject::factory()->create();
@@ -78,7 +101,7 @@ class FeedbackReportManagementTest extends TestCase
             ->assertViewIs('feedback.portal')
             ->assertSee('新增問題')
             ->assertSee('共用頁面的問題')
-            ->assertSeeInOrder(['標題／內容', '狀態', '圖片', '建立日期', '操作'])
+            ->assertSeeInOrder(['標題', '狀態', '圖片', '建立日期', '操作'])
             ->assertSee(route('feedback.attachments.show', [$project, $report, $attachment]), false)
             ->assertSee('data-lightbox-trigger', false)
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)

@@ -39,6 +39,21 @@ class FeedbackPortalTest extends TestCase
             ->assertDontSee('發生頁面');
     }
 
+    public function test_validation_errors_are_displayed_in_traditional_chinese(): void
+    {
+        $clientToken = Str::random(48);
+        $project = FeedbackProject::factory()->create([
+            'client_token_hash' => hash('sha256', $clientToken),
+        ]);
+        $this->get(route('feedback.client.authenticate', $project).'?token='.$clientToken);
+
+        $response = $this->post(route('feedback.reports.store', $project), [
+            'issues' => [['title' => '', 'description' => '說明']],
+        ]);
+
+        $response->assertSessionHasErrors(['issues.0.title' => '問題標題 為必填。']);
+    }
+
     public function test_reporter_can_submit_screenshots_and_receives_private_tracking_access(): void
     {
         Storage::fake('local');

@@ -23,7 +23,7 @@ class FeedbackPortalController extends Controller
         $sort = request()->string('sort')->toString();
         $sort = in_array($sort, ['title', 'status', 'created_at', 'latest_activity_at'], true)
             ? $sort
-            : 'latest_activity_at';
+            : 'created_at';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
 
@@ -46,6 +46,7 @@ class FeedbackPortalController extends Controller
                 ->with(['feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')])
                 ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
                 ->orderBy($sort, $direction)
+                ->orderBy('id', $direction)
                 ->paginate(50)
                 ->withQueryString(),
             'sort' => $sort,

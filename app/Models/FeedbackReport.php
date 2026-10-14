@@ -61,15 +61,15 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 該專案內依建立時間先後的固定編號（最早為 1）。
+     * 該專案內依建立時間先後的固定編號（最新為 1）。
      */
     public function sequenceNumber(): int
     {
         return static::query()
             ->where('feedback_project_id', $this->feedback_project_id)
             ->where(fn ($query) => $query
-                ->where('created_at', '<', $this->created_at)
-                ->orWhere(fn ($tie) => $tie->where('created_at', $this->created_at)->where('id', '<=', $this->id)))
+                ->where('created_at', '>', $this->created_at)
+                ->orWhere(fn ($tie) => $tie->where('created_at', $this->created_at)->where('id', '>=', $this->id)))
             ->count();
     }
 
@@ -80,8 +80,8 @@ class FeedbackReport extends Model
     {
         return array_flip(static::query()
             ->where('feedback_project_id', $project->id)
-            ->orderBy('created_at')
-            ->orderBy('id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->all());

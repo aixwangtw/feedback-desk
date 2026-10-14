@@ -20,9 +20,9 @@ class FeedbackReportNumberTest extends TestCase
         foreach (['asc', 'desc'] as $direction) {
             $html = $this->get(route('feedback.portal', $project).'?sort=title&direction='.$direction)->assertOk()->getContent();
 
-            $this->assertSame(1, $this->numberOf($html, $first));
+            $this->assertSame(3, $this->numberOf($html, $first));
             $this->assertSame(2, $this->numberOf($html, $second));
-            $this->assertSame(3, $this->numberOf($html, $third));
+            $this->assertSame(1, $this->numberOf($html, $third));
         }
     }
 
@@ -37,7 +37,7 @@ class FeedbackReportNumberTest extends TestCase
             ->assertSee('共 3 題（篩選後 1 題）', false);
         $html = $response->getContent();
 
-        $this->assertSame(3, $this->numberOf($html, $third));
+        $this->assertSame(1, $this->numberOf($html, $third));
         $this->assertStringNotContainsString('data-report-row="'.$second->public_id.'"', $html);
     }
 
@@ -47,13 +47,24 @@ class FeedbackReportNumberTest extends TestCase
         $other = FeedbackProject::factory()->create();
         FeedbackReport::factory()->for($other)->create(['created_at' => now()->subDays(10)]);
 
-        $first->delete();
+        $third->delete();
 
         $html = $this->get(route('feedback.portal', $project))->assertSee('共 2 題', false)->getContent();
         $this->assertSame(1, $this->numberOf($html, $second));
-        $this->assertSame(2, $this->numberOf($html, $third));
+        $this->assertSame(2, $this->numberOf($html, $first));
 
-        $this->get(route('feedback.reports.show', [$project, $third]))->assertSee('data-report-number>2<', false);
+        $this->get(route('feedback.reports.show', [$project, $second]))->assertSee('data-report-number>1<', false);
+    }
+
+    public function test_default_order_lists_numbers_from_one_downwards(): void
+    {
+        [$project] = $this->projectWithReports();
+
+        $html = $this->get(route('feedback.portal', $project))->assertOk()->getContent();
+        preg_match_all('/data-report-number>(\d+)</', $html, $matches);
+
+        $this->assertSame(['1', '2', '3'], $matches[1]);
+        $this->assertMatchesRegularExpression('/<option value="created_at" selected/', $html);
     }
 
     public function test_detail_page_shows_the_same_number(): void

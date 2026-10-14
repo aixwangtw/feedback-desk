@@ -188,3 +188,50 @@ if (activity) {
 
     window.setInterval(refresh, 5000);
 }
+
+document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-dialog-open]');
+    if (opener) {
+        document.getElementById(opener.dataset.dialogOpen)?.showModal();
+
+        return;
+    }
+
+    event.target.closest('[data-dialog-close]')?.closest('dialog')?.close();
+});
+
+document.querySelectorAll('dialog[data-open-on-load]').forEach((dialog) => dialog.showModal());
+
+document.querySelectorAll('[data-status-autosave]').forEach((select) => {
+    const form = select.form;
+    const feedback = form?.querySelector('[data-status-feedback]');
+    let savedValue = select.value;
+
+    select.addEventListener('change', async () => {
+        const body = new FormData(form);
+        select.disabled = true;
+        feedback.textContent = '儲存中…';
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body,
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            savedValue = result.status;
+            select.querySelector('[data-automation-status]')?.remove();
+            feedback.textContent = '已儲存';
+        } catch {
+            select.value = savedValue;
+            feedback.textContent = '儲存失敗，請重新整理後再試';
+        } finally {
+            select.disabled = false;
+        }
+    });
+});

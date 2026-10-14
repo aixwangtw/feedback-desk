@@ -26,8 +26,9 @@ class FeedbackOwnerLinkCommandTest extends TestCase
         $this->assertSame(hash('sha256', $ownerToken), $project->owner_token_hash);
 
         $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken)
-            ->assertRedirect(route('feedback.owner.index', $project));
-        $this->get(route('feedback.owner.index', $project))->assertOk();
+            ->assertRedirect(route('feedback.portal', $project));
+        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.portal', $project));
+        $this->get(route('feedback.portal', $project))->assertOk();
     }
 
     public function test_owner_link_fails_for_unknown_project(): void

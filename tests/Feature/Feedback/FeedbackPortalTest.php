@@ -109,7 +109,7 @@ class FeedbackPortalTest extends TestCase
         $report = FeedbackReport::factory()->for($project)->create();
 
         $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken)
-            ->assertRedirect(route('feedback.owner.index', $project));
+            ->assertRedirect(route('feedback.portal', $project));
 
         $this->patch(route('feedback.owner.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
@@ -130,7 +130,7 @@ class FeedbackPortalTest extends TestCase
         $this->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
             ->withHeaders(['X-Forwarded-Proto' => 'https'])
             ->get(route('feedback.owner.authenticate', $project, false).'?token='.$ownerToken)
-            ->assertRedirect(route('feedback.owner.index', $project));
+            ->assertRedirect(route('feedback.portal', $project));
     }
 
     public function test_access_is_isolated_between_projects(): void
@@ -143,7 +143,7 @@ class FeedbackPortalTest extends TestCase
         $secondReport = FeedbackReport::factory()->for($secondProject)->create();
 
         $this->get(route('feedback.owner.authenticate', $firstProject).'?token='.$firstOwnerToken)
-            ->assertRedirect(route('feedback.owner.index', $firstProject));
+            ->assertRedirect(route('feedback.portal', $firstProject));
 
         $this->get(route('feedback.reports.show', [$secondProject, $secondReport]))
             ->assertForbidden();

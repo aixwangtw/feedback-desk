@@ -21,6 +21,13 @@ $feedbackRoutes = function (): void {
 
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'show'])
         ->name('feedback.reports.show');
+    Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.reports.update');
+    Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'destroy'])
+        ->name('feedback.reports.destroy');
+    Route::patch('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/status', [FeedbackStatusController::class, 'update'])
+        ->name('feedback.reports.status.update');
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/activity', [FeedbackReportController::class, 'activity'])
         ->name('feedback.reports.activity');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])

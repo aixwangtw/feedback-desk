@@ -35,6 +35,11 @@ class FeedbackAccess
         return (bool) $this->session->get($this->clientKey($project), false);
     }
 
+    public function canManage(FeedbackProject $project): bool
+    {
+        return $this->isOwner($project) || $this->isClient($project);
+    }
+
     public function canView(FeedbackReport $report): bool
     {
         return $this->isOwner($report->feedbackProject)

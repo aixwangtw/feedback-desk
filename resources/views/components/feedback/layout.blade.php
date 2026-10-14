@@ -1,4 +1,4 @@
-@props(['title', 'project' => null])
+@props(['title', 'project' => null, 'maxWidth' => 'max-w-5xl'])
 
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -13,7 +13,7 @@
     <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-teal-50 to-transparent"></div>
 
     <header class="relative border-b border-slate-200/80 bg-white/80 backdrop-blur">
-        <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <div class="mx-auto flex {{ $maxWidth }} items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
             <a href="{{ $project ? route('feedback.portal', $project) : '/' }}" class="flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
                 <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-sm font-bold text-white shadow-sm">回</span>
                 <span class="min-w-0">
@@ -27,7 +27,7 @@
         </div>
     </header>
 
-    <main class="relative mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+    <main class="relative mx-auto w-full {{ $maxWidth }} px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
         @if (session('success'))
             <div role="status" class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
                 {{ session('success') }}

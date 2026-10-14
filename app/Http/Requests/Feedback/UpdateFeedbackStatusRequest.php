@@ -19,7 +19,7 @@ class UpdateFeedbackStatusRequest extends FormRequest
         $report = $this->route('feedbackReport');
 
         return $report instanceof FeedbackReport
-            && app(FeedbackAccess::class)->isOwner($report->feedbackProject);
+            && app(FeedbackAccess::class)->canManage($report->feedbackProject);
     }
 
     /**
@@ -30,7 +30,7 @@ class UpdateFeedbackStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::enum(FeedbackReportStatus::class)],
+            'status' => ['required', Rule::enum(FeedbackReportStatus::class)->only(FeedbackReportStatus::selectable())],
         ];
     }
 }

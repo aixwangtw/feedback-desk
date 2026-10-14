@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Feedback;
 
 use App\Actions\CreateFeedbackReportAction;
+use App\Actions\DeleteFeedbackReportAction;
+use App\Actions\UpdateFeedbackReportAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackReportRequest;
+use App\Http\Requests\Feedback\UpdateFeedbackReportRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -29,6 +32,36 @@ class FeedbackReportController extends Controller
         return redirect()
             ->route('feedback.portal', $feedbackProject)
             ->with('success', '已新增 '.count($issues).' 個問題。');
+    }
+
+    public function update(
+        UpdateFeedbackReportRequest $request,
+        FeedbackProject $feedbackProject,
+        FeedbackReport $feedbackReport,
+        UpdateFeedbackReportAction $updateFeedbackReport,
+    ): RedirectResponse {
+        $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+
+        $updateFeedbackReport->handle($feedbackReport, $request->validated());
+
+        return back()->with('success', "已更新「{$feedbackReport->title}」。");
+    }
+
+    public function destroy(
+        FeedbackProject $feedbackProject,
+        FeedbackReport $feedbackReport,
+        FeedbackAccess $access,
+        DeleteFeedbackReportAction $deleteFeedbackReport,
+    ): RedirectResponse {
+        abort_unless($access->isOwner($feedbackProject), 403);
+        $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+
+        $title = $feedbackReport->title;
+        $deleteFeedbackReport->handle($feedbackReport);
+
+        return redirect()
+            ->route('feedback.portal', $feedbackProject)
+            ->with('success', "已刪除「{$title}」。");
     }
 
     public function show(
@@ -56,7 +89,7 @@ class FeedbackReportController extends Controller
         return view('feedback.reports.show', [
             'project' => $feedbackProject,
             'report' => $feedbackReport,
-            'isOwner' => $access->isOwner($feedbackProject),
+            'canManage' => $access->canManage($feedbackProject),
         ]);
     }
 

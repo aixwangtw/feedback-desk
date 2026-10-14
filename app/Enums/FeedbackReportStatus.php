@@ -10,6 +10,21 @@ enum FeedbackReportStatus: string
     case Completed = 'completed';
     case Failed = 'failed';
 
+    /**
+     * Statuses people can pick by hand; the others are set by automation only.
+     *
+     * @return list<self>
+     */
+    public static function selectable(): array
+    {
+        return [self::New, self::NeedsInput, self::Completed];
+    }
+
+    public function isSelectable(): bool
+    {
+        return in_array($this, self::selectable(), true);
+    }
+
     public function label(): string
     {
         return match ($this) {

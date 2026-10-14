@@ -70,8 +70,8 @@
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 class="text-sm font-semibold text-slate-950">回報資訊</h2>
                 <dl class="mt-4 grid gap-4 text-xs">
-                    <div><dt class="text-slate-500">建立時間</dt><dd class="mt-1 font-medium text-slate-800">{{ $report->created_at->format('Y/m/d H:i') }}</dd></div>
-                    <div><dt class="text-slate-500">最後更新</dt><dd class="mt-1 font-medium text-slate-800">{{ $report->latest_activity_at->diffForHumans() }}</dd></div>
+                    <div><dt class="text-slate-500">建立時間</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->created_at" /></dd></div>
+                    <div><dt class="text-slate-500">最後更新</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->latest_activity_at" relative /></dd></div>
                 </dl>
             </section>
         </aside>

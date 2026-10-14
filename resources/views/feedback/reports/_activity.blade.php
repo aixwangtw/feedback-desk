@@ -12,7 +12,7 @@
             <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <p class="text-sm font-semibold text-slate-900">{{ $message->author_name ?: $message->author_type->label() }}</p>
-                    <time datetime="{{ $message->created_at->toIso8601String() }}" class="text-xs text-slate-500">{{ $message->created_at->diffForHumans() }}</time>
+                    <x-feedback.time :at="$message->created_at" relative class="text-xs text-slate-500" />
                 </div>
                 <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ $message->body }}</p>
                 @if ($message->feedbackAttachments->isNotEmpty())

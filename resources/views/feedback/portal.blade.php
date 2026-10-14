@@ -56,9 +56,9 @@
             </label>
         </form>
 
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[56rem] border-collapse text-left text-sm" data-report-table>
-                <thead class="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+        <div class="sm:overflow-x-auto">
+            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[56rem]" data-report-table>
+                <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
                         <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題／內容 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
@@ -68,15 +68,15 @@
                         <th class="w-36 px-4 py-3.5">操作</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
-                        <tr class="align-top transition hover:bg-slate-50" data-report-row="{{ $report->public_id }}">
-                            <td class="px-5 py-4">
+                        <tr class="block space-y-3 p-4 align-top transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0" data-report-row="{{ $report->public_id }}">
+                            <td class="block sm:table-cell sm:px-5 sm:py-4">
                                 <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="font-semibold text-slate-950 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $report->title }}</a>
                                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{{ $report->description }}</p>
                                 <p class="mt-1 font-mono text-[11px] text-slate-400">#{{ substr($report->public_id, 0, 8) }}</p>
                             </td>
-                            <td class="px-4 py-4">
+                            <td class="block sm:table-cell sm:px-4 sm:py-4">
                                 <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid gap-1">
                                     @csrf
                                     @method('PATCH')
@@ -86,7 +86,7 @@
                                     <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            <td class="px-4 py-4">
+                            <td class="block empty:hidden sm:table-cell sm:px-4 sm:py-4">
                                 @if ($report->feedbackAttachments->isNotEmpty())
                                     <div class="flex flex-wrap gap-1.5">
                                         @foreach ($report->feedbackAttachments as $attachment)
@@ -99,9 +99,9 @@
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
                             </td>
-                            <td class="whitespace-nowrap px-4 py-4 text-xs text-slate-600">{{ $report->created_at->format('Y/m/d H:i') }}</td>
-                            <td class="whitespace-nowrap px-4 py-4 text-xs text-slate-600">{{ $report->latest_activity_at->diffForHumans() }}</td>
-                            <td class="px-4 py-4">
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-4"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-4 sm:py-4"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
+                            <td class="block sm:table-cell sm:px-4 sm:py-4">
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" class="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
                                     @if ($isOwner)
@@ -111,7 +111,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                        <tr class="block sm:table-row"><td colspan="6" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                     @endforelse
                 </tbody>
             </table>

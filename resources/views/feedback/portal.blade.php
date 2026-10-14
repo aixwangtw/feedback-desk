@@ -62,7 +62,7 @@
             <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[56rem]" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
-                        <th class="w-14 px-4 py-3.5">#</th>
+                        <th class="w-16 px-4 py-3.5">編號</th>
                         <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題／內容 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
                         <th class="w-44 px-4 py-3.5">圖片</th>
@@ -74,7 +74,7 @@
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
                         <tr class="block space-y-3 p-4 align-top transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0" data-report-row="{{ $report->public_id }}">
-                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-4 sm:py-4" data-report-number>#{{ $sequenceNumbers[$report->id] }}</td>
+                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-4 sm:py-4"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
                             <td class="block sm:table-cell sm:px-5 sm:py-4">
                                 <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="font-semibold text-slate-950 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $report->title }}</a>
                                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{{ $report->description }}</p>

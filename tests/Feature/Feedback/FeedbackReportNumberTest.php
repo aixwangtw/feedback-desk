@@ -53,7 +53,7 @@ class FeedbackReportNumberTest extends TestCase
         $this->assertSame(1, $this->numberOf($html, $second));
         $this->assertSame(2, $this->numberOf($html, $third));
 
-        $this->get(route('feedback.reports.show', [$project, $third]))->assertSee('#2', false);
+        $this->get(route('feedback.reports.show', [$project, $third]))->assertSee('data-report-number>2<', false);
     }
 
     public function test_detail_page_shows_the_same_number(): void
@@ -62,7 +62,7 @@ class FeedbackReportNumberTest extends TestCase
 
         $this->get(route('feedback.reports.show', [$project, $second]))
             ->assertOk()
-            ->assertSee('data-report-number>#2', false);
+            ->assertSee('data-report-number>2<', false);
     }
 
     /**
@@ -83,7 +83,7 @@ class FeedbackReportNumberTest extends TestCase
 
     private function numberOf(string $html, FeedbackReport $report): int
     {
-        preg_match('/data-report-row="'.$report->public_id.'".*?data-report-number>#(\d+)</s', $html, $matches);
+        preg_match('/data-report-row="'.$report->public_id.'".*?data-report-number>(\d+)</s', $html, $matches);
 
         return (int) ($matches[1] ?? 0);
     }

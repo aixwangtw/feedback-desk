@@ -31,6 +31,8 @@
     <section class="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="issue-list-heading">
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
+        <p class="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus)（篩選後 {{ $reports->total() }} 題）@endif</p>
+
         <form method="GET" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
                 <select name="status" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
@@ -60,6 +62,7 @@
             <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[56rem]" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
+                        <th class="w-14 px-4 py-3.5">#</th>
                         <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題／內容 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
                         <th class="w-44 px-4 py-3.5">圖片</th>
@@ -71,6 +74,7 @@
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
                         <tr class="block space-y-3 p-4 align-top transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0" data-report-row="{{ $report->public_id }}">
+                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-4 sm:py-4" data-report-number>#{{ $sequenceNumbers[$report->id] }}</td>
                             <td class="block sm:table-cell sm:px-5 sm:py-4">
                                 <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="font-semibold text-slate-950 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $report->title }}</a>
                                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{{ $report->description }}</p>
@@ -111,7 +115,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="6" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                        <tr class="block sm:table-row"><td colspan="7" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                     @endforelse
                 </tbody>
             </table>

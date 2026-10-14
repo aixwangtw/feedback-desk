@@ -9,7 +9,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="min-w-0">
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">回報 #{{ substr($report->public_id, 0, 8) }}</p>
-                        <h1 class="mt-2 text-2xl font-bold tracking-tight text-slate-950">{{ $report->title }}</h1>
+                        <h1 class="mt-2 text-2xl font-bold tracking-tight text-slate-950"><span class="mr-1 text-slate-400" data-report-number>#{{ $sequenceNumber }}</span>{{ $report->title }}</h1>
                     </div>
                     <x-feedback.status-badge :status="$report->status" />
                 </div>

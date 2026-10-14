@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Feedback;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackProject;
+use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\View\View;
 
@@ -26,9 +27,14 @@ class FeedbackPortalController extends Controller
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
 
+        $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject);
+        $totalCount = count($sequenceNumbers);
+
         return view('feedback.portal', [
+            'sequenceNumbers' => array_map(fn (int $index): int => $index + 1, $sequenceNumbers),
+            'totalCount' => $totalCount,
             'project' => $feedbackProject,
-            'reports' => $feedbackProject->feedbackReports()
+            'reports' => $reports = $feedbackProject->feedbackReports()
                 ->with(['feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')])
                 ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
                 ->orderBy($sort, $direction)

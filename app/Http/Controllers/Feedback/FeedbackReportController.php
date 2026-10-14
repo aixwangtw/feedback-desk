@@ -89,6 +89,7 @@ class FeedbackReportController extends Controller
         return view('feedback.reports.show', [
             'project' => $feedbackProject,
             'report' => $feedbackReport,
+            'sequenceNumber' => $feedbackReport->sequenceNumber(),
             'canManage' => $access->canManage($feedbackProject),
         ]);
     }

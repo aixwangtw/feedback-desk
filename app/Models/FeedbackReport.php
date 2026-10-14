@@ -60,6 +60,33 @@ class FeedbackReport extends Model
         return $this->hasMany(FeedbackAutomationRun::class);
     }
 
+    /**
+     * 該專案內依建立時間先後的固定編號（最早為 1）。
+     */
+    public function sequenceNumber(): int
+    {
+        return static::query()
+            ->where('feedback_project_id', $this->feedback_project_id)
+            ->where(fn ($query) => $query
+                ->where('created_at', '<', $this->created_at)
+                ->orWhere(fn ($tie) => $tie->where('created_at', $this->created_at)->where('id', '<=', $this->id)))
+            ->count();
+    }
+
+    /**
+     * @return array<int, int> report id => 專案內編號
+     */
+    public static function sequenceNumbersForProject(FeedbackProject $project): array
+    {
+        return array_flip(static::query()
+            ->where('feedback_project_id', $project->id)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all());
+    }
+
     protected function casts(): array
     {
         return [

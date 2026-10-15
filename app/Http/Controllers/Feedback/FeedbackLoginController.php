@@ -24,7 +24,11 @@ class FeedbackLoginController extends Controller
             return redirect()->intended(route('feedback.portal', $feedbackProject));
         }
 
-        return view('feedback.auth.login', ['project' => $feedbackProject]);
+        return view('feedback.auth.login', [
+            'project' => $feedbackProject,
+            'prefillUsername' => (string) config('feedback.login_prefill.username'),
+            'prefillPassword' => (string) config('feedback.login_prefill.password'),
+        ]);
     }
 
     public function store(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
@@ -63,7 +67,8 @@ class FeedbackLoginController extends Controller
      */
     private function authenticate(string $username, string $password): ?string
     {
-        $role = in_array($username, [FeedbackAccess::ROLE_OWNER, FeedbackAccess::ROLE_CLIENT], true) ? $username : null;
+        $role = collect([FeedbackAccess::ROLE_OWNER, FeedbackAccess::ROLE_CLIENT])
+            ->first(fn (string $role): bool => hash_equals((string) config("feedback.accounts.{$role}.username"), $username));
         $hash = $role !== null ? config("feedback.accounts.{$role}.password_hash") : null;
         $hasUsableHash = is_string($hash) && $hash !== '';
 

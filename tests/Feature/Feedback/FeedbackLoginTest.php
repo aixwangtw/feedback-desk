@@ -18,7 +18,7 @@ class FeedbackLoginTest extends TestCase
 
     private const OWNER_PASSWORD = 'owner-test-password';
 
-    private const CLIENT_PASSWORD = 'client-test-password';
+    private const CLIENT_PASSWORD = 'change-me';
 
     protected function setUp(): void
     {
@@ -39,15 +39,16 @@ class FeedbackLoginTest extends TestCase
             ->assertSee('登入問題清單')
             ->assertSee('name="username"', false)
             ->assertSee('name="password"', false)
-            ->assertDontSee(self::OWNER_PASSWORD)
-            ->assertDontSee(self::CLIENT_PASSWORD);
+            ->assertSee('name="username" value="test"', false)
+            ->assertSee('type="password" value="change-me"', false)
+            ->assertDontSee(self::OWNER_PASSWORD);
     }
 
     public function test_owner_and_client_can_log_in_and_return_to_the_portal(): void
     {
         $project = FeedbackProject::factory()->create();
 
-        foreach (['owner' => self::OWNER_PASSWORD, 'client' => self::CLIENT_PASSWORD] as $username => $password) {
+        foreach (['owner' => self::OWNER_PASSWORD, 'test' => self::CLIENT_PASSWORD] as $username => $password) {
             $this->expireSession();
 
             $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
@@ -69,16 +70,27 @@ class FeedbackLoginTest extends TestCase
         $this->get($reportUrl)->assertRedirect(route('feedback.login', $project));
 
         $this->post(route('feedback.login.store', $project), [
-            'username' => 'client',
+            'username' => 'test',
             'password' => self::CLIENT_PASSWORD,
         ])->assertRedirect($reportUrl);
+    }
+
+    public function test_failed_login_keeps_the_typed_username_instead_of_the_prefill(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        $this->from(route('feedback.login', $project))
+            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => 'wrong'])
+            ->assertRedirect(route('feedback.login', $project));
+
+        $this->get(route('feedback.login', $project))->assertSee('name="username" value="owner"', false);
     }
 
     public function test_wrong_credentials_are_rejected(): void
     {
         $project = FeedbackProject::factory()->create();
 
-        foreach ([['owner', self::CLIENT_PASSWORD], ['client', 'wrong'], ['admin', self::OWNER_PASSWORD]] as [$username, $password]) {
+        foreach ([['owner', self::CLIENT_PASSWORD], ['test', 'wrong'], ['client', self::CLIENT_PASSWORD], ['admin', self::OWNER_PASSWORD]] as [$username, $password]) {
             $this->post(route('feedback.login.store', $project), compact('username', 'password'))
                 ->assertSessionHasErrors(['username' => '帳號或密碼錯誤。'])
                 ->assertCookieMissing(FeedbackAccess::COOKIE_NAME);
@@ -92,9 +104,9 @@ class FeedbackLoginTest extends TestCase
         config()->set('feedback.accounts.client.password_hash', null);
         $project = FeedbackProject::factory()->create();
 
-        $this->post(route('feedback.login.store', $project), ['username' => 'client', 'password' => ''])
+        $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => ''])
             ->assertSessionHasErrors('password');
-        $this->post(route('feedback.login.store', $project), ['username' => 'client', 'password' => 'anything'])
+        $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => 'anything'])
             ->assertSessionHasErrors('username');
     }
 
@@ -102,7 +114,7 @@ class FeedbackLoginTest extends TestCase
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
-        $this->login($project, 'client', self::CLIENT_PASSWORD);
+        $this->login($project, 'test', self::CLIENT_PASSWORD);
 
         $this->delete(route('feedback.reports.destroy', [$project, $report]))->assertForbidden();
         $this->assertModelExists($report);
@@ -188,7 +200,7 @@ class FeedbackLoginTest extends TestCase
     {
         $project = FeedbackProject::factory()->create();
         $otherProject = FeedbackProject::factory()->create();
-        $cookie = $this->login($project, 'client', self::CLIENT_PASSWORD);
+        $cookie = $this->login($project, 'test', self::CLIENT_PASSWORD);
 
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);

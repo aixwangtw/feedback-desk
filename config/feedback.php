@@ -6,16 +6,26 @@ return [
     'disk' => env('FEEDBACK_DISK', 'local'),
 
     /*
-     * Shared sign-in accounts. Only bcrypt hashes are stored; reset them with
+     * Shared sign-in accounts, keyed by role. Only bcrypt hashes are stored; reset them with
      * `php artisan feedback:account-password {owner|client}`.
      */
     'accounts' => [
         'owner' => [
+            'username' => env('FEEDBACK_OWNER_USERNAME', 'owner'),
             'password_hash' => env('FEEDBACK_OWNER_PASSWORD_HASH'),
         ],
         'client' => [
+            'username' => env('FEEDBACK_CLIENT_USERNAME', 'test'),
             'password_hash' => env('FEEDBACK_CLIENT_PASSWORD_HASH'),
         ],
+    ],
+
+    /*
+     * Values pre-filled on the login form so the teacher only has to press「登入」.
+     */
+    'login_prefill' => [
+        'username' => env('FEEDBACK_LOGIN_PREFILL_USERNAME', 'test'),
+        'password' => env('FEEDBACK_LOGIN_PREFILL_PASSWORD', 'change-me'),
     ],
 
     'automation' => [

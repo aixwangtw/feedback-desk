@@ -53,10 +53,28 @@ class FeedbackAccountPasswordCommandTest extends TestCase
         $this->assertStringContainsString("FEEDBACK_OWNER_PASSWORD_HASH='old'", $env);
     }
 
+    public function test_it_sets_a_given_password_and_shows_the_client_username(): void
+    {
+        $this->artisan('feedback:account-password', ['account' => 'client', '--password' => 'change-me'])
+            ->expectsOutputToContain('帳號：test')
+            ->expectsOutputToContain('密碼：change-me')
+            ->assertSuccessful();
+
+        preg_match("/^FEEDBACK_CLIENT_PASSWORD_HASH='(.+)'$/m", file_get_contents($this->environmentDirectory.'/.env'), $hash);
+        $this->assertTrue(Hash::check('change-me', $hash[1]));
+    }
+
+    public function test_it_rejects_an_empty_password(): void
+    {
+        $this->artisan('feedback:account-password', ['account' => 'client', '--password' => ''])
+            ->expectsOutputToContain('--password 不可為空白')
+            ->assertFailed();
+    }
+
     public function test_it_rejects_unknown_accounts(): void
     {
         $this->artisan('feedback:account-password', ['account' => 'admin'])
-            ->expectsOutputToContain('帳號只能是 owner 或 client')
+            ->expectsOutputToContain('角色只能是 owner 或 client')
             ->assertFailed();
     }
 }

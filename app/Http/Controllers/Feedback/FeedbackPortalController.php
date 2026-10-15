@@ -18,7 +18,9 @@ class FeedbackPortalController extends Controller
 
     public function show(FeedbackProject $feedbackProject, FeedbackAccess $access): View
     {
-        abort_unless($access->canManage($feedbackProject), 403);
+        if (! $access->canManage($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
 
         $sort = request()->string('sort')->toString();
         $sort = in_array($sort, ['title', 'status', 'created_at', 'latest_activity_at'], true)

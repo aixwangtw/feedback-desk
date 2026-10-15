@@ -20,7 +20,9 @@ class FeedbackAttachmentController extends Controller
     ): StreamedResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         abort_unless($feedbackAttachment->feedback_report_id === $feedbackReport->id, 404);
-        abort_unless($access->canView($feedbackReport), 403);
+        if (! $access->canView($feedbackReport)) {
+            $access->deny($feedbackProject);
+        }
 
         return Storage::disk($feedbackAttachment->disk)->response(
             $feedbackAttachment->path,

@@ -5,6 +5,19 @@ return [
 
     'disk' => env('FEEDBACK_DISK', 'local'),
 
+    /*
+     * Shared sign-in accounts. Only bcrypt hashes are stored; reset them with
+     * `php artisan feedback:account-password {owner|client}`.
+     */
+    'accounts' => [
+        'owner' => [
+            'password_hash' => env('FEEDBACK_OWNER_PASSWORD_HASH'),
+        ],
+        'client' => [
+            'password_hash' => env('FEEDBACK_CLIENT_PASSWORD_HASH'),
+        ],
+    ],
+
     'automation' => [
         'enabled' => env('FEEDBACK_AUTOMATION_ENABLED', false),
         'workspace_root' => env('FEEDBACK_WORKSPACE_ROOT'),

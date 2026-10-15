@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Feedback;
 
+use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackProject;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -10,6 +11,8 @@ use Illuminate\Validation\Rules\File;
 
 class StoreFeedbackReportRequest extends FormRequest
 {
+    use RedirectsUnauthorizedToLogin;
+
     /**
      * Determine if the user is authorized to make this request.
      */

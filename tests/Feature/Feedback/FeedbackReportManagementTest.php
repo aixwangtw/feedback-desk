@@ -33,19 +33,19 @@ class FeedbackReportManagementTest extends TestCase
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
 
-        $this->get(route('feedback.portal', $project))->assertForbidden();
-        $this->get(route('feedback.owner.index', $project))->assertForbidden();
+        $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
+        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.login', $project));
         $this->post(route('feedback.reports.store', $project), [
             'issues' => [['title' => '標題', 'description' => '內容']],
-        ])->assertForbidden();
+        ])->assertRedirect(route('feedback.login', $project));
         $this->put(route('feedback.reports.update', [$project, $report]), [
             'title' => '新標題',
             'description' => '新內容',
-        ])->assertForbidden();
+        ])->assertRedirect(route('feedback.login', $project));
         $this->patch(route('feedback.reports.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
-        ])->assertForbidden();
-        $this->delete(route('feedback.reports.destroy', [$project, $report]))->assertForbidden();
+        ])->assertRedirect(route('feedback.login', $project));
+        $this->delete(route('feedback.reports.destroy', [$project, $report]))->assertRedirect(route('feedback.login', $project));
 
         $this->assertModelExists($report);
     }
@@ -59,11 +59,11 @@ class FeedbackReportManagementTest extends TestCase
         ]);
         $this->get(route('feedback.reports.show', [$project, $report]).'?access='.$token);
 
-        $this->get(route('feedback.portal', $project))->assertForbidden();
+        $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
         $this->put(route('feedback.reports.update', [$project, $report]), [
             'title' => '新標題',
             'description' => '新內容',
-        ])->assertForbidden();
+        ])->assertRedirect(route('feedback.login', $project));
     }
 
     public function test_list_hides_description_and_opens_it_in_a_detail_dialog(): void
@@ -449,22 +449,22 @@ class FeedbackReportManagementTest extends TestCase
             $this->flushSession();
             $this->{$login}($ownProject);
 
-            $this->get(route('feedback.portal', $otherProject))->assertForbidden();
+            $this->get(route('feedback.portal', $otherProject))->assertRedirect(route('feedback.login', $otherProject));
             $this->post(route('feedback.reports.store', $otherProject), [
                 'issues' => [['title' => '跨專案', 'description' => '內容']],
-            ])->assertForbidden();
+            ])->assertRedirect(route('feedback.login', $otherProject));
             $this->put(route('feedback.reports.update', [$otherProject, $otherReport]), [
                 'title' => '竄改',
                 'description' => '竄改',
-            ])->assertForbidden();
+            ])->assertRedirect(route('feedback.login', $otherProject));
             $this->put(route('feedback.reports.update', [$ownProject, $otherReport]), [
                 'title' => '竄改',
                 'description' => '竄改',
             ])->assertNotFound();
             $this->patch(route('feedback.reports.status.update', [$otherProject, $otherReport]), [
                 'status' => FeedbackReportStatus::Completed->value,
-            ])->assertForbidden();
-            $this->delete(route('feedback.reports.destroy', [$otherProject, $otherReport]))->assertForbidden();
+            ])->assertRedirect(route('feedback.login', $otherProject));
+            $this->delete(route('feedback.reports.destroy', [$otherProject, $otherReport]))->assertRedirect(route('feedback.login', $otherProject));
             $this->get(route('feedback.portal', $ownProject))->assertOk()->assertDontSee('別人的問題');
         }
 

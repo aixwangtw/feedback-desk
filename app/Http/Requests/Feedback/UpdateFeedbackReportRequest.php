@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Feedback;
 
+use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -12,6 +13,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateFeedbackReportRequest extends FormRequest
 {
+    use RedirectsUnauthorizedToLogin;
+
     public const MAX_SCREENSHOTS = 5;
 
     /**

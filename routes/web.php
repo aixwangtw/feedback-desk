@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Feedback\FeedbackAttachmentController;
 use App\Http\Controllers\Feedback\FeedbackClientController;
+use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
 use App\Http\Controllers\Feedback\FeedbackPortalController;
@@ -13,6 +14,13 @@ $feedbackRoutes = function (): void {
     Route::get('/p/{feedbackProject:slug}/access', [FeedbackClientController::class, 'authenticate'])
         ->middleware('throttle:10,1')
         ->name('feedback.client.authenticate');
+    Route::get('/p/{feedbackProject:slug}/login', [FeedbackLoginController::class, 'show'])
+        ->name('feedback.login');
+    Route::post('/p/{feedbackProject:slug}/login', [FeedbackLoginController::class, 'store'])
+        ->middleware('throttle:feedback-login')
+        ->name('feedback.login.store');
+    Route::post('/p/{feedbackProject:slug}/logout', [FeedbackLoginController::class, 'destroy'])
+        ->name('feedback.logout');
     Route::get('/p/{feedbackProject:slug}', [FeedbackPortalController::class, 'show'])
         ->name('feedback.portal');
     Route::post('/p/{feedbackProject:slug}/reports', [FeedbackReportController::class, 'store'])

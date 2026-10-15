@@ -21,9 +21,17 @@
                     <span class="block text-xs text-slate-500">登記、排序、追蹤處理進度</span>
                 </span>
             </a>
-            @isset($headerAction)
-                {{ $headerAction }}
-            @endisset
+            <div class="flex shrink-0 items-center gap-2">
+                @isset($headerAction)
+                    {{ $headerAction }}
+                @endisset
+                @if ($project && app(\App\Support\FeedbackAccess::class)->canManage($project))
+                    <form method="POST" action="{{ route('feedback.logout', $project) }}">
+                        @csrf
+                        <button type="submit" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-logout>登出</button>
+                    </form>
+                @endif
+            </div>
         </div>
     </header>
 

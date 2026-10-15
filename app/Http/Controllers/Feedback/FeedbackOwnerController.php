@@ -24,7 +24,9 @@ class FeedbackOwnerController extends Controller
      */
     public function index(FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
     {
-        abort_unless($access->isOwner($feedbackProject), 403);
+        if (! $access->isOwner($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
 
         return redirect()->route('feedback.portal', [
             $feedbackProject,

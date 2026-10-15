@@ -53,7 +53,9 @@ class FeedbackReportController extends Controller
         FeedbackAccess $access,
         DeleteFeedbackReportAction $deleteFeedbackReport,
     ): RedirectResponse {
-        abort_unless($access->isOwner($feedbackProject), 403);
+        if (! $access->isOwner($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
 
         $title = $feedbackReport->title;
@@ -78,7 +80,9 @@ class FeedbackReportController extends Controller
             return redirect()->route('feedback.reports.show', [$feedbackProject, $feedbackReport]);
         }
 
-        abort_unless($access->canView($feedbackReport), 403);
+        if (! $access->canView($feedbackReport)) {
+            $access->deny($feedbackProject);
+        }
 
         $feedbackReport->load([
             'feedbackAttachments',
@@ -100,7 +104,9 @@ class FeedbackReportController extends Controller
         FeedbackAccess $access,
     ): View {
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
-        abort_unless($access->canView($feedbackReport), 403);
+        if (! $access->canView($feedbackReport)) {
+            $access->deny($feedbackProject);
+        }
 
         $feedbackReport->load('feedbackMessages.feedbackAttachments');
 

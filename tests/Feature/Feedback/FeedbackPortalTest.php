@@ -26,7 +26,7 @@ class FeedbackPortalTest extends TestCase
             'client_token_hash' => hash('sha256', $clientToken),
         ]);
 
-        $this->get(route('feedback.portal', $project))->assertForbidden();
+        $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
 
         $this->get(route('feedback.client.authenticate', $project).'?token='.$clientToken)
             ->assertRedirect(route('feedback.portal', $project));
@@ -107,7 +107,7 @@ class FeedbackPortalTest extends TestCase
             'reporter_token_hash' => hash('sha256', $token),
         ]);
 
-        $this->get(route('feedback.reports.show', [$project, $report]))->assertForbidden();
+        $this->get(route('feedback.reports.show', [$project, $report]))->assertRedirect(route('feedback.login', $project));
 
         $this->get(route('feedback.reports.show', [$project, $report]).'?access='.$token)
             ->assertRedirect(route('feedback.reports.show', [$project, $report]));
@@ -161,7 +161,7 @@ class FeedbackPortalTest extends TestCase
             ->assertRedirect(route('feedback.portal', $firstProject));
 
         $this->get(route('feedback.reports.show', [$secondProject, $secondReport]))
-            ->assertForbidden();
+            ->assertRedirect(route('feedback.login', $secondProject));
         $this->get(route('feedback.reports.show', [$firstProject, $secondReport]))
             ->assertNotFound();
     }
@@ -181,7 +181,7 @@ class FeedbackPortalTest extends TestCase
         ]);
         $attachmentUrl = route('feedback.attachments.show', [$project, $report, $attachment]);
 
-        $this->get($attachmentUrl)->assertForbidden();
+        $this->get($attachmentUrl)->assertRedirect(route('feedback.login', $project));
         $this->get(route('feedback.reports.show', [$project, $report]).'?access='.$token)
             ->assertRedirect();
 

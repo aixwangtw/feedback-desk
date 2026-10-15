@@ -75,6 +75,76 @@ class FeedbackLoginTest extends TestCase
         ])->assertRedirect($reportUrl);
     }
 
+    public function test_guest_opening_the_owner_page_gets_an_empty_owner_login_form_and_returns_there(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $ownerUrl = route('feedback.owner.index', $project).'?status=completed';
+
+        $this->get($ownerUrl)->assertRedirect(route('feedback.owner.login', $project));
+
+        $this->get(route('feedback.owner.login', $project))
+            ->assertOk()
+            ->assertSee('開發者登入')
+            ->assertSee('name="username" value=""', false)
+            ->assertDontSee('value="test"', false)
+            ->assertDontSee('value="change-me"', false);
+
+        $this->from(route('feedback.owner.login', $project))
+            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => self::OWNER_PASSWORD])
+            ->assertRedirect($ownerUrl);
+
+        $this->get($ownerUrl)->assertRedirect(route('feedback.portal', [$project, 'status' => 'completed']));
+        $this->get(route('feedback.owner.login', $project))->assertRedirect(route('feedback.owner.index', $project));
+    }
+
+    public function test_failed_owner_login_returns_to_the_owner_login_form(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        $this->from(route('feedback.owner.login', $project))
+            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => 'wrong'])
+            ->assertRedirect(route('feedback.owner.login', $project))
+            ->assertSessionHasErrors('username');
+    }
+
+    public function test_teacher_opening_the_owner_page_can_switch_to_the_owner_account(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $this->login($project, 'test', self::CLIENT_PASSWORD);
+
+        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.owner.login', $project));
+        $this->get(route('feedback.owner.login', $project))
+            ->assertOk()
+            ->assertSee('開發者登入')
+            ->assertDontSee('value="change-me"', false);
+
+        $this->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => self::OWNER_PASSWORD])
+            ->assertRedirect(route('feedback.owner.index', $project));
+        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.portal', $project));
+        $this->assertTrue(app(FeedbackAccess::class)->isOwner($project));
+    }
+
+    public function test_json_requests_to_the_owner_page_still_get_forbidden(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        $this->getJson(route('feedback.owner.index', $project))->assertForbidden();
+
+        $this->login($project, 'test', self::CLIENT_PASSWORD);
+        $this->getJson(route('feedback.owner.index', $project))->assertForbidden();
+    }
+
+    public function test_client_login_page_keeps_teacher_prefill(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        $this->get(route('feedback.login', $project))
+            ->assertOk()
+            ->assertSee('登入問題清單')
+            ->assertSee('name="username" value="test"', false)
+            ->assertSee('type="password" value="change-me"', false);
+    }
+
     public function test_failed_login_keeps_the_typed_username_instead_of_the_prefill(): void
     {
         $project = FeedbackProject::factory()->create();

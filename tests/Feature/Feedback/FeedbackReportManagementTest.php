@@ -34,7 +34,7 @@ class FeedbackReportManagementTest extends TestCase
         $report = FeedbackReport::factory()->for($project)->create();
 
         $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
-        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.login', $project));
+        $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.owner.login', $project));
         $this->post(route('feedback.reports.store', $project), [
             'issues' => [['title' => '標題', 'description' => '內容']],
         ])->assertRedirect(route('feedback.login', $project));

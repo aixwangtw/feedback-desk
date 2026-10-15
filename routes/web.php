@@ -51,6 +51,8 @@ $feedbackRoutes = function (): void {
     Route::get('/owner/{feedbackProject:slug}/access', [FeedbackOwnerController::class, 'authenticate'])
         ->middleware('throttle:10,1')
         ->name('feedback.owner.authenticate');
+    Route::get('/owner/{feedbackProject:slug}/login', [FeedbackLoginController::class, 'showOwner'])
+        ->name('feedback.owner.login');
     Route::get('/owner/{feedbackProject:slug}', [FeedbackOwnerController::class, 'index'])
         ->name('feedback.owner.index');
     Route::patch('/owner/{feedbackProject:slug}/reports/{feedbackReport:public_id}/status', [FeedbackStatusController::class, 'update'])

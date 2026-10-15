@@ -103,15 +103,31 @@ class FeedbackAccess
         throw new HttpResponseException($this->redirectToLogin($project, $intendedUrl));
     }
 
-    public function redirectToLogin(FeedbackProject $project, ?string $intendedUrl = null): RedirectResponse
+    /**
+     * Owner-only pages send anyone who is not the owner (guests and teachers alike)
+     * to the owner login form so they can sign in with the owner account.
+     */
+    public function denyOwnerPage(FeedbackProject $project): never
     {
+        if ($this->request->expectsJson() || ! $this->request->isMethod('GET')) {
+            abort(403);
+        }
+
+        throw new HttpResponseException($this->redirectToLogin($project, loginRoute: 'feedback.owner.login'));
+    }
+
+    public function redirectToLogin(
+        FeedbackProject $project,
+        ?string $intendedUrl = null,
+        string $loginRoute = 'feedback.login',
+    ): RedirectResponse {
         $intendedUrl ??= $this->request->isMethod('GET')
             ? $this->request->fullUrl()
             : route('feedback.portal', $project);
 
         $this->session->put('url.intended', $intendedUrl);
 
-        return redirect()->route('feedback.login', $project);
+        return redirect()->route($loginRoute, $project);
     }
 
     public function validateOwnerToken(FeedbackProject $project, string $token): bool

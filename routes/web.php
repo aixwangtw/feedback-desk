@@ -34,6 +34,10 @@ $feedbackRoutes = function (): void {
         ->name('feedback.reports.update');
     Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'destroy'])
         ->name('feedback.reports.destroy');
+    Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/client', [FeedbackReportController::class, 'clientDestroy'])
+        ->name('feedback.reports.client-destroy');
+    Route::patch('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/restore', [FeedbackReportController::class, 'restore'])
+        ->name('feedback.reports.restore');
     Route::patch('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/status', [FeedbackStatusController::class, 'update'])
         ->name('feedback.reports.status.update');
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/activity', [FeedbackReportController::class, 'activity'])

@@ -107,7 +107,8 @@ class FeedbackReportManagementTest extends TestCase
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)
             ->assertDontSee('data-delete-report', false)
             ->assertDontSee('id="delete-report-'.$report->public_id.'"', false)
-            ->assertDontSee('value="DELETE"', false);
+            ->assertSee('data-client-delete-report', false)
+            ->assertSee('action="'.route('feedback.reports.client-destroy', [$project, $report]).'"', false);
 
         $this->flushSession();
         $this->actingAsEngineer($project);

@@ -72,6 +72,7 @@ class FeedbackReportController extends Controller
         FeedbackAccess $access,
     ): View|RedirectResponse {
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+        $access->ensureReportVisible($feedbackReport);
         $token = request()->string('access')->toString();
 
         if ($token !== '' && $access->validateReporterToken($feedbackReport, $token)) {
@@ -95,6 +96,7 @@ class FeedbackReportController extends Controller
             'report' => $feedbackReport,
             'sequenceNumber' => $feedbackReport->sequenceNumber(),
             'canManage' => $access->canManage($feedbackProject),
+            'isOwner' => $access->isOwner($feedbackProject),
         ]);
     }
 
@@ -107,6 +109,7 @@ class FeedbackReportController extends Controller
         if (! $access->canView($feedbackReport)) {
             $access->deny($feedbackProject);
         }
+        $access->ensureReportVisible($feedbackReport);
 
         $feedbackReport->load('feedbackMessages.feedbackAttachments');
 
@@ -114,6 +117,43 @@ class FeedbackReportController extends Controller
             'project' => $feedbackProject,
             'report' => $feedbackReport,
         ]);
+    }
+
+    /**
+     * Teacher deletion only hides the report; the owner can still see and restore it.
+     */
+    public function clientDestroy(
+        FeedbackProject $feedbackProject,
+        FeedbackReport $feedbackReport,
+        FeedbackAccess $access,
+    ): RedirectResponse {
+        if (! $access->isClient($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
+        $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+        $access->ensureReportVisible($feedbackReport);
+        abort_if($feedbackReport->isDeletedByClient(), 404);
+
+        $feedbackReport->update(['client_deleted_at' => now()]);
+
+        return redirect()
+            ->route('feedback.portal', $feedbackProject)
+            ->with('success', "已刪除「{$feedbackReport->title}」。");
+    }
+
+    public function restore(
+        FeedbackProject $feedbackProject,
+        FeedbackReport $feedbackReport,
+        FeedbackAccess $access,
+    ): RedirectResponse {
+        if (! $access->isOwner($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
+        $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+
+        $feedbackReport->update(['client_deleted_at' => null]);
+
+        return back()->with('success', "已還原「{$feedbackReport->title}」，老師端會重新看到。");
     }
 
     private function ensureProjectOwnsReport(FeedbackProject $project, FeedbackReport $report): void

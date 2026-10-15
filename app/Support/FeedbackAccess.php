@@ -81,6 +81,16 @@ class FeedbackAccess
     }
 
     /**
+     * A report deleted by the teacher no longer exists for anyone but the owner.
+     */
+    public function ensureReportVisible(FeedbackReport $report): true
+    {
+        abort_if($report->isDeletedByClient() && ! $this->isOwner($report->feedbackProject), 404);
+
+        return true;
+    }
+
+    /**
      * Stop the request: a visitor without any project access goes to the login page,
      * while a signed-in visitor lacking a stronger role still gets a 403.
      */

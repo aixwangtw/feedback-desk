@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\FeedbackReportStatus;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'page_url',
     'status',
     'completed_at',
+    'client_deleted_at',
     'latest_activity_at',
 ])]
 class FeedbackReport extends Model
@@ -61,6 +64,23 @@ class FeedbackReport extends Model
     }
 
     /**
+     * 老師刪除的問題只是隱藏，開發者仍看得到並可還原。
+     */
+    public function isDeletedByClient(): bool
+    {
+        return $this->client_deleted_at !== null;
+    }
+
+    /**
+     * @param  Builder<FeedbackReport>  $query
+     */
+    #[Scope]
+    protected function visibleToClient(Builder $query): void
+    {
+        $query->whereNull('client_deleted_at');
+    }
+
+    /**
      * 該專案內依建立時間先後的固定編號（最新為 1）。
      */
     public function sequenceNumber(): int
@@ -90,10 +110,11 @@ class FeedbackReport extends Model
     /**
      * @return array<string, int> 狀態值 => 整個專案該狀態的題數
      */
-    public static function statusCountsForProject(FeedbackProject $project): array
+    public static function statusCountsForProject(FeedbackProject $project, bool $includeClientDeleted = true): array
     {
         return static::query()
             ->where('feedback_project_id', $project->id)
+            ->when(! $includeClientDeleted, fn (Builder $query) => $query->whereNull('client_deleted_at'))
             ->selectRaw('status, count(*) as aggregate')
             ->groupBy('status')
             ->pluck('aggregate', 'status')
@@ -106,6 +127,7 @@ class FeedbackReport extends Model
         return [
             'status' => FeedbackReportStatus::class,
             'completed_at' => 'datetime',
+            'client_deleted_at' => 'datetime',
             'latest_activity_at' => 'datetime',
         ];
     }

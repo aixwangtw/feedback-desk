@@ -1,10 +1,11 @@
 <x-feedback.layout :title="'問題清單｜'.$project->name" :$project max-width="max-w-6xl">
     @php
-        $sortUrl = function (string $column) use ($project, $sort, $direction, $selectedStatus): string {
+        $sortUrl = function (string $column) use ($project, $sort, $direction, $selectedStatus, $isOwner, $deletedFilter): string {
             $nextDirection = $sort === $column && $direction === 'asc' ? 'desc' : 'asc';
 
             return route('feedback.portal', $project).'?'.http_build_query(array_filter([
                 'status' => $selectedStatus?->value,
+                'deleted' => $isOwner ? $deletedFilter : null,
                 'sort' => $column,
                 'direction' => $nextDirection,
             ]));
@@ -32,7 +33,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus)（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus || ($isOwner && $deletedFilter))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
                     @php
@@ -53,6 +54,15 @@
                     @endforeach
                 </select>
             </label>
+            @if ($isOwner)
+                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">老師已刪除
+                    <select name="deleted" data-auto-submit data-deleted-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
+                        <option value="">一併顯示</option>
+                        <option value="hide" @selected($deletedFilter === 'hide')>隱藏</option>
+                        <option value="only" @selected($deletedFilter === 'only')>只看已刪除</option>
+                    </select>
+                </label>
+            @endif
             <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:hidden">排序欄位
                 <select name="sort" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="latest_activity_at" @selected($sort === 'latest_activity_at')>最後更新</option>
@@ -84,10 +94,16 @@
                 </thead>
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
-                        <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle" data-report-row="{{ $report->public_id }}">
+                        <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}">
                             <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
                             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
                                 <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
+                                @if ($isOwner && $report->isDeletedByClient())
+                                    <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
+                                        <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">老師已刪除</span>
+                                        <x-feedback.time :at="$report->client_deleted_at" />
+                                    </span>
+                                @endif
                             </td>
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid">
@@ -117,8 +133,17 @@
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 <div class="flex flex-wrap gap-2">
                                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
+                                    @if ($isOwner && $report->isDeletedByClient())
+                                        <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
+                                        </form>
+                                    @endif
                                     @if ($isOwner)
                                         <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>刪除</button>
+                                    @else
+                                        <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="client-delete-report-{{ $report->public_id }}" data-client-delete-report>刪除</button>
                                     @endif
                                 </div>
                             </td>
@@ -226,6 +251,19 @@
                     @method('DELETE')
                     <h2 id="delete-report-title-{{ $report->public_id }}" class="text-lg font-bold text-slate-950">確定要刪除這個問題？</h2>
                     <p class="text-sm leading-6 text-slate-600">「{{ $report->title }}」與它的截圖、留言紀錄會被永久刪除，無法復原。</p>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
+                        <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>
+                    </div>
+                </form>
+            </dialog>
+        @else
+            <dialog id="client-delete-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="client-delete-report-title-{{ $report->public_id }}">
+                <form method="POST" action="{{ route('feedback.reports.client-destroy', [$project, $report]) }}" class="grid gap-4 p-5 sm:p-6">
+                    @csrf
+                    @method('DELETE')
+                    <h2 id="client-delete-report-title-{{ $report->public_id }}" class="text-lg font-bold text-slate-950">確定刪除？</h2>
+                    <p class="text-sm leading-6 text-slate-600">「{{ $report->title }}」刪除後會從清單移除，無法自行復原。</p>
                     <div class="flex justify-end gap-3">
                         <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
                         <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>

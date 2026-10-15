@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\UpdateFeedbackStatusRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 
@@ -16,6 +17,7 @@ class FeedbackStatusController extends Controller
         UpdateFeedbackStatusRequest $request,
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
+        FeedbackAccess $access,
     ): RedirectResponse|JsonResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $status = FeedbackReportStatus::from($request->validated('status'));
@@ -30,7 +32,7 @@ class FeedbackStatusController extends Controller
             return response()->json([
                 'status' => $status->value,
                 'label' => $status->label(),
-                'counts' => FeedbackReport::statusCountsForProject($feedbackProject),
+                'counts' => FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $access->isOwner($feedbackProject)),
                 'message' => "狀態已更新為「{$status->label()}」。",
             ]);
         }

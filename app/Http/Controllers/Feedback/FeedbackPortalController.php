@@ -28,11 +28,16 @@ class FeedbackPortalController extends Controller
             : 'created_at';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
+        $isOwner = $access->isOwner($feedbackProject);
+        $deletedFilter = request()->string('deleted')->toString();
+        $deletedFilter = $isOwner ? (in_array($deletedFilter, ['only', 'hide'], true) ? $deletedFilter : null) : 'hide';
 
         $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject);
-        $totalCount = count($sequenceNumbers);
+        $totalCount = $isOwner
+            ? count($sequenceNumbers)
+            : $feedbackProject->feedbackReports()->visibleToClient()->count();
 
-        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject);
+        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $isOwner);
 
         return view('feedback.portal', [
             'statusCounts' => $statusCounts,
@@ -42,6 +47,8 @@ class FeedbackPortalController extends Controller
             'reports' => $reports = $feedbackProject->feedbackReports()
                 ->with(['feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')])
                 ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
+                ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
+                ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'))
                 ->orderBy($sort, $direction)
                 ->orderBy('id', $direction)
                 ->paginate(50)
@@ -49,7 +56,8 @@ class FeedbackPortalController extends Controller
             'sort' => $sort,
             'direction' => $direction,
             'selectedStatus' => $selectedStatus,
-            'isOwner' => $access->isOwner($feedbackProject),
+            'isOwner' => $isOwner,
+            'deletedFilter' => $deletedFilter,
         ]);
     }
 }

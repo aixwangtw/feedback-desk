@@ -32,7 +32,8 @@ class UpdateFeedbackReportRequest extends FormRequest
         $report = $this->route('feedbackReport');
 
         return $report instanceof FeedbackReport
-            && app(FeedbackAccess::class)->canManage($report->feedbackProject);
+            && app(FeedbackAccess::class)->canManage($report->feedbackProject)
+            && app(FeedbackAccess::class)->ensureReportVisible($report);
     }
 
     /**

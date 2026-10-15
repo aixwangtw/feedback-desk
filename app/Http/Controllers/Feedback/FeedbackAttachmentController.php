@@ -23,6 +23,7 @@ class FeedbackAttachmentController extends Controller
         if (! $access->canView($feedbackReport)) {
             $access->deny($feedbackProject);
         }
+        $access->ensureReportVisible($feedbackReport);
 
         return Storage::disk($feedbackAttachment->disk)->response(
             $feedbackAttachment->path,

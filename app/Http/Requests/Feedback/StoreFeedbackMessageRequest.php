@@ -21,7 +21,8 @@ class StoreFeedbackMessageRequest extends FormRequest
         $report = $this->route('feedbackReport');
 
         return $report instanceof FeedbackReport
-            && app(FeedbackAccess::class)->canView($report);
+            && app(FeedbackAccess::class)->canView($report)
+            && app(FeedbackAccess::class)->ensureReportVisible($report);
     }
 
     /**

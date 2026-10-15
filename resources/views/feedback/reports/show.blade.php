@@ -9,6 +9,17 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="min-w-0">
                         <h1 class="text-2xl font-bold tracking-tight text-slate-950"><span class="mr-1 text-slate-400">編號 <span data-report-number>{{ $sequenceNumber }}</span>｜</span>{{ $report->title }}</h1>
+                        @if ($isOwner && $report->isDeletedByClient())
+                            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
+                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">老師已刪除</span>
+                                <x-feedback.time :at="$report->client_deleted_at" />
+                                <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
+                                </form>
+                            </div>
+                        @endif
                     </div>
                     <x-feedback.status-badge :status="$report->status" />
                 </div>

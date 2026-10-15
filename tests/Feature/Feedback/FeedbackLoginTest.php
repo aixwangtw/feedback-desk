@@ -48,7 +48,7 @@ class FeedbackLoginTest extends TestCase
     {
         $project = FeedbackProject::factory()->create();
 
-        foreach (['owner' => self::OWNER_PASSWORD, 'test' => self::CLIENT_PASSWORD] as $username => $password) {
+        foreach (['admin' => self::OWNER_PASSWORD, 'test' => self::CLIENT_PASSWORD] as $username => $password) {
             $this->expireSession();
 
             $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
@@ -57,7 +57,7 @@ class FeedbackLoginTest extends TestCase
                 ->assertCookie(FeedbackAccess::COOKIE_NAME);
 
             $this->get(route('feedback.portal', $project))->assertOk()->assertSee('登出');
-            $this->assertSame($username === 'owner', app(FeedbackAccess::class)->isOwner($project));
+            $this->assertSame($username === 'admin', app(FeedbackAccess::class)->isOwner($project));
         }
     }
 
@@ -75,7 +75,7 @@ class FeedbackLoginTest extends TestCase
         ])->assertRedirect($reportUrl);
     }
 
-    public function test_guest_opening_the_owner_page_gets_an_empty_owner_login_form_and_returns_there(): void
+    public function test_guest_opening_the_owner_page_gets_a_prefilled_owner_login_form_and_returns_there(): void
     {
         $project = FeedbackProject::factory()->create();
         $ownerUrl = route('feedback.owner.index', $project).'?status=completed';
@@ -85,12 +85,12 @@ class FeedbackLoginTest extends TestCase
         $this->get(route('feedback.owner.login', $project))
             ->assertOk()
             ->assertSee('開發者登入')
-            ->assertSee('name="username" value=""', false)
-            ->assertDontSee('value="test"', false)
-            ->assertDontSee('value="change-me"', false);
+            ->assertSee('name="username" value="admin"', false)
+            ->assertSee('type="password" value="change-me"', false)
+            ->assertDontSee('value="test"', false);
 
         $this->from(route('feedback.owner.login', $project))
-            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => self::OWNER_PASSWORD])
+            ->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => self::OWNER_PASSWORD])
             ->assertRedirect($ownerUrl);
 
         $this->get($ownerUrl)->assertRedirect(route('feedback.portal', [$project, 'status' => 'completed']));
@@ -102,7 +102,7 @@ class FeedbackLoginTest extends TestCase
         $project = FeedbackProject::factory()->create();
 
         $this->from(route('feedback.owner.login', $project))
-            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => 'wrong'])
+            ->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => 'wrong'])
             ->assertRedirect(route('feedback.owner.login', $project))
             ->assertSessionHasErrors('username');
     }
@@ -116,9 +116,9 @@ class FeedbackLoginTest extends TestCase
         $this->get(route('feedback.owner.login', $project))
             ->assertOk()
             ->assertSee('開發者登入')
-            ->assertDontSee('value="change-me"', false);
+            ->assertSee('name="username" value="admin"', false);
 
-        $this->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => self::OWNER_PASSWORD])
+        $this->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => self::OWNER_PASSWORD])
             ->assertRedirect(route('feedback.owner.index', $project));
         $this->get(route('feedback.owner.index', $project))->assertRedirect(route('feedback.portal', $project));
         $this->assertTrue(app(FeedbackAccess::class)->isOwner($project));
@@ -150,17 +150,17 @@ class FeedbackLoginTest extends TestCase
         $project = FeedbackProject::factory()->create();
 
         $this->from(route('feedback.login', $project))
-            ->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => 'wrong'])
+            ->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => 'wrong'])
             ->assertRedirect(route('feedback.login', $project));
 
-        $this->get(route('feedback.login', $project))->assertSee('name="username" value="owner"', false);
+        $this->get(route('feedback.login', $project))->assertSee('name="username" value="admin"', false);
     }
 
     public function test_wrong_credentials_are_rejected(): void
     {
         $project = FeedbackProject::factory()->create();
 
-        foreach ([['owner', self::CLIENT_PASSWORD], ['test', 'wrong'], ['client', self::CLIENT_PASSWORD], ['admin', self::OWNER_PASSWORD]] as [$username, $password]) {
+        foreach ([['admin', self::CLIENT_PASSWORD], ['test', 'wrong'], ['test', self::OWNER_PASSWORD], ['client', self::CLIENT_PASSWORD], ['owner', self::OWNER_PASSWORD], ['root', self::OWNER_PASSWORD]] as [$username, $password]) {
             $this->post(route('feedback.login.store', $project), compact('username', 'password'))
                 ->assertSessionHasErrors(['username' => '帳號或密碼錯誤。'])
                 ->assertCookieMissing(FeedbackAccess::COOKIE_NAME);
@@ -195,11 +195,11 @@ class FeedbackLoginTest extends TestCase
         $project = FeedbackProject::factory()->create();
 
         for ($attempt = 0; $attempt < 5; $attempt++) {
-            $this->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => 'wrong'])
+            $this->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => 'wrong'])
                 ->assertSessionHasErrors('username');
         }
 
-        $this->post(route('feedback.login.store', $project), ['username' => 'owner', 'password' => self::OWNER_PASSWORD])
+        $this->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => self::OWNER_PASSWORD])
             ->assertTooManyRequests();
     }
 
@@ -207,7 +207,7 @@ class FeedbackLoginTest extends TestCase
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
-        $cookie = $this->login($project, 'owner', self::OWNER_PASSWORD);
+        $cookie = $this->login($project, 'admin', self::OWNER_PASSWORD);
 
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
@@ -245,7 +245,7 @@ class FeedbackLoginTest extends TestCase
     public function test_remembered_login_stops_working_after_password_reset(): void
     {
         $project = FeedbackProject::factory()->create();
-        $cookie = $this->login($project, 'owner', self::OWNER_PASSWORD);
+        $cookie = $this->login($project, 'admin', self::OWNER_PASSWORD);
 
         config()->set('feedback.accounts.owner.password_hash', Hash::make('a-new-password'));
         $this->expireSession();
@@ -257,7 +257,7 @@ class FeedbackLoginTest extends TestCase
     public function test_remembered_login_expires_after_thirty_days(): void
     {
         $project = FeedbackProject::factory()->create();
-        $cookie = $this->login($project, 'owner', self::OWNER_PASSWORD);
+        $cookie = $this->login($project, 'admin', self::OWNER_PASSWORD);
 
         $this->travel(FeedbackAccess::COOKIE_DAYS + 1)->days();
         $this->expireSession();
@@ -287,7 +287,7 @@ class FeedbackLoginTest extends TestCase
     public function test_logout_clears_session_and_remembered_login(): void
     {
         $project = FeedbackProject::factory()->create();
-        $this->login($project, 'owner', self::OWNER_PASSWORD);
+        $this->login($project, 'admin', self::OWNER_PASSWORD);
 
         $response = $this->post(route('feedback.logout', $project))
             ->assertRedirect(route('feedback.login', $project));

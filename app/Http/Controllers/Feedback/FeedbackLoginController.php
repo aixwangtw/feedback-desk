@@ -27,13 +27,13 @@ class FeedbackLoginController extends Controller
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
             'isOwnerLogin' => false,
-            'prefillUsername' => (string) config('feedback.login_prefill.username'),
-            'prefillPassword' => (string) config('feedback.login_prefill.password'),
+            'prefillUsername' => (string) config('feedback.login_prefill.client.username'),
+            'prefillPassword' => (string) config('feedback.login_prefill.client.password'),
         ]);
     }
 
     /**
-     * Owner login form: no teacher credentials are pre-filled, and a teacher session
+     * Owner login form, pre-filled with the owner account; a teacher session
      * still sees the form so it can switch to the owner account.
      */
     public function showOwner(FeedbackProject $feedbackProject, FeedbackAccess $access): View|RedirectResponse
@@ -45,8 +45,8 @@ class FeedbackLoginController extends Controller
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
             'isOwnerLogin' => true,
-            'prefillUsername' => '',
-            'prefillPassword' => '',
+            'prefillUsername' => (string) config('feedback.login_prefill.owner.username'),
+            'prefillPassword' => (string) config('feedback.login_prefill.owner.password'),
         ]);
     }
 

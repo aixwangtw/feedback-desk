@@ -11,7 +11,7 @@ return [
      */
     'accounts' => [
         'owner' => [
-            'username' => env('FEEDBACK_OWNER_USERNAME', 'owner'),
+            'username' => env('FEEDBACK_OWNER_USERNAME', 'admin'),
             'password_hash' => env('FEEDBACK_OWNER_PASSWORD_HASH'),
         ],
         'client' => [
@@ -21,11 +21,18 @@ return [
     ],
 
     /*
-     * Values pre-filled on the login form so the teacher only has to press「登入」.
+     * Values pre-filled on the login forms so users only have to press「登入」.
+     * `client` is used on /p/{slug}/login, `owner` on /owner/{slug}/login.
      */
     'login_prefill' => [
-        'username' => env('FEEDBACK_LOGIN_PREFILL_USERNAME', 'test'),
-        'password' => env('FEEDBACK_LOGIN_PREFILL_PASSWORD', 'change-me'),
+        'client' => [
+            'username' => env('FEEDBACK_LOGIN_PREFILL_USERNAME', 'test'),
+            'password' => env('FEEDBACK_LOGIN_PREFILL_PASSWORD', 'change-me'),
+        ],
+        'owner' => [
+            'username' => env('FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME', 'admin'),
+            'password' => env('FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD', 'change-me'),
+        ],
     ],
 
     'automation' => [

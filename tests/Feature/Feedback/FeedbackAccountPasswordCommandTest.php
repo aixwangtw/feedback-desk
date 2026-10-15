@@ -64,6 +64,13 @@ class FeedbackAccountPasswordCommandTest extends TestCase
         $this->assertTrue(Hash::check('change-me', $hash[1]));
     }
 
+    public function test_it_shows_the_owner_username(): void
+    {
+        $this->artisan('feedback:account-password', ['account' => 'owner', '--password' => 'change-me'])
+            ->expectsOutputToContain('帳號：admin')
+            ->assertSuccessful();
+    }
+
     public function test_it_rejects_an_empty_password(): void
     {
         $this->artisan('feedback:account-password', ['account' => 'client', '--password' => ''])

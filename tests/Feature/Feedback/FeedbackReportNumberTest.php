@@ -86,7 +86,7 @@ class FeedbackReportNumberTest extends TestCase
         foreach (['', '?status=completed'] as $query) {
             $this->get(route('feedback.portal', $project).$query)
                 ->assertSee('待處理 1 題', false)
-                ->assertSee('待補充 0 題', false)
+                ->assertSee('待審核 0 題', false)
                 ->assertSee('已完成 2 題', false)
                 ->assertSee('data-summary-status="in_progress" data-summary-optional="1" hidden', false)
                 ->assertSee('data-summary-status="failed" data-summary-optional="1" hidden', false)

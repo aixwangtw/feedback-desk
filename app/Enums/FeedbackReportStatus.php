@@ -30,7 +30,7 @@ enum FeedbackReportStatus: string
         return match ($this) {
             self::New => '待處理',
             self::InProgress => '處理中',
-            self::NeedsInput => '待補充',
+            self::NeedsInput => '待審核',
             self::Completed => '已完成',
             self::Failed => '處理失敗',
         };

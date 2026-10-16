@@ -28,6 +28,8 @@ class FeedbackPortalController extends Controller
             : 'created_at';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
+        $keyword = mb_substr(trim(request()->string('q')->toString()), 0, 100);
+        $viewMode = request()->string('view')->toString() === 'board' ? 'board' : 'list';
         $isOwner = $access->isOwner($feedbackProject);
         $deletedFilter = request()->string('deleted')->toString();
         $deletedFilter = $isOwner ? (in_array($deletedFilter, ['only', 'hide'], true) ? $deletedFilter : null) : 'hide';
@@ -46,7 +48,14 @@ class FeedbackPortalController extends Controller
             'project' => $feedbackProject,
             'reports' => $reports = $feedbackProject->feedbackReports()
                 ->with(['feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')])
+                ->when($viewMode === 'board', fn ($query) => $query->whereIn(
+                    'status',
+                    array_map(fn (FeedbackReportStatus $status) => $status->value, FeedbackReportStatus::selectable()),
+                ))
                 ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
+                ->when($keyword !== '', fn ($query) => $query->where(fn ($query) => $query
+                    ->whereLike('title', "%{$keyword}%")
+                    ->orWhereLike('description', "%{$keyword}%")))
                 ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
                 ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'))
                 ->orderBy($sort, $direction)
@@ -56,6 +65,8 @@ class FeedbackPortalController extends Controller
             'sort' => $sort,
             'direction' => $direction,
             'selectedStatus' => $selectedStatus,
+            'keyword' => $keyword,
+            'viewMode' => $viewMode,
             'isOwner' => $isOwner,
             'deletedFilter' => $deletedFilter,
         ]);

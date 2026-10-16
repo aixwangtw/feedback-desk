@@ -15,5 +15,8 @@
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
+    },
+    "dependencies": {
+        "sortablejs": "^1.15.7"
     }
 }

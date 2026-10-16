@@ -1,3 +1,5 @@
+import Sortable from 'sortablejs';
+
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;
     const target = targetId ? document.getElementById(targetId) : null;
@@ -89,6 +91,29 @@ document.querySelectorAll('[data-copy-button]').forEach((button) => {
 
 document.querySelectorAll('[data-auto-submit]').forEach((input) => {
     input.addEventListener('change', () => input.form?.requestSubmit());
+});
+
+document.querySelectorAll('[data-keyword-search]').forEach((input) => {
+    let searchTimer;
+    let composing = false;
+    const scheduleSearch = () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => input.form?.requestSubmit(), 450);
+    };
+
+    input.addEventListener('input', () => {
+        if (!composing) {
+            scheduleSearch();
+        }
+    });
+    input.addEventListener('compositionstart', () => {
+        composing = true;
+        window.clearTimeout(searchTimer);
+    });
+    input.addEventListener('compositionend', () => {
+        composing = false;
+        scheduleSearch();
+    });
 });
 
 const imageLightbox = document.querySelector('[data-image-lightbox]');
@@ -208,38 +233,170 @@ document.addEventListener('click', (event) => {
 
 document.querySelectorAll('dialog[data-open-on-load]').forEach((dialog) => dialog.showModal());
 
+const persistStatus = async (form, status) => {
+    const body = new FormData(form);
+    body.set('status', status);
+    const response = await fetch(form.action, {
+        method: 'POST',
+        body,
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    return response.json();
+};
+
+const refreshKanbanPageCounts = () => {
+    document.querySelectorAll('[data-kanban-column]').forEach((column) => {
+        const cards = column.querySelectorAll('[data-kanban-card]');
+        const count = column.querySelector('[data-kanban-page-count]');
+        const empty = column.querySelector('[data-kanban-empty]');
+
+        if (count) {
+            count.textContent = String(cards.length);
+        }
+        if (empty) {
+            empty.hidden = cards.length > 0;
+        }
+    });
+};
+
+const insertCardInPageOrder = (list, card) => {
+    const order = Number(card.dataset.boardOrder);
+    const nextCard = Array.from(list.querySelectorAll('[data-kanban-card]')).find(
+        (candidate) => candidate !== card && Number(candidate.dataset.boardOrder) > order,
+    );
+
+    list.insertBefore(card, nextCard || list.querySelector('[data-kanban-empty]'));
+};
+
+const kanbanListForStatus = (status) => Array.from(document.querySelectorAll('[data-kanban-list]'))
+    .find((list) => list.dataset.status === status);
+
+const announceKanban = (message) => {
+    const announcer = document.querySelector('[data-kanban-announcer]');
+    if (announcer) {
+        announcer.textContent = message;
+    }
+};
+
 document.querySelectorAll('[data-status-autosave]').forEach((select) => {
     const form = select.form;
     const feedback = form?.querySelector('[data-status-feedback]');
-    let savedValue = select.value;
+    select.dataset.savedValue = select.value;
 
     select.addEventListener('change', async () => {
-        const body = new FormData(form);
+        const requestedStatus = select.value;
+        const savedValue = select.dataset.savedValue;
+        const card = select.closest('[data-kanban-card]');
         select.disabled = true;
         feedback.textContent = '儲存中…';
 
         try {
-            const response = await fetch(form.action, {
-                method: 'POST',
-                body,
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const result = await response.json();
-            savedValue = result.status;
+            const result = await persistStatus(form, requestedStatus);
+            select.dataset.savedValue = result.status;
             select.querySelector('[data-automation-status]')?.remove();
             updateStatusSummary(result.counts);
+
+            if (card) {
+                const destination = kanbanListForStatus(result.status);
+                if (destination) {
+                    card.dataset.status = result.status;
+                    insertCardInPageOrder(destination, card);
+                    refreshKanbanPageCounts();
+                }
+            }
+
             feedback.textContent = '已儲存';
+            announceKanban(result.message);
         } catch {
             select.value = savedValue;
             feedback.textContent = '儲存失敗，請重新整理後再試';
+            announceKanban('狀態儲存失敗，卡片仍在原本的欄位。');
         } finally {
             select.disabled = false;
         }
+    });
+});
+
+document.querySelectorAll('[data-kanban-list]').forEach((list) => {
+    const column = list.closest('[data-kanban-column]');
+
+    Sortable.create(list, {
+        group: {
+            name: 'feedback-kanban',
+            pull: true,
+            put: column?.dataset.selectable === '1',
+        },
+        sort: false,
+        animation: 160,
+        draggable: '[data-kanban-card]',
+        filter: 'a, form, input, select, textarea, [data-card-action]',
+        preventOnFilter: false,
+        chosenClass: 'kanban-card-chosen',
+        ghostClass: 'kanban-card-ghost',
+        dragClass: 'kanban-card-dragging',
+        delay: 120,
+        delayOnTouchOnly: true,
+        touchStartThreshold: 4,
+        onMove(event) {
+            return event.to.closest('[data-kanban-column]')?.dataset.selectable === '1';
+        },
+        async onEnd(event) {
+            const card = event.item;
+            const originalList = event.from;
+            const destinationList = event.to;
+            const originalStatus = card.dataset.status;
+            const requestedStatus = destinationList.dataset.status;
+
+            if (originalList === destinationList || originalStatus === requestedStatus) {
+                insertCardInPageOrder(originalList, card);
+                refreshKanbanPageCounts();
+
+                return;
+            }
+
+            const form = card.querySelector('[data-kanban-status-form]');
+            const select = form?.querySelector('[data-status-autosave]');
+            const feedback = form?.querySelector('[data-status-feedback]');
+
+            if (!form || !select || !feedback) {
+                insertCardInPageOrder(originalList, card);
+                refreshKanbanPageCounts();
+
+                return;
+            }
+
+            card.classList.add('kanban-card-saving');
+            select.disabled = true;
+            select.value = requestedStatus;
+            feedback.textContent = '儲存中…';
+            refreshKanbanPageCounts();
+
+            try {
+                const result = await persistStatus(form, requestedStatus);
+                card.dataset.status = result.status;
+                select.dataset.savedValue = result.status;
+                select.querySelector('[data-automation-status]')?.remove();
+                insertCardInPageOrder(destinationList, card);
+                updateStatusSummary(result.counts);
+                feedback.textContent = '已儲存';
+                announceKanban(result.message);
+            } catch {
+                card.dataset.status = originalStatus;
+                select.value = originalStatus;
+                insertCardInPageOrder(originalList, card);
+                feedback.textContent = '儲存失敗，已移回原欄';
+                announceKanban('狀態儲存失敗，卡片已移回原本的欄位。');
+            } finally {
+                card.classList.remove('kanban-card-saving');
+                select.disabled = false;
+                refreshKanbanPageCounts();
+            }
+        },
     });
 });
 
@@ -257,5 +414,9 @@ function updateStatusSummary(counts) {
         if (item?.dataset.summaryOptional === '1') {
             item.hidden = count === 0;
         }
+    });
+
+    document.querySelectorAll('[data-kanban-total-count]').forEach((count) => {
+        count.textContent = String(counts[count.dataset.kanbanTotalCount] ?? 0);
     });
 }

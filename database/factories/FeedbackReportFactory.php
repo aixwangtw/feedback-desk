@@ -2,7 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
+use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -25,11 +27,28 @@ class FeedbackReportFactory extends Factory
             'public_id' => (string) Str::uuid(),
             'reporter_token_hash' => hash('sha256', Str::random(48)),
             'reporter_name' => fake()->name(),
+            'creator_type' => FeedbackCreatorType::Client,
             'title' => fake()->sentence(6),
             'description' => fake()->paragraph(),
             'page_url' => fake()->url(),
             'status' => FeedbackReportStatus::New,
             'latest_activity_at' => now(),
         ];
+    }
+
+    public function byDeveloper(?FeedbackDeveloper $developer = null): static
+    {
+        return $this->state(fn (): array => [
+            'creator_type' => FeedbackCreatorType::Developer,
+            'creator_developer_id' => $developer ?? FeedbackDeveloper::factory(),
+        ]);
+    }
+
+    public function byOwnerShared(): static
+    {
+        return $this->state(fn (): array => [
+            'creator_type' => FeedbackCreatorType::OwnerShared,
+            'creator_developer_id' => null,
+        ]);
     }
 }

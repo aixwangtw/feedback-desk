@@ -5,6 +5,7 @@
             'q' => $keyword,
             'status' => $selectedStatus?->value,
             'deleted' => $isOwner ? $deletedFilter : null,
+            'creator' => $isOwner ? $creator : null,
             'sort' => $sort,
             'direction' => $direction,
             'page' => request()->integer('page') > 1 ? request()->integer('page') : null,
@@ -28,6 +29,7 @@
         };
         $statusUrl = fn (\App\Enums\FeedbackReportStatus $status): string => route('feedback.portal', $project).'?'.http_build_query(array_filter([
             'status' => $status->value,
+            'creator' => $isOwner ? $creator : null,
             'view' => $viewMode === 'board' && $status->isSelectable() ? 'board' : null,
             'q' => $keyword,
         ]));
@@ -56,7 +58,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && $deletedFilter))（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && ($deletedFilter || $creator !== '')))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
                     @php
@@ -91,6 +93,14 @@
                 </select>
             </label>
             @if ($isOwner)
+                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">建立者
+                    <select name="creator" data-auto-submit data-creator-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
+                        <option value="">全部</option>
+                        @foreach ($creatorOptions as $creatorValue => $creatorName)
+                            <option value="{{ $creatorValue }}" @selected($creator === $creatorValue)>{{ $creatorName }}</option>
+                        @endforeach
+                    </select>
+                </label>
                 <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">老師已刪除
                     <select name="deleted" data-auto-submit data-deleted-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                         <option value="">一併顯示</option>
@@ -123,6 +133,9 @@
                         <th class="w-16 px-4 py-3.5">編號</th>
                         <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
+                        @if ($isOwner)
+                            <th class="w-28 px-4 py-3.5">建立者</th>
+                        @endif
                         <th class="w-44 px-4 py-3.5">圖片</th>
                         <th class="w-56 px-4 py-3.5">調整說明</th>
                         <th class="w-32 px-4 py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 <span aria-hidden="true">{{ $sortMark('created_at') }}</span></a></th>
@@ -153,6 +166,9 @@
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
+                            @if ($isOwner)
+                                <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
+                            @endif
                             <td class="block empty:hidden sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
                                     <div class="flex flex-wrap gap-1">
@@ -206,7 +222,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="8" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                        <tr class="block sm:table-row"><td colspan="9" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -235,7 +251,7 @@
                                     <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
+                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span>@if ($isOwner)<span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@endif</p>
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
@@ -328,7 +344,7 @@
             <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}</p>
+                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}@if ($isOwner) · 建立者：{{ $report->creatorLabel() }}@endif</p>
                         <h2 id="detail-report-title-{{ $report->public_id }}" class="mt-1 break-words text-lg font-bold text-slate-950">{{ $report->title }}</h2>
                     </div>
                     <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>

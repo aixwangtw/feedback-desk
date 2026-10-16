@@ -24,9 +24,10 @@ class FeedbackReportController extends Controller
         FeedbackAccess $access,
     ): RedirectResponse {
         $issues = $request->validated('issues');
+        $creator = $access->creatorFor($feedbackProject);
 
         foreach ($issues as $issue) {
-            $created = $createFeedbackReport->handle($feedbackProject, $issue);
+            $created = $createFeedbackReport->handle($feedbackProject, $issue, $creator);
             $access->grantReporter($created['report']);
         }
 
@@ -96,7 +97,7 @@ class FeedbackReportController extends Controller
         return view('feedback.reports.show', [
             'project' => $feedbackProject,
             'report' => $feedbackReport,
-            'sequenceNumber' => $feedbackReport->sequenceNumber(),
+            'sequenceNumber' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $access->isOwner($feedbackProject)),
             'canManage' => $access->canManage($feedbackProject),
             'isOwner' => $access->isOwner($feedbackProject),
         ]);

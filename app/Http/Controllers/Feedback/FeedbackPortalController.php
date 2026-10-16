@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Feedback;
 use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
+use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -35,12 +36,16 @@ class FeedbackPortalController extends Controller
         $deletedFilter = request()->string('deleted')->toString();
         $deletedFilter = $isOwner ? (in_array($deletedFilter, ['only', 'hide'], true) ? $deletedFilter : null) : 'hide';
 
-        $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject);
+        $creatorOptions = $isOwner ? $this->creatorOptions($feedbackProject) : [];
+        $creator = $isOwner ? request()->string('creator')->toString() : '';
+        $creator = array_key_exists($creator, $creatorOptions) ? $creator : '';
+
+        $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject, clientCreatedOnly: ! $isOwner);
         $totalCount = $isOwner
             ? count($sequenceNumbers)
-            : $feedbackProject->feedbackReports()->visibleToClient()->count();
+            : $feedbackProject->feedbackReports()->createdByClient()->visibleToClient()->count();
 
-        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $isOwner);
+        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $isOwner, clientCreatedOnly: ! $isOwner);
 
         return view('feedback.portal', [
             'statusCounts' => $statusCounts,
@@ -48,6 +53,9 @@ class FeedbackPortalController extends Controller
             'totalCount' => $totalCount,
             'project' => $feedbackProject,
             'reports' => $reports = $feedbackProject->feedbackReports()
+                ->when(! $isOwner, fn ($query) => $query->createdByClient())
+                ->when($creator !== '', fn ($query) => $query->createdBy($creator))
+                ->with($isOwner ? ['creatorDeveloper', 'feedbackProject'] : [])
                 ->with([
                     'feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')->ofKind(FeedbackAttachmentKind::Feedback),
                     'adjustmentAttachments',
@@ -73,6 +81,24 @@ class FeedbackPortalController extends Controller
             'viewMode' => $viewMode,
             'isOwner' => $isOwner,
             'deletedFilter' => $deletedFilter,
+            'creator' => $creator,
+            'creatorOptions' => $creatorOptions,
         ]);
+    }
+
+    /**
+     * 開發者端「建立者」下拉的選項：篩選值 => 顯示名稱。
+     *
+     * @return array<string, string>
+     */
+    private function creatorOptions(FeedbackProject $project): array
+    {
+        $options = ['client' => $project->clientLabel()];
+
+        foreach (FeedbackDeveloper::query()->orderBy('name')->orderBy('id')->get() as $developer) {
+            $options["developer:{$developer->id}"] = $developer->name;
+        }
+
+        return $options + ['shared' => '開發者（共用）'];
     }
 }

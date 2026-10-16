@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'owner_token_hash', 'client_token_hash', 'repository_path', 'automation_enabled'])]
+#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'repository_path', 'automation_enabled'])]
 class FeedbackProject extends Model
 {
     /** @use HasFactory<FeedbackProjectFactory> */
@@ -27,6 +27,14 @@ class FeedbackProject extends Model
     public function feedbackReports(): HasMany
     {
         return $this->hasMany(FeedbackReport::class);
+    }
+
+    /**
+     * 開發者端顯示老師的名稱；未設定時用「老師」。
+     */
+    public function clientLabel(): string
+    {
+        return filled($this->client_display_name) ? $this->client_display_name : '老師';
     }
 
     protected function casts(): array

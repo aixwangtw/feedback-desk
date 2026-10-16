@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Feedback;
 
 use App\Http\Controllers\Controller;
+use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\View\View;
@@ -57,7 +58,7 @@ class FeedbackLoginController extends Controller
             'password' => ['required', 'string', 'max:200'],
         ], attributes: ['username' => '帳號', 'password' => '密碼']);
 
-        $role = $this->authenticate($credentials['username'], $credentials['password']);
+        [$role, $developer] = $this->authenticate($credentials['username'], $credentials['password']);
 
         if ($role === null) {
             throw ValidationException::withMessages(['username' => '帳號或密碼錯誤。']);
@@ -65,9 +66,13 @@ class FeedbackLoginController extends Controller
 
         $request->session()->regenerate();
 
-        $role === FeedbackAccess::ROLE_OWNER
-            ? $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD)
-            : $access->grantClient($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+        if ($developer !== null) {
+            $access->grantDeveloper($feedbackProject, $developer);
+        } elseif ($role === FeedbackAccess::ROLE_OWNER) {
+            $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+        } else {
+            $access->grantClient($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+        }
 
         return redirect()->intended(route('feedback.portal', $feedbackProject));
     }
@@ -82,17 +87,25 @@ class FeedbackLoginController extends Controller
     }
 
     /**
-     * @return FeedbackAccess::ROLE_*|null
+     * 共用帳號優先比對，其次是開發者個人帳號（登入後同為 owner 身分）。
+     *
+     * @return array{0: FeedbackAccess::ROLE_*|null, 1: FeedbackDeveloper|null}
      */
-    private function authenticate(string $username, string $password): ?string
+    private function authenticate(string $username, string $password): array
     {
         $role = collect([FeedbackAccess::ROLE_OWNER, FeedbackAccess::ROLE_CLIENT])
             ->first(fn (string $role): bool => hash_equals((string) config("feedback.accounts.{$role}.username"), $username));
-        $hash = $role !== null ? config("feedback.accounts.{$role}.password_hash") : null;
+        $developer = $role === null ? FeedbackDeveloper::where('username', $username)->first() : null;
+
+        $hash = $role !== null ? config("feedback.accounts.{$role}.password_hash") : $developer?->password_hash;
         $hasUsableHash = is_string($hash) && $hash !== '';
 
         $matches = Hash::check($password, $hasUsableHash ? $hash : self::DUMMY_HASH);
 
-        return $hasUsableHash && $matches ? $role : null;
+        if (! $hasUsableHash || ! $matches) {
+            return [null, null];
+        }
+
+        return $developer !== null ? [FeedbackAccess::ROLE_OWNER, $developer] : [$role, null];
     }
 }

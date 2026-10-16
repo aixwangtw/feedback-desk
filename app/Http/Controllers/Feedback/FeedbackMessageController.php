@@ -24,9 +24,10 @@ class FeedbackMessageController extends Controller
 
         DB::transaction(function () use ($validated, $feedbackReport, $access, $feedbackProject): void {
             $isOwner = $access->isOwner($feedbackProject);
+            $developer = $access->currentDeveloper($feedbackProject);
             $message = $feedbackReport->feedbackMessages()->create([
                 'author_type' => $isOwner ? FeedbackAuthorType::Owner : FeedbackAuthorType::Reporter,
-                'author_name' => $isOwner ? '開發者' : '老師',
+                'author_name' => $isOwner ? ($developer?->name ?? '開發者') : '老師',
                 'body' => $validated['body'],
             ]);
 

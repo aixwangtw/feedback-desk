@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FeedbackAttachmentKind;
+use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'public_id',
     'reporter_token_hash',
     'reporter_name',
+    'creator_type',
+    'creator_developer_id',
     'title',
     'description',
     'adjustment_note',
@@ -34,6 +37,7 @@ class FeedbackReport extends Model
 
     protected $attributes = [
         'status' => FeedbackReportStatus::New->value,
+        'creator_type' => 'client',
     ];
 
     public function getRouteKeyName(): string
@@ -45,6 +49,12 @@ class FeedbackReport extends Model
     public function feedbackProject(): BelongsTo
     {
         return $this->belongsTo(FeedbackProject::class);
+    }
+
+    /** @return BelongsTo<FeedbackDeveloper, $this> */
+    public function creatorDeveloper(): BelongsTo
+    {
+        return $this->belongsTo(FeedbackDeveloper::class, 'creator_developer_id');
     }
 
     /** @return HasMany<FeedbackMessage, $this> */
@@ -98,12 +108,60 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 該專案內依建立時間先後的固定編號（最新為 1）。
+     * 只留下老師建立的單；開發者建立的單老師完全看不到。
+     *
+     * @param  Builder<FeedbackReport>  $query
      */
-    public function sequenceNumber(): int
+    #[Scope]
+    protected function createdByClient(Builder $query): void
+    {
+        $query->where('creator_type', FeedbackCreatorType::Client->value);
+    }
+
+    /**
+     * 開發者端的「建立者」篩選；值為 client、shared 或 developer:{id}。
+     *
+     * @param  Builder<FeedbackReport>  $query
+     */
+    #[Scope]
+    protected function createdBy(Builder $query, string $creator): void
+    {
+        match (true) {
+            $creator === 'client' => $query->where('creator_type', FeedbackCreatorType::Client->value),
+            $creator === 'shared' => $query->where('creator_type', FeedbackCreatorType::OwnerShared->value),
+            (bool) preg_match('/^developer:(\d+)$/', $creator, $matches) => $query
+                ->where('creator_type', FeedbackCreatorType::Developer->value)
+                ->where('creator_developer_id', (int) $matches[1]),
+            default => null,
+        };
+    }
+
+    public function isCreatedByClient(): bool
+    {
+        return $this->creator_type === FeedbackCreatorType::Client;
+    }
+
+    /**
+     * 開發者端顯示的建立者名稱。
+     */
+    public function creatorLabel(): string
+    {
+        return match ($this->creator_type) {
+            FeedbackCreatorType::Client => $this->feedbackProject->clientLabel(),
+            FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? '開發者',
+            FeedbackCreatorType::OwnerShared => '開發者',
+        };
+    }
+
+    /**
+     * 該專案內依建立時間先後的固定編號（最新為 1）。
+     * 老師端只算老師建立的單，所以不會跳號。
+     */
+    public function sequenceNumber(bool $clientCreatedOnly = false): int
     {
         return static::query()
             ->where('feedback_project_id', $this->feedback_project_id)
+            ->when($clientCreatedOnly, fn (Builder $query) => $query->createdByClient())
             ->where(fn ($query) => $query
                 ->where('created_at', '>', $this->created_at)
                 ->orWhere(fn ($tie) => $tie->where('created_at', $this->created_at)->where('id', '>=', $this->id)))
@@ -113,10 +171,11 @@ class FeedbackReport extends Model
     /**
      * @return array<int, int> report id => 專案內編號
      */
-    public static function sequenceNumbersForProject(FeedbackProject $project): array
+    public static function sequenceNumbersForProject(FeedbackProject $project, bool $clientCreatedOnly = false): array
     {
         return array_flip(static::query()
             ->where('feedback_project_id', $project->id)
+            ->when($clientCreatedOnly, fn (Builder $query) => $query->createdByClient())
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->pluck('id')
@@ -127,10 +186,11 @@ class FeedbackReport extends Model
     /**
      * @return array<string, int> 狀態值 => 整個專案該狀態的題數
      */
-    public static function statusCountsForProject(FeedbackProject $project, bool $includeClientDeleted = true): array
+    public static function statusCountsForProject(FeedbackProject $project, bool $includeClientDeleted = true, bool $clientCreatedOnly = false): array
     {
         return static::query()
             ->where('feedback_project_id', $project->id)
+            ->when($clientCreatedOnly, fn (Builder $query) => $query->createdByClient())
             ->when(! $includeClientDeleted, fn (Builder $query) => $query->whereNull('client_deleted_at'))
             ->selectRaw('status, count(*) as aggregate')
             ->groupBy('status')
@@ -143,6 +203,7 @@ class FeedbackReport extends Model
     {
         return [
             'status' => FeedbackReportStatus::class,
+            'creator_type' => FeedbackCreatorType::class,
             'completed_at' => 'datetime',
             'client_deleted_at' => 'datetime',
             'latest_activity_at' => 'datetime',

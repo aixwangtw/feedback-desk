@@ -366,6 +366,53 @@ class FeedbackAdjustmentTest extends TestCase
         Storage::disk('local')->assertMissing($adjustment->path);
     }
 
+    public function test_list_view_shows_the_adjustment_column_with_note_and_image(): void
+    {
+        $this->report->update(['adjustment_note' => '清單可見的調整說明']);
+        $image = $this->adjustmentImage();
+        FeedbackReport::factory()->for($this->project)->create(['title' => '沒有調整的單']);
+
+        $this->actingAsTeacher();
+
+        $html = $this->get(route('feedback.portal', $this->project))
+            ->assertOk()
+            ->assertSee('<th class="w-56 px-4 py-3.5">調整說明</th>', false)
+            ->assertSee('清單可見的調整說明')
+            ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
+            ->getContent();
+
+        $table = Str::between($html, 'data-report-table', '</table>');
+        $this->assertStringContainsString('清單可見的調整說明', $table);
+        $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $image]), $table);
+        $this->assertStringNotContainsString('data-adjustment-image', Str::before(Str::after($table, '沒有調整的單'), '</tr>'));
+    }
+
+    public function test_board_view_shows_the_adjustment_note_and_image_count(): void
+    {
+        $this->report->update(['adjustment_note' => '看板可見的調整說明', 'status' => FeedbackReportStatus::New]);
+        $image = $this->adjustmentImage();
+        $this->adjustmentImage();
+
+        $this->actingAsTeacher();
+
+        $this->get(route('feedback.portal', $this->project).'?view=board')
+            ->assertOk()
+            ->assertSee('data-adjustment-card', false)
+            ->assertSee('看板可見的調整說明')
+            ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
+            ->assertSee('2 張調整圖');
+    }
+
+    public function test_board_view_hides_the_adjustment_block_when_empty(): void
+    {
+        $this->report->update(['status' => FeedbackReportStatus::New]);
+        $this->actingAsTeacher();
+
+        $this->get(route('feedback.portal', $this->project).'?view=board')
+            ->assertOk()
+            ->assertDontSee('data-adjustment', false);
+    }
+
     private function adjustmentImage(): FeedbackAttachment
     {
         return FeedbackAttachment::factory()->for($this->report)->create([

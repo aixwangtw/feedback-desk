@@ -124,6 +124,7 @@
                         <th class="min-w-72 px-5 py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 <span aria-hidden="true">{{ $sortMark('title') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 <span aria-hidden="true">{{ $sortMark('status') }}</span></a></th>
                         <th class="w-44 px-4 py-3.5">圖片</th>
+                        <th class="w-56 px-4 py-3.5">調整說明</th>
                         <th class="w-32 px-4 py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 <span aria-hidden="true">{{ $sortMark('created_at') }}</span></a></th>
                         <th class="w-28 px-4 py-3.5" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 <span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span></a></th>
                         <th class="w-36 px-4 py-3.5">操作</th>
@@ -165,6 +166,25 @@
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
                             </td>
+                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
+                                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整說明：</span>
+                                @if ($report->hasAdjustment())
+                                    @if (filled($report->adjustment_note))
+                                        <p class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" title="{{ $report->adjustment_note }}" data-adjustment-note>{{ $report->adjustment_note }}</p>
+                                    @endif
+                                    @if ($report->adjustmentAttachments->isNotEmpty())
+                                        <div class="mt-1 flex flex-wrap gap-1">
+                                            @foreach ($report->adjustmentAttachments as $attachment)
+                                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-teal-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" data-adjustment-image title="放大預覽">
+                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                @else
+                                    <span class="text-xs text-slate-400">—</span>
+                                @endif
+                            </td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
@@ -186,7 +206,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="7" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                        <tr class="block sm:table-row"><td colspan="8" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -254,6 +274,24 @@
                                                     <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
                                                 </a>
                                                 <span class="text-xs font-medium text-slate-500">{{ $report->feedbackAttachments->count() }} 張附件</span>
+                                            </div>
+                                        @endif
+
+                                        @if ($report->hasAdjustment())
+                                            <div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card>
+                                                <p class="text-[11px] font-bold text-teal-800">調整說明</p>
+                                                @if (filled($report->adjustment_note))
+                                                    <p class="mt-1 line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" title="{{ $report->adjustment_note }}" data-adjustment-note>{{ $report->adjustment_note }}</p>
+                                                @endif
+                                                @if ($report->adjustmentAttachments->isNotEmpty())
+                                                    @php $adjustmentImage = $report->adjustmentAttachments->first(); @endphp
+                                                    <div class="mt-2 flex items-center gap-2">
+                                                        <a href="{{ route('feedback.attachments.show', [$project, $report, $adjustmentImage]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $adjustmentImage->original_name }}" data-adjustment-image title="放大預覽">
+                                                            <img src="{{ route('feedback.attachments.show', [$project, $report, $adjustmentImage]) }}" alt="{{ $adjustmentImage->original_name }}" class="size-full object-cover" loading="lazy">
+                                                        </a>
+                                                        <span class="text-xs font-medium text-slate-500">{{ $report->adjustmentAttachments->count() }} 張調整圖</span>
+                                                    </div>
+                                                @endif
                                             </div>
                                         @endif
 

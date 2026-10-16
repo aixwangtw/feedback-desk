@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\FeedbackAttachmentKind;
 use App\Models\FeedbackAttachment;
 use App\Models\FeedbackReport;
 use Illuminate\Http\UploadedFile;
@@ -27,6 +28,7 @@ class UpdateFeedbackReportAction
 
                 $removedAttachments = $report->feedbackAttachments()
                     ->whereNull('feedback_message_id')
+                    ->ofKind(FeedbackAttachmentKind::Feedback)
                     ->whereIn('id', $data['remove_attachments'] ?? [])
                     ->get();
                 $removedAttachments->each->delete();

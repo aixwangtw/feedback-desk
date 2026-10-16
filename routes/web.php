@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Feedback\FeedbackAdjustmentController;
 use App\Http\Controllers\Feedback\FeedbackAttachmentController;
 use App\Http\Controllers\Feedback\FeedbackClientController;
 use App\Http\Controllers\Feedback\FeedbackLoginController;
@@ -45,6 +46,9 @@ $feedbackRoutes = function (): void {
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
         ->middleware('throttle:30,1')
         ->name('feedback.messages.store');
+    Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/adjustment', [FeedbackAdjustmentController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.reports.adjustment.update');
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/attachments/{feedbackAttachment}', [FeedbackAttachmentController::class, 'show'])
         ->name('feedback.attachments.show');
 

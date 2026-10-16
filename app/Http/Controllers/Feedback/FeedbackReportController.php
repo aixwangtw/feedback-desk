@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Feedback;
 use App\Actions\CreateFeedbackReportAction;
 use App\Actions\DeleteFeedbackReportAction;
 use App\Actions\UpdateFeedbackReportAction;
+use App\Enums\FeedbackAttachmentKind;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackReportRequest;
 use App\Http\Requests\Feedback\UpdateFeedbackReportRequest;
@@ -86,7 +87,8 @@ class FeedbackReportController extends Controller
         }
 
         $feedbackReport->load([
-            'feedbackAttachments',
+            'feedbackAttachments' => fn ($query) => $query->ofKind(FeedbackAttachmentKind::Feedback),
+            'adjustmentAttachments',
             'feedbackMessages.feedbackAttachments',
             'automationRuns' => fn ($query) => $query->latest(),
         ]);

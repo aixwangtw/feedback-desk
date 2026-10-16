@@ -305,6 +305,11 @@
                         @endforeach
                     </div>
                 @endif
+                @if ($report->hasAdjustment())
+                    <div class="rounded-xl border border-teal-100 bg-teal-50/40 p-4">
+                        @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report, 'compact' => true])
+                    </div>
+                @endif
                 <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
                 <div class="flex justify-end border-t border-slate-100 pt-4">
                     <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>

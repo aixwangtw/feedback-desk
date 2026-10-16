@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Feedback;
 
+use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackProject;
@@ -47,7 +48,10 @@ class FeedbackPortalController extends Controller
             'totalCount' => $totalCount,
             'project' => $feedbackProject,
             'reports' => $reports = $feedbackProject->feedbackReports()
-                ->with(['feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')])
+                ->with([
+                    'feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')->ofKind(FeedbackAttachmentKind::Feedback),
+                    'adjustmentAttachments',
+                ])
                 ->when($viewMode === 'board', fn ($query) => $query->whereIn(
                     'status',
                     array_map(fn (FeedbackReportStatus $status) => $status->value, FeedbackReportStatus::selectable()),

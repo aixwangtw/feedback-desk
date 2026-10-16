@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackReportStatus;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'reporter_name',
     'title',
     'description',
+    'adjustment_note',
     'page_url',
     'status',
     'completed_at',
@@ -55,6 +57,21 @@ class FeedbackReport extends Model
     public function feedbackAttachments(): HasMany
     {
         return $this->hasMany(FeedbackAttachment::class);
+    }
+
+    /**
+     * 開發者在「調整說明」附上的圖片。
+     *
+     * @return HasMany<FeedbackAttachment, $this>
+     */
+    public function adjustmentAttachments(): HasMany
+    {
+        return $this->feedbackAttachments()->ofKind(FeedbackAttachmentKind::Adjustment);
+    }
+
+    public function hasAdjustment(): bool
+    {
+        return filled($this->adjustment_note) || $this->adjustmentAttachments->isNotEmpty();
     }
 
     /** @return HasMany<FeedbackAutomationRun, $this> */

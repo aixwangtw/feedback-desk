@@ -38,6 +38,58 @@
                 @endif
             </section>
 
+            @if ($isOwner || $report->hasAdjustment())
+                <section id="adjustment" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+                    @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report])
+
+                    @if ($isOwner)
+                        @php $adjustmentErrors = $errors->getBag('adjustment'); @endphp
+                        <details class="mt-5 border-t border-slate-100 pt-4" @if ($adjustmentErrors->any()) open @endif data-adjustment-editor>
+                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整說明（僅開發者）</summary>
+                            <form method="POST" action="{{ route('feedback.reports.adjustment.update', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
+                                @csrf
+                                @method('PUT')
+                                @if ($adjustmentErrors->any())
+                                    <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                                        <ul class="list-disc space-y-1 pl-5">@foreach ($adjustmentErrors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+                                    </div>
+                                @endif
+                                <div>
+                                    <label for="adjustment_note" class="mb-2 block text-xs font-semibold text-slate-600">說明文字（再次調整時請接在原內容後面補寫）</label>
+                                    <textarea id="adjustment_note" name="adjustment_note" maxlength="{{ \App\Actions\UpdateFeedbackReportAdjustmentAction::MAX_NOTE_LENGTH }}" rows="6" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ $adjustmentErrors->any() ? old('adjustment_note') : $report->adjustment_note }}</textarea>
+                                </div>
+
+                                @if ($report->adjustmentAttachments->isNotEmpty())
+                                    <fieldset>
+                                        <legend class="mb-2 text-xs font-semibold text-slate-600">目前調整圖片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
+                                        <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
+                                            @foreach ($report->adjustmentAttachments as $attachment)
+                                                <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
+                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="aspect-video w-full object-cover" loading="lazy">
+                                                    <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
+                                                        <input type="checkbox" name="remove_adjustment_attachments[]" value="{{ $attachment->id }}" class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">
+                                                        刪除
+                                                    </span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                    </fieldset>
+                                @endif
+
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <label for="adjustment-images" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                        加入調整圖片
+                                        <input id="adjustment-images" name="adjustment_images[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="adjustment-preview">
+                                    </label>
+                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整說明</button>
+                                </div>
+                                <div id="adjustment-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
+                            </form>
+                        </details>
+                    @endif
+                </section>
+            @endif
+
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-activity data-refresh-url="{{ route('feedback.reports.activity', [$project, $report]) }}">
                 @include('feedback.reports._activity', ['project' => $project, 'report' => $report])
             </section>

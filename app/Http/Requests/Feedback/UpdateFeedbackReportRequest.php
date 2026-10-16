@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Feedback;
 
+use App\Enums\FeedbackAttachmentKind;
 use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -59,7 +60,8 @@ class UpdateFeedbackReportRequest extends FormRequest
                 'integer',
                 Rule::exists('feedback_attachments', 'id')
                     ->where('feedback_report_id', $report?->id)
-                    ->whereNull('feedback_message_id'),
+                    ->whereNull('feedback_message_id')
+                    ->where('kind', FeedbackAttachmentKind::Feedback->value),
             ],
         ];
     }
@@ -78,6 +80,7 @@ class UpdateFeedbackReportRequest extends FormRequest
 
                 $remaining = $report->feedbackAttachments()
                     ->whereNull('feedback_message_id')
+                    ->ofKind(FeedbackAttachmentKind::Feedback)
                     ->whereNotIn('id', $this->input('remove_attachments', []))
                     ->count();
 

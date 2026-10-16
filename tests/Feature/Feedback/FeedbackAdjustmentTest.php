@@ -413,6 +413,29 @@ class FeedbackAdjustmentTest extends TestCase
             ->assertDontSee('data-adjustment', false);
     }
 
+    public function test_adjustment_note_opens_the_detail_preview_with_full_text_and_all_images(): void
+    {
+        $this->report->update(['adjustment_note' => "完整第一行\n完整第二行", 'status' => FeedbackReportStatus::New]);
+        $first = $this->adjustmentImage();
+        $second = $this->adjustmentImage();
+        $dialogId = 'detail-report-'.$this->report->public_id;
+
+        $this->actingAsTeacher();
+
+        foreach ([route('feedback.portal', $this->project), route('feedback.portal', $this->project).'?view=board'] as $url) {
+            $html = $this->get($url)->assertOk()->getContent();
+
+            $this->assertStringContainsString('data-dialog-open="'.$dialogId.'" data-adjustment-preview', $html);
+
+            $dialog = Str::between($html, 'id="'.$dialogId.'"', '</dialog>');
+            $this->assertStringContainsString("完整第一行\n完整第二行", $dialog);
+            $this->assertStringContainsString('whitespace-pre-wrap', $dialog);
+            $this->assertSame(2, substr_count($dialog, 'data-adjustment-image'));
+            $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $first]), $dialog);
+            $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $second]), $dialog);
+        }
+    }
+
     private function adjustmentImage(): FeedbackAttachment
     {
         return FeedbackAttachment::factory()->for($this->report)->create([

@@ -123,6 +123,125 @@ class FeedbackReportManagementTest extends TestCase
             ->assertSee('value="DELETE"', false);
     }
 
+    public function test_portal_can_switch_between_list_and_board_views_without_losing_query_options(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::Completed]);
+        $this->actingAsTeacher($project);
+
+        $this->get(route('feedback.portal', $project))
+            ->assertOk()
+            ->assertViewHas('viewMode', 'list')
+            ->assertSee('data-list-view', false)
+            ->assertDontSee('data-kanban-board', false);
+
+        $html = $this->get(route('feedback.portal', $project).'?view=board&status=completed&sort=title&direction=asc')
+            ->assertOk()
+            ->assertViewHas('viewMode', 'board')
+            ->assertSee('data-kanban-board', false)
+            ->assertDontSee('data-report-table', false)
+            ->getContent();
+
+        $expectedListUrl = htmlspecialchars(
+            route('feedback.portal', $project).'?view=list&status=completed&sort=title&direction=asc',
+            ENT_QUOTES,
+        );
+        $this->assertStringContainsString('href="'.$expectedListUrl.'"', $html);
+    }
+
+    public function test_board_renders_selectable_status_columns_and_places_cards_in_their_current_status(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $reports = collect(FeedbackReportStatus::cases())->mapWithKeys(function (FeedbackReportStatus $status) use ($project): array {
+            $report = FeedbackReport::factory()->for($project)->create([
+                'status' => $status,
+                'title' => $status->label().'卡片',
+            ]);
+
+            return [$status->value => $report];
+        });
+        $this->actingAsEngineer($project);
+
+        $html = $this->get(route('feedback.portal', $project).'?view=board')->assertOk()->getContent();
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
+        $xpath = new \DOMXPath($document);
+
+        $this->assertSame(3, $xpath->query('//form[@method="GET"]//select[@name="status"]/option[@value != ""]')->length);
+
+        foreach (FeedbackReportStatus::selectable() as $status) {
+            $column = $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]');
+            $card = $xpath->query('//*[@data-kanban-list and @data-status="'.$status->value.'"]//*[@data-kanban-card and @data-report-id="'.$reports[$status->value]->public_id.'"]');
+
+            $this->assertSame(1, $column->length, "Missing {$status->value} board column.");
+            $this->assertSame('1', $column->item(0)->getAttribute('data-selectable'));
+            $this->assertSame(1, $card->length, "Report was not placed in {$status->value}.");
+        }
+
+        foreach ([FeedbackReportStatus::InProgress, FeedbackReportStatus::Failed] as $status) {
+            $this->assertSame(0, $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]')->length);
+            $this->assertSame(0, $xpath->query('//*[@data-kanban-card and @data-report-id="'.$reports[$status->value]->public_id.'"]')->length);
+        }
+
+        $this->assertStringNotContainsString('data-drag-handle', $html);
+        $this->assertStringContainsString('title="拖拉卡片可改變狀態"', $html);
+        $this->assertStringContainsString('aria-label="編輯「', $html);
+        $this->assertStringContainsString('aria-label="刪除「', $html);
+        $this->assertStringContainsString('data-kanban-status-form', $html);
+        $this->assertStringContainsString('data-kanban-total-count="new">1</span>', $html);
+        $this->assertStringNotContainsString('此狀態由自動化設定；卡片可拖出但不能拖入。', $html);
+    }
+
+    public function test_keyword_search_matches_report_titles_and_descriptions(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        FeedbackReport::factory()->for($project)->create([
+            'title' => '答案儲存異常',
+            'description' => '按鈕沒有反應。',
+        ]);
+        FeedbackReport::factory()->for($project)->create([
+            'title' => '送出按鈕失效',
+            'description' => '使用者無法儲存答案。',
+        ]);
+        FeedbackReport::factory()->for($project)->create([
+            'title' => '圖片顯示異常',
+            'description' => '縮圖比例錯誤。',
+        ]);
+        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create([
+            'title' => '其他專案的答案問題',
+        ]);
+        $this->actingAsTeacher($project);
+
+        $response = $this->get(route('feedback.portal', $project).'?view=board&q='.urlencode('儲存'))
+            ->assertOk()
+            ->assertViewHas('keyword', '儲存')
+            ->assertSee('答案儲存異常')
+            ->assertSee('送出按鈕失效')
+            ->assertDontSee('圖片顯示異常')
+            ->assertDontSee('其他專案的答案問題')
+            ->assertSee('共 3 題（篩選後 2 題）', false);
+
+        $html = $response->getContent();
+        $this->assertStringContainsString('name="q" value="儲存"', $html);
+        $this->assertStringContainsString('view=list&amp;q='.urlencode('儲存'), $html);
+    }
+
+    public function test_board_keeps_the_existing_fifty_report_page_size(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        FeedbackReport::factory()->for($project)->count(51)->create();
+        $this->actingAsTeacher($project);
+
+        $html = $this->get(route('feedback.portal', $project).'?view=board')->assertOk()->getContent();
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
+        $xpath = new \DOMXPath($document);
+
+        $this->assertSame(50, $xpath->query('//*[@data-kanban-card]')->length);
+        $this->assertStringContainsString('看板每頁最多顯示 50 題。', $html);
+        $this->assertStringContainsString('view=board&amp;page=2', $html);
+    }
+
     public function test_status_dropdown_only_offers_three_statuses(): void
     {
         $project = FeedbackProject::factory()->create();

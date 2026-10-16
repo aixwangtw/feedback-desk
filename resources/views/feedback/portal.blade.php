@@ -1,15 +1,36 @@
-<x-feedback.layout :title="'問題清單｜'.$project->name" :$project max-width="max-w-6xl">
+<x-feedback.layout :title="'問題清單｜'.$project->name" :$project max-width="max-w-[96rem]">
     @php
-        $sortUrl = function (string $column) use ($project, $sort, $direction, $selectedStatus, $isOwner, $deletedFilter): string {
+        $baseQuery = array_filter([
+            'view' => $viewMode,
+            'q' => $keyword,
+            'status' => $selectedStatus?->value,
+            'deleted' => $isOwner ? $deletedFilter : null,
+            'sort' => $sort,
+            'direction' => $direction,
+            'page' => request()->integer('page') > 1 ? request()->integer('page') : null,
+        ], fn ($value) => $value !== null && $value !== '');
+        $portalUrl = function (array $overrides = [], array $forget = []) use ($project, $baseQuery): string {
+            $query = array_merge($baseQuery, $overrides);
+
+            foreach ($forget as $key) {
+                unset($query[$key]);
+            }
+
+            return route('feedback.portal', $project).'?'.http_build_query($query);
+        };
+        $sortUrl = function (string $column) use ($portalUrl, $sort, $direction): string {
             $nextDirection = $sort === $column && $direction === 'asc' ? 'desc' : 'asc';
 
-            return route('feedback.portal', $project).'?'.http_build_query(array_filter([
-                'status' => $selectedStatus?->value,
-                'deleted' => $isOwner ? $deletedFilter : null,
+            return $portalUrl([
                 'sort' => $column,
                 'direction' => $nextDirection,
-            ]));
+            ], ['page']);
         };
+        $statusUrl = fn (\App\Enums\FeedbackReportStatus $status): string => route('feedback.portal', $project).'?'.http_build_query(array_filter([
+            'status' => $status->value,
+            'view' => $viewMode === 'board' && $status->isSelectable() ? 'board' : null,
+            'q' => $keyword,
+        ]));
         $sortMark = fn (string $column): string => $sort === $column
             ? ($direction === 'asc' ? '↑' : '↓')
             : '↕';
@@ -18,13 +39,15 @@
             : 'none';
         $issueRows = old('issues', [['title' => '', 'description' => '']]);
         $editingReport = old('editing_report');
+        $boardStatuses = \App\Enums\FeedbackReportStatus::selectable();
+        $pageStatusCounts = $reports->getCollection()->countBy(fn ($report) => $report->status->value);
     @endphp
 
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <p class="text-sm font-semibold text-teal-700">範例專案</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">每個問題各自追蹤狀態與討論；狀態可直接在表格中切換，點選欄名即可排序。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">每個問題各自追蹤狀態與討論；{{ $viewMode === 'board' ? '拖拉卡片即可更新狀態。' : '狀態可直接在表格中切換，點選欄名即可排序。' }}</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
@@ -32,24 +55,37 @@
     <section class="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="issue-list-heading">
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($selectedStatus || ($isOwner && $deletedFilter))（篩選後 {{ $reports->total() }} 題）@endif</p>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && $deletedFilter))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
                     @php
                         $summaryCount = $statusCounts[$summaryStatus->value] ?? 0;
                         $summaryOptional = ! $summaryStatus->isSelectable();
                     @endphp
-                    <li data-summary-status="{{ $summaryStatus->value }}" data-summary-optional="{{ $summaryOptional ? '1' : '0' }}"{!! $summaryOptional && $summaryCount === 0 ? ' hidden' : '' !!}><a href="{{ route('feedback.portal', $project) }}?status={{ $summaryStatus->value }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
+                    <li data-summary-status="{{ $summaryStatus->value }}" data-summary-optional="{{ $summaryOptional ? '1' : '0' }}"{!! $summaryOptional && $summaryCount === 0 ? ' hidden' : '' !!}><a href="{{ $statusUrl($summaryStatus) }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
                 @endforeach
             </ul>
+            <nav class="ml-auto inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1" aria-label="顯示模式">
+                <a href="{{ $portalUrl(['view' => 'list']) }}" @class(['inline-flex min-h-8 items-center rounded-md px-3 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', 'bg-white text-slate-950 shadow-sm' => $viewMode === 'list', 'text-slate-600 hover:text-slate-950' => $viewMode !== 'list']) @if ($viewMode === 'list') aria-current="page" @endif data-view-mode="list">☷ 列表</a>
+                <a href="{{ $portalUrl(['view' => 'board']) }}" @class(['inline-flex min-h-8 items-center rounded-md px-3 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', 'bg-white text-slate-950 shadow-sm' => $viewMode === 'board', 'text-slate-600 hover:text-slate-950' => $viewMode !== 'board']) @if ($viewMode === 'board') aria-current="page" @endif data-view-mode="board">▦ 看板</a>
+            </nav>
         </div>
 
         <form method="GET" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
+            <input type="hidden" name="view" value="{{ $viewMode }}">
+            <label class="relative col-span-2 block min-w-0 md:mr-auto md:w-80">
+                <span class="sr-only">搜尋問題</span>
+                <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" name="q" value="{{ $keyword }}" maxlength="100" placeholder="搜尋標題或問題說明…" autocomplete="off" class="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-keyword-search>
+                @if ($keyword !== '')
+                    <a href="{{ $portalUrl([], ['q', 'page']) }}" class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="清除搜尋" title="清除搜尋">×</a>
+                @endif
+            </label>
             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
                 <select name="status" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="">全部</option>
-                    @foreach (\App\Enums\FeedbackReportStatus::selectable() as $statusOption)
+                    @foreach ($viewMode === 'board' ? \App\Enums\FeedbackReportStatus::selectable() : \App\Enums\FeedbackReportStatus::cases() as $statusOption)
                         <option value="{{ $statusOption->value }}" @selected($selectedStatus === $statusOption)>{{ $statusOption->label() }}</option>
                     @endforeach
                 </select>
@@ -63,7 +99,7 @@
                     </select>
                 </label>
             @endif
-            <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:hidden">排序欄位
+            <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 @if ($viewMode === 'list') md:hidden @else md:flex md:items-center md:gap-2 @endif">排序欄位
                 <select name="sort" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="latest_activity_at" @selected($sort === 'latest_activity_at')>最後更新</option>
                     <option value="created_at" @selected($sort === 'created_at')>建立時間</option>
@@ -71,7 +107,7 @@
                     <option value="status" @selected($sort === 'status')>狀態</option>
                 </select>
             </label>
-            <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:hidden">順序
+            <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 @if ($viewMode === 'list') md:hidden @else md:flex md:items-center md:gap-2 @endif">順序
                 <select name="direction" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="desc" @selected($direction === 'desc')>新到舊／降冪</option>
                     <option value="asc" @selected($direction === 'asc')>舊到新／升冪</option>
@@ -79,7 +115,8 @@
             </label>
         </form>
 
-        <div class="sm:overflow-x-auto">
+        @if ($viewMode === 'list')
+        <div class="sm:overflow-x-auto" data-list-view>
             <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[56rem]" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
@@ -154,6 +191,92 @@
                 </tbody>
             </table>
         </div>
+        @else
+            <div class="overflow-x-auto overscroll-x-contain bg-slate-100/70 p-4" data-kanban-board data-status-filter="{{ $selectedStatus?->value }}">
+                <div class="grid min-w-full grid-flow-col auto-cols-[minmax(17rem,85vw)] items-start gap-4 sm:auto-cols-[19rem] xl:auto-cols-[minmax(18rem,1fr)]" role="region" aria-label="問題狀態看板">
+                    @foreach ($boardStatuses as $boardStatus)
+                        @php
+                            [$columnClass, $dotClass] = match ($boardStatus) {
+                                \App\Enums\FeedbackReportStatus::New => ['border-slate-200 bg-slate-50', 'bg-slate-500'],
+                                \App\Enums\FeedbackReportStatus::InProgress => ['border-blue-200 bg-blue-50/70', 'bg-blue-500'],
+                                \App\Enums\FeedbackReportStatus::NeedsInput => ['border-amber-200 bg-amber-50/70', 'bg-amber-500'],
+                                \App\Enums\FeedbackReportStatus::Completed => ['border-emerald-200 bg-emerald-50/70', 'bg-emerald-500'],
+                                \App\Enums\FeedbackReportStatus::Failed => ['border-rose-200 bg-rose-50/70', 'bg-rose-500'],
+                            };
+                            $columnReports = $reports->getCollection()->filter(fn ($report) => $report->status === $boardStatus);
+                        @endphp
+                        <section class="overflow-hidden rounded-xl border {{ $columnClass }}" aria-labelledby="kanban-heading-{{ $boardStatus->value }}" data-kanban-column data-status="{{ $boardStatus->value }}" data-selectable="{{ $boardStatus->isSelectable() ? '1' : '0' }}">
+                            <header class="flex items-center justify-between gap-3 border-b border-black/5 px-3.5 py-3">
+                                <h3 id="kanban-heading-{{ $boardStatus->value }}" class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class="size-2.5 rounded-full {{ $dotClass }}" aria-hidden="true"></span>{{ $boardStatus->label() }}</h3>
+                                <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-black/10" title="本頁／專案總數"><span data-kanban-page-count>{{ $pageStatusCounts[$boardStatus->value] ?? 0 }}</span> / <span data-kanban-total-count="{{ $boardStatus->value }}">{{ $statusCounts[$boardStatus->value] ?? 0 }}</span></span>
+                            </header>
+                            <div class="grid min-h-36 content-start gap-3 p-3" data-kanban-list data-status="{{ $boardStatus->value }}">
+                                @foreach ($columnReports as $report)
+                                    <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
+                                        <div class="flex items-start gap-2">
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
+                                                <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
+                                            </div>
+                                            <div class="flex shrink-0 items-center gap-1" data-card-actions>
+                                                <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
+                                                    <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                                </button>
+                                                @if ($isOwner && $report->isDeletedByClient())
+                                                    <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
+                                                        @csrf
+                                                        @method('PATCH')
+                                                        <button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「{{ $report->title }}」" title="還原" data-card-action data-restore-report>
+                                                            <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                                                        </button>
+                                                    </form>
+                                                @endif
+                                                @if ($isOwner)
+                                                    <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「{{ $report->title }}」" title="刪除" data-card-action data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>
+                                                        <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+                                                    </button>
+                                                @else
+                                                    <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「{{ $report->title }}」" title="刪除" data-card-action data-dialog-open="client-delete-report-{{ $report->public_id }}" data-client-delete-report>
+                                                        <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
+                                                    </button>
+                                                @endif
+                                            </div>
+                                        </div>
+
+                                        @if ($isOwner && $report->isDeletedByClient())
+                                            <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>老師已刪除</span>
+                                        @endif
+
+                                        @if ($report->feedbackAttachments->isNotEmpty())
+                                            <div class="mt-3 flex items-center gap-2">
+                                                @php $attachment = $report->feedbackAttachments->first(); @endphp
+                                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
+                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                                </a>
+                                                <span class="text-xs font-medium text-slate-500">{{ $report->feedbackAttachments->count() }} 張附件</span>
+                                            </div>
+                                        @endif
+
+                                        <p class="mt-3 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
+                                        <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
+                                            @csrf
+                                            @method('PATCH')
+                                            <label for="board-status-{{ $report->public_id }}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>
+                                            <x-feedback.status-select id="board-status-{{ $report->public_id }}" :status="$report->status" class="w-full !px-2 !py-1.5 !text-xs" data-status-select data-status-autosave />
+                                            <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
+                                            <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
+                                        </form>
+                                    </article>
+                                @endforeach
+                                <p class="py-8 text-center text-xs text-slate-400" data-kanban-empty @if ($columnReports->isNotEmpty()) hidden @endif>本頁沒有問題</p>
+                            </div>
+                        </section>
+                    @endforeach
+                </div>
+                <p class="mt-3 text-xs text-slate-500">欄位數字為「本頁／專案總數」。看板每頁最多顯示 50 題。</p>
+                <div class="sr-only" aria-live="polite" data-kanban-announcer></div>
+            </div>
+        @endif
     </section>
 
     <div class="mt-5">{{ $reports->links() }}</div>

@@ -18,7 +18,6 @@
                 <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-sm font-bold text-white shadow-sm">回</span>
                 <span class="min-w-0">
                     <span class="block truncate text-sm font-semibold text-slate-950">{{ $project?->name ?? '問題回報中心' }}</span>
-                    <span class="block text-xs text-slate-500">登記、排序、追蹤處理進度</span>
                 </span>
             </a>
             <div class="flex shrink-0 items-center gap-2">

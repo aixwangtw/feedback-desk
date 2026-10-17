@@ -308,7 +308,6 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
             const result = await persistStatus(form, requestedStatus);
             select.dataset.savedValue = result.status;
             syncStatusDot(select);
-            select.querySelector('[data-automation-status]')?.remove();
             updateStatusSummary(result.counts);
 
             if (card) {
@@ -334,14 +333,8 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
 });
 
 document.querySelectorAll('[data-kanban-list]').forEach((list) => {
-    const column = list.closest('[data-kanban-column]');
-
     Sortable.create(list, {
-        group: {
-            name: 'feedback-kanban',
-            pull: true,
-            put: column?.dataset.selectable === '1',
-        },
+        group: 'feedback-kanban',
         sort: false,
         animation: 160,
         draggable: '[data-kanban-card]',
@@ -353,9 +346,6 @@ document.querySelectorAll('[data-kanban-list]').forEach((list) => {
         delay: 120,
         delayOnTouchOnly: true,
         touchStartThreshold: 4,
-        onMove(event) {
-            return event.to.closest('[data-kanban-column]')?.dataset.selectable === '1';
-        },
         async onEnd(event) {
             const card = event.item;
             const originalList = event.from;
@@ -391,7 +381,6 @@ document.querySelectorAll('[data-kanban-list]').forEach((list) => {
                 const result = await persistStatus(form, requestedStatus);
                 card.dataset.status = result.status;
                 select.dataset.savedValue = result.status;
-                select.querySelector('[data-automation-status]')?.remove();
                 insertCardInPageOrder(destinationList, card);
                 updateStatusSummary(result.counts);
                 feedback.textContent = '已儲存';
@@ -418,13 +407,8 @@ function updateStatusSummary(counts) {
 
     document.querySelectorAll('[data-status-summary-item]').forEach((link) => {
         const count = counts[link.dataset.statusSummaryItem] ?? 0;
-        const item = link.closest('li');
 
         link.textContent = `${link.dataset.label} ${count} 題`;
-
-        if (item?.dataset.summaryOptional === '1') {
-            item.hidden = count === 0;
-        }
     });
 
     document.querySelectorAll('[data-kanban-total-count]').forEach((count) => {

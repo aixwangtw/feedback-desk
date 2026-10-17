@@ -9,6 +9,7 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -119,7 +120,7 @@ class FeedbackPortalTest extends TestCase
     {
         $classes = array_map(fn (FeedbackReportStatus $status): string => $status->dotClass(), FeedbackReportStatus::cases());
 
-        $this->assertSame(['bg-slate-500', 'bg-blue-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500'], $classes);
+        $this->assertSame(['bg-slate-500', 'bg-amber-500', 'bg-emerald-500'], $classes);
     }
 
     public function test_list_rows_show_a_status_dot_matching_the_status_and_explain_statuses(): void
@@ -137,6 +138,19 @@ class FeedbackPortalTest extends TestCase
             ->assertSee('data-status-guide', false)
             ->assertSee('rounded-full bg-amber-500" aria-hidden="true" data-status-dot', false)
             ->assertSee('data-dot="bg-emerald-500"', false);
+    }
+
+    public function test_removed_statuses_are_migrated_back_to_new(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $stale = FeedbackReport::factory()->for($project)->create();
+        $kept = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::Completed]);
+        DB::table('feedback_reports')->where('id', $stale->id)->update(['status' => 'in_progress']);
+
+        (require database_path('migrations/2026_10_17_200000_reset_removed_feedback_report_statuses.php'))->up();
+
+        $this->assertSame(FeedbackReportStatus::New, $stale->refresh()->status);
+        $this->assertSame(FeedbackReportStatus::Completed, $kept->refresh()->status);
     }
 
     public function test_owner_can_mark_a_report_completed(): void

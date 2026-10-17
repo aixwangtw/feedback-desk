@@ -39,10 +39,7 @@ class ResolveFeedbackReport implements ShouldQueue
             'status' => FeedbackAutomationStatus::Running,
             'started_at' => now(),
         ]);
-        $this->report->update([
-            'status' => FeedbackReportStatus::InProgress,
-            'latest_activity_at' => now(),
-        ]);
+        $this->report->update(['latest_activity_at' => now()]);
 
         try {
             $result = $codingAgent->resolve($this->report, $this->run);
@@ -59,7 +56,7 @@ class ResolveFeedbackReport implements ShouldQueue
         $reportStatus = match ($result->status) {
             FeedbackAutomationStatus::Completed => FeedbackReportStatus::Completed,
             FeedbackAutomationStatus::NeedsInput => FeedbackReportStatus::NeedsInput,
-            default => FeedbackReportStatus::Failed,
+            default => null,
         };
         $message = $result->summary;
         if ($result->tests !== []) {
@@ -83,8 +80,8 @@ class ResolveFeedbackReport implements ShouldQueue
             ]);
 
             $this->report->update([
-                'status' => $reportStatus,
-                'completed_at' => $reportStatus === FeedbackReportStatus::Completed ? now() : null,
+                'status' => $reportStatus ?? $this->report->status,
+                'completed_at' => $reportStatus === null ? $this->report->completed_at : ($reportStatus === FeedbackReportStatus::Completed ? now() : null),
                 'latest_activity_at' => now(),
             ]);
         });
@@ -115,10 +112,7 @@ class ResolveFeedbackReport implements ShouldQueue
                 'author_name' => 'Vibe coding',
                 'body' => '自動處理未完成：'.$summary,
             ]);
-            $this->report->update([
-                'status' => FeedbackReportStatus::Failed,
-                'latest_activity_at' => now(),
-            ]);
+            $this->report->update(['latest_activity_at' => now()]);
         });
     }
 }

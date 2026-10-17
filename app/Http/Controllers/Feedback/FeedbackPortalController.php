@@ -60,10 +60,6 @@ class FeedbackPortalController extends Controller
                     'feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')->ofKind(FeedbackAttachmentKind::Feedback),
                     'adjustmentAttachments',
                 ])
-                ->when($viewMode === 'board', fn ($query) => $query->whereIn(
-                    'status',
-                    array_map(fn (FeedbackReportStatus $status) => $status->value, FeedbackReportStatus::selectable()),
-                ))
                 ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
                 ->when($keyword !== '', fn ($query) => $query->where(fn ($query) => $query
                     ->whereLike('title', "%{$keyword}%")

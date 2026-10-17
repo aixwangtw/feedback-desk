@@ -31,7 +31,7 @@ class FeedbackAdjustmentTest extends TestCase
         Storage::fake('local');
         $this->project = FeedbackProject::factory()->create();
         $this->report = FeedbackReport::factory()->for($this->project)->create([
-            'status' => FeedbackReportStatus::InProgress,
+            'status' => FeedbackReportStatus::New,
         ]);
     }
 
@@ -154,7 +154,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->report->refresh();
         $this->assertSame('已調整按鈕顏色', $this->report->adjustment_note);
-        $this->assertSame(FeedbackReportStatus::InProgress, $this->report->status);
+        $this->assertSame(FeedbackReportStatus::New, $this->report->status);
         $this->assertModelMissing($old);
         Storage::disk('local')->assertMissing($old->path);
 
@@ -235,7 +235,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->report->refresh();
         $this->assertSame('新內容', $this->report->adjustment_note);
-        $this->assertSame(FeedbackReportStatus::InProgress, $this->report->status);
+        $this->assertSame(FeedbackReportStatus::New, $this->report->status);
         $this->assertNull($this->report->completed_at);
 
         $this->artisan('feedback:adjust', [
@@ -301,7 +301,7 @@ class FeedbackAdjustmentTest extends TestCase
             $this->assertNull($image->feedback_message_id);
             Storage::disk('local')->assertExists($image->path);
         });
-        $this->assertSame(FeedbackReportStatus::InProgress, $this->report->status);
+        $this->assertSame(FeedbackReportStatus::New, $this->report->status);
     }
 
     public function test_command_rejects_bad_input_without_writing(): void

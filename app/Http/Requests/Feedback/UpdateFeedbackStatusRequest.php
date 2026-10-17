@@ -34,7 +34,7 @@ class UpdateFeedbackStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::enum(FeedbackReportStatus::class)->only(FeedbackReportStatus::selectable())],
+            'status' => ['required', Rule::enum(FeedbackReportStatus::class)],
         ];
     }
 }

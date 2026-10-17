@@ -30,7 +30,7 @@
         $statusUrl = fn (\App\Enums\FeedbackReportStatus $status): string => route('feedback.portal', $project).'?'.http_build_query(array_filter([
             'status' => $status->value,
             'creator' => $isOwner ? $creator : null,
-            'view' => $viewMode === 'board' && $status->isSelectable() ? 'board' : null,
+            'view' => $viewMode === 'board' ? 'board' : null,
             'q' => $keyword,
         ]));
         $sortMark = fn (string $column): string => $sort === $column
@@ -41,7 +41,7 @@
             : 'none';
         $issueRows = old('issues', [['title' => '', 'description' => '']]);
         $editingReport = old('editing_report');
-        $boardStatuses = \App\Enums\FeedbackReportStatus::selectable();
+        $boardStatuses = \App\Enums\FeedbackReportStatus::cases();
         $pageStatusCounts = $reports->getCollection()->countBy(fn ($report) => $report->status->value);
     @endphp
 
@@ -66,12 +66,11 @@
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
             <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && ($deletedFilter || $creator !== '')))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
-                @foreach ([\App\Enums\FeedbackReportStatus::New, \App\Enums\FeedbackReportStatus::InProgress, \App\Enums\FeedbackReportStatus::NeedsInput, \App\Enums\FeedbackReportStatus::Completed, \App\Enums\FeedbackReportStatus::Failed] as $summaryStatus)
+                @foreach (\App\Enums\FeedbackReportStatus::cases() as $summaryStatus)
                     @php
                         $summaryCount = $statusCounts[$summaryStatus->value] ?? 0;
-                        $summaryOptional = ! $summaryStatus->isSelectable();
                     @endphp
-                    <li data-summary-status="{{ $summaryStatus->value }}" data-summary-optional="{{ $summaryOptional ? '1' : '0' }}"{!! $summaryOptional && $summaryCount === 0 ? ' hidden' : '' !!}><a href="{{ $statusUrl($summaryStatus) }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
+                    <li data-summary-status="{{ $summaryStatus->value }}"><a href="{{ $statusUrl($summaryStatus) }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
                 @endforeach
             </ul>
             <nav class="ml-auto inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1" aria-label="顯示模式">
@@ -93,7 +92,7 @@
             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
                 <select name="status" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="">全部</option>
-                    @foreach ($viewMode === 'board' ? \App\Enums\FeedbackReportStatus::selectable() : \App\Enums\FeedbackReportStatus::cases() as $statusOption)
+                    @foreach (\App\Enums\FeedbackReportStatus::cases() as $statusOption)
                         <option value="{{ $statusOption->value }}" @selected($selectedStatus === $statusOption)>{{ $statusOption->label() }}</option>
                     @endforeach
                 </select>
@@ -244,14 +243,12 @@
                             $dotClass = $boardStatus->dotClass();
                             $columnClass = match ($boardStatus) {
                                 \App\Enums\FeedbackReportStatus::New => 'border-slate-200 bg-slate-50',
-                                \App\Enums\FeedbackReportStatus::InProgress => 'border-blue-200 bg-blue-50/70',
                                 \App\Enums\FeedbackReportStatus::NeedsInput => 'border-amber-200 bg-amber-50/70',
                                 \App\Enums\FeedbackReportStatus::Completed => 'border-emerald-200 bg-emerald-50/70',
-                                \App\Enums\FeedbackReportStatus::Failed => 'border-rose-200 bg-rose-50/70',
                             };
                             $columnReports = $reports->getCollection()->filter(fn ($report) => $report->status === $boardStatus);
                         @endphp
-                        <section class="overflow-hidden rounded-xl border {{ $columnClass }}" aria-labelledby="kanban-heading-{{ $boardStatus->value }}" data-kanban-column data-status="{{ $boardStatus->value }}" data-selectable="{{ $boardStatus->isSelectable() ? '1' : '0' }}">
+                        <section class="overflow-hidden rounded-xl border {{ $columnClass }}" aria-labelledby="kanban-heading-{{ $boardStatus->value }}" data-kanban-column data-status="{{ $boardStatus->value }}">
                             <header class="flex items-center justify-between gap-3 border-b border-black/5 px-3.5 py-3">
                                 <h3 id="kanban-heading-{{ $boardStatus->value }}" class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class="size-2.5 rounded-full {{ $dotClass }}" aria-hidden="true"></span>{{ $boardStatus->label() }}</h3>
                                 <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-black/10" title="本頁／專案總數"><span data-kanban-page-count>{{ $pageStatusCounts[$boardStatus->value] ?? 0 }}</span> / <span data-kanban-total-count="{{ $boardStatus->value }}">{{ $statusCounts[$boardStatus->value] ?? 0 }}</span></span>

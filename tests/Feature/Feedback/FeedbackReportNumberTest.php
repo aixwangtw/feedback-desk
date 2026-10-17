@@ -76,26 +76,22 @@ class FeedbackReportNumberTest extends TestCase
             ->assertSee('data-report-number>2<', false);
     }
 
-    public function test_status_summary_counts_whole_project_and_hides_empty_optional_statuses(): void
+    public function test_status_summary_counts_whole_project(): void
     {
         [$project, $first, $second, $third] = $this->projectWithReports();
         $second->update(['status' => FeedbackReportStatus::Completed]);
         $third->update(['status' => FeedbackReportStatus::Completed]);
-        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create(['status' => FeedbackReportStatus::Failed]);
+        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create(['status' => FeedbackReportStatus::NeedsInput]);
 
         foreach (['', '?status=completed'] as $query) {
             $this->get(route('feedback.portal', $project).$query)
                 ->assertSee('待處理 1 題', false)
                 ->assertSee('待審核 0 題', false)
                 ->assertSee('已完成 2 題', false)
-                ->assertSee('data-summary-status="in_progress" data-summary-optional="1" hidden', false)
-                ->assertSee('data-summary-status="failed" data-summary-optional="1" hidden', false)
+                ->assertDontSee('處理中', false)
+                ->assertDontSee('處理失敗', false)
                 ->assertSee('?status=completed" class="rounded', false);
         }
-
-        $first->update(['status' => FeedbackReportStatus::Failed]);
-        $this->get(route('feedback.portal', $project))->assertDontSee('data-summary-status="failed" data-summary-optional="1" hidden', false)
-            ->assertSee('處理失敗 1 題', false);
     }
 
     public function test_status_update_json_returns_project_status_counts(): void

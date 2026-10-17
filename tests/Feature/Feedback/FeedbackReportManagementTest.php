@@ -169,18 +169,12 @@ class FeedbackReportManagementTest extends TestCase
 
         $this->assertSame(3, $xpath->query('//form[@method="GET"]//select[@name="status"]/option[@value != ""]')->length);
 
-        foreach (FeedbackReportStatus::selectable() as $status) {
+        foreach (FeedbackReportStatus::cases() as $status) {
             $column = $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]');
             $card = $xpath->query('//*[@data-kanban-list and @data-status="'.$status->value.'"]//*[@data-kanban-card and @data-report-id="'.$reports[$status->value]->public_id.'"]');
 
             $this->assertSame(1, $column->length, "Missing {$status->value} board column.");
-            $this->assertSame('1', $column->item(0)->getAttribute('data-selectable'));
             $this->assertSame(1, $card->length, "Report was not placed in {$status->value}.");
-        }
-
-        foreach ([FeedbackReportStatus::InProgress, FeedbackReportStatus::Failed] as $status) {
-            $this->assertSame(0, $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]')->length);
-            $this->assertSame(0, $xpath->query('//*[@data-kanban-card and @data-report-id="'.$reports[$status->value]->public_id.'"]')->length);
         }
 
         $this->assertStringNotContainsString('data-drag-handle', $html);
@@ -257,37 +251,17 @@ class FeedbackReportManagementTest extends TestCase
         ], $options);
     }
 
-    public function test_status_dropdown_keeps_automation_status_as_hidden_current_value(): void
-    {
-        $project = FeedbackProject::factory()->create();
-        $inProgress = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::InProgress]);
-        $failed = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::Failed]);
-        $this->actingAsEngineer($project);
-        $html = $this->get(route('feedback.portal', $project))->getContent();
-
-        foreach ([$inProgress, $failed] as $report) {
-            $options = $this->statusOptions($html, $report);
-            $visible = array_values(array_filter($options, fn (array $option): bool => ! $option['hidden']));
-
-            $this->assertSame(['new', 'needs_input', 'completed'], array_column($visible, 'value'));
-            $this->assertNotContains(true, array_column($visible, 'selected'));
-            $this->assertContains(
-                ['value' => $report->status->value, 'selected' => true, 'hidden' => true],
-                $options,
-            );
-        }
-    }
-
     public function test_detail_page_lets_teacher_change_status_with_the_same_options(): void
     {
         $project = FeedbackProject::factory()->create();
-        $report = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::InProgress]);
+        $report = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::NeedsInput]);
         $this->actingAsTeacher($project);
 
         $this->get(route('feedback.reports.show', [$project, $report]))
             ->assertOk()
             ->assertSee(route('feedback.reports.status.update', [$project, $report]), false)
-            ->assertSee('<option value="in_progress" data-dot="bg-blue-500" selected disabled hidden data-automation-status>', false)
+            ->assertSee('<option value="needs_input" data-dot="bg-amber-500" selected>', false)
+            ->assertDontSee('<option value="in_progress"', false)
             ->assertDontSee('<option value="failed"', false);
     }
 
@@ -334,15 +308,15 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertNull($report->completed_at);
     }
 
-    public function test_automation_only_statuses_cannot_be_chosen_by_hand(): void
+    public function test_removed_statuses_cannot_be_chosen(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
         $this->actingAsEngineer($project);
 
-        foreach ([FeedbackReportStatus::InProgress, FeedbackReportStatus::Failed] as $status) {
+        foreach (['in_progress', 'failed'] as $status) {
             $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
-                'status' => $status->value,
+                'status' => $status,
             ])->assertUnprocessable()->assertJsonValidationErrors('status');
         }
 

@@ -79,4 +79,25 @@ class ResolveFeedbackReportTest extends TestCase
             $report->feedbackMessages()->sole()->body,
         );
     }
+
+    public function test_failed_agent_run_is_recorded_on_the_run_and_keeps_the_report_status(): void
+    {
+        $project = FeedbackProject::factory()->create(['automation_enabled' => true]);
+        $report = FeedbackReport::factory()->for($project)->create();
+        $run = FeedbackAutomationRun::factory()->for($report)->create();
+
+        $this->app->bind(FeedbackCodingAgent::class, fn () => new class implements FeedbackCodingAgent
+        {
+            public function resolve(FeedbackReport $report, FeedbackAutomationRun $run): FeedbackCodingResult
+            {
+                return new FeedbackCodingResult(FeedbackAutomationStatus::Failed, '無法修正。');
+            }
+        });
+
+        app()->call([new ResolveFeedbackReport($report, $run), 'handle']);
+        (new ResolveFeedbackReport($report, $run))->failed(new \RuntimeException('boom'));
+
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+        $this->assertSame(FeedbackAutomationStatus::Failed, $run->refresh()->status);
+    }
 }

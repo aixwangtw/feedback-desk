@@ -161,7 +161,7 @@
                                     @csrf
                                     @method('PATCH')
                                     <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
-                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full sm:min-w-28 !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
+                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full sm:mx-auto sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
                                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>

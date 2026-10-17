@@ -387,6 +387,90 @@ class FeedbackLoginTest extends TestCase
         $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
     }
 
+    public function test_successful_logins_are_never_rate_limited(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        for ($i = 0; $i < 60; $i++) {
+            $this->expireSession();
+            $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
+                ->assertRedirect(route('feedback.portal', $project));
+        }
+    }
+
+    public function test_five_failures_for_one_account_block_the_sixth_attempt_even_with_the_right_password(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->failLogin($project, 'test')->assertSessionHasErrors('username');
+        }
+
+        $this->failLogin($project, 'test')->assertStatus(429)->assertHeader('Retry-After');
+        $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
+            ->assertStatus(429);
+    }
+
+    public function test_successful_login_clears_the_account_counter_only(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->failLogin($project, 'test');
+        }
+        $this->login($project, 'test', self::CLIENT_PASSWORD);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->failLogin($project, 'test')->assertSessionHasErrors('username');
+        }
+        $this->failLogin($project, 'test')->assertStatus(429);
+    }
+
+    public function test_ip_per_minute_limit_blocks_across_different_accounts(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        for ($i = 0; $i < 20; $i++) {
+            $this->failLogin($project, 'user'.$i)->assertSessionHasErrors('username');
+        }
+
+        $this->failLogin($project, 'another')->assertStatus(429);
+        $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
+            ->assertStatus(429);
+
+        $this->travel(61)->seconds();
+        $this->failLogin($project, 'another')->assertSessionHasErrors('username');
+    }
+
+    public function test_ip_hourly_limit_blocks_and_successful_logins_do_not_reset_it(): void
+    {
+        $project = FeedbackProject::factory()->create();
+
+        for ($i = 0; $i < 50; $i++) {
+            if ($i % 10 === 0 && $i > 0) {
+                $this->travel(61)->seconds();
+            }
+            $this->failLogin($project, 'user'.$i)->assertSessionHasErrors('username');
+            if ($i % 10 === 5) {
+                $this->expireSession();
+                $this->login($project, 'test', self::CLIENT_PASSWORD);
+            }
+        }
+
+        $this->travel(61)->seconds();
+        $this->failLogin($project, 'late')->assertStatus(429);
+        $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
+            ->assertStatus(429);
+
+        $this->travel(61)->minutes();
+        $this->failLogin($project, 'late')->assertSessionHasErrors('username');
+    }
+
+    private function failLogin(FeedbackProject $project, string $username): TestResponse
+    {
+        return $this->post(route('feedback.login.store', $project), ['username' => $username, 'password' => 'wrong-password']);
+    }
+
     private function login(FeedbackProject $project, string $username, string $password): string
     {
         /** @var TestResponse $response */

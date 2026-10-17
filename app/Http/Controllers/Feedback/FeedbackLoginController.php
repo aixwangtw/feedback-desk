@@ -7,9 +7,11 @@ use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
 class FeedbackLoginController extends Controller
@@ -58,11 +60,20 @@ class FeedbackLoginController extends Controller
             'password' => ['required', 'string', 'max:200'],
         ], attributes: ['username' => '帳號', 'password' => '密碼']);
 
+        $limits = $this->rateLimits($request);
+        $this->ensureNotRateLimited($limits);
+
         [$role, $developer] = $this->authenticate($feedbackProject, $credentials['username'], $credentials['password']);
 
         if ($role === null) {
+            foreach ($limits as $limit) {
+                RateLimiter::hit($limit['key'], $limit['decay']);
+            }
+
             throw ValidationException::withMessages(['username' => '帳號或密碼錯誤。']);
         }
+
+        RateLimiter::clear($limits[0]['key']);
 
         $request->session()->regenerate();
 
@@ -75,6 +86,42 @@ class FeedbackLoginController extends Controller
         }
 
         return redirect()->intended(route('feedback.portal', $feedbackProject));
+    }
+
+    /**
+     * 只有登入失敗才計次：帳號+IP 每分鐘 5 次、IP 每分鐘 20 次、IP 每小時 50 次。
+     *
+     * @return list<array{key: string, max: int, decay: int}>
+     */
+    private function rateLimits(Request $request): array
+    {
+        $ip = (string) $request->ip();
+
+        return [
+            ['key' => 'feedback-login:'.mb_strtolower((string) $request->input('username')).'|'.$ip, 'max' => 5, 'decay' => 60],
+            ['key' => 'feedback-login-ip:'.$ip, 'max' => 20, 'decay' => 60],
+            ['key' => 'feedback-login-ip-hourly:'.$ip, 'max' => 50, 'decay' => 3600],
+        ];
+    }
+
+    /**
+     * 超過上限時回 429（與原 throttle middleware 相同的例外與 Retry-After 標頭）。
+     *
+     * @param  list<array{key: string, max: int, decay: int}>  $limits
+     */
+    private function ensureNotRateLimited(array $limits): void
+    {
+        foreach ($limits as $limit) {
+            if (RateLimiter::tooManyAttempts($limit['key'], $limit['max'])) {
+                $retryAfter = RateLimiter::availableIn($limit['key']);
+
+                throw new ThrottleRequestsException('Too Many Attempts.', headers: [
+                    'Retry-After' => $retryAfter,
+                    'X-RateLimit-Limit' => $limit['max'],
+                    'X-RateLimit-Remaining' => 0,
+                ]);
+            }
+        }
     }
 
     public function destroy(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse

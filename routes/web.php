@@ -18,7 +18,6 @@ $feedbackRoutes = function (): void {
     Route::get('/p/{feedbackProject:slug}/login', [FeedbackLoginController::class, 'show'])
         ->name('feedback.login');
     Route::post('/p/{feedbackProject:slug}/login', [FeedbackLoginController::class, 'store'])
-        ->middleware('throttle:feedback-login')
         ->name('feedback.login.store');
     Route::post('/p/{feedbackProject:slug}/logout', [FeedbackLoginController::class, 'destroy'])
         ->name('feedback.logout');

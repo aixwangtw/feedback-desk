@@ -49,7 +49,13 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">範例專案</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">每個問題各自追蹤狀態與討論；{{ $viewMode === 'board' ? '拖拉卡片即可更新狀態。' : '狀態可直接在表格中切換，點選欄名即可排序。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態。' : '狀態可直接在表格中切換，點欄名即可排序。' }}</p>
+            <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
+                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-slate-500" aria-hidden="true"></span>待處理</span><span>已收到你的回報，等開發者處理。</span></li>
+                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-amber-500" aria-hidden="true"></span>待審核</span><span>開發者已改好並寫了調整說明，請你確認。</span></li>
+                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>已完成</span><span>你確認沒問題，結案。</span></li>
+            </ul>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整說明、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整說明、調整附圖。' }}</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>

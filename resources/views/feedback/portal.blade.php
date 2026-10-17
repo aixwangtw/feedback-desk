@@ -51,9 +51,9 @@
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
             <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態。' : '狀態可直接在表格中切換，點欄名即可排序。' }}</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-slate-500" aria-hidden="true"></span>待處理</span><span>已收到你的回報，等開發者處理。</span></li>
-                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-amber-500" aria-hidden="true"></span>待審核</span><span>開發者已改好並寫了調整說明，請你確認。</span></li>
-                <li class="contents"><span class="flex items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>已完成</span><span>你確認沒問題，結案。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到你的回報，等開發者處理。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>開發者已改好並寫了調整說明，請你確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>已完成</span><span>你確認沒問題，結案。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整說明、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整說明、調整附圖。' }}</p>
         </div>
@@ -167,7 +167,10 @@
                                     @csrf
                                     @method('PATCH')
                                     <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
-                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full sm:mx-auto sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
+                                    <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
+                                        <span class="size-2.5 shrink-0 rounded-full {{ $report->status->dotClass() }}" aria-hidden="true" data-status-dot></span>
+                                        <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="min-w-0 flex-1 sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
+                                    </div>
                                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
@@ -238,12 +241,13 @@
                 <div class="grid min-w-full grid-flow-col auto-cols-[minmax(17rem,85vw)] items-start gap-4 sm:auto-cols-[19rem] xl:auto-cols-[minmax(18rem,1fr)]" role="region" aria-label="問題狀態看板">
                     @foreach ($boardStatuses as $boardStatus)
                         @php
-                            [$columnClass, $dotClass] = match ($boardStatus) {
-                                \App\Enums\FeedbackReportStatus::New => ['border-slate-200 bg-slate-50', 'bg-slate-500'],
-                                \App\Enums\FeedbackReportStatus::InProgress => ['border-blue-200 bg-blue-50/70', 'bg-blue-500'],
-                                \App\Enums\FeedbackReportStatus::NeedsInput => ['border-amber-200 bg-amber-50/70', 'bg-amber-500'],
-                                \App\Enums\FeedbackReportStatus::Completed => ['border-emerald-200 bg-emerald-50/70', 'bg-emerald-500'],
-                                \App\Enums\FeedbackReportStatus::Failed => ['border-rose-200 bg-rose-50/70', 'bg-rose-500'],
+                            $dotClass = $boardStatus->dotClass();
+                            $columnClass = match ($boardStatus) {
+                                \App\Enums\FeedbackReportStatus::New => 'border-slate-200 bg-slate-50',
+                                \App\Enums\FeedbackReportStatus::InProgress => 'border-blue-200 bg-blue-50/70',
+                                \App\Enums\FeedbackReportStatus::NeedsInput => 'border-amber-200 bg-amber-50/70',
+                                \App\Enums\FeedbackReportStatus::Completed => 'border-emerald-200 bg-emerald-50/70',
+                                \App\Enums\FeedbackReportStatus::Failed => 'border-rose-200 bg-rose-50/70',
                             };
                             $columnReports = $reports->getCollection()->filter(fn ($report) => $report->status === $boardStatus);
                         @endphp

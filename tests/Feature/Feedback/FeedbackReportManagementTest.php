@@ -287,7 +287,7 @@ class FeedbackReportManagementTest extends TestCase
         $this->get(route('feedback.reports.show', [$project, $report]))
             ->assertOk()
             ->assertSee(route('feedback.reports.status.update', [$project, $report]), false)
-            ->assertSee('<option value="in_progress" selected disabled hidden data-automation-status>', false)
+            ->assertSee('<option value="in_progress" data-dot="bg-blue-500" selected disabled hidden data-automation-status>', false)
             ->assertDontSee('<option value="failed"', false);
     }
 

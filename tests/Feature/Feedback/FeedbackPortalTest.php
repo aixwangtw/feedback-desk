@@ -115,6 +115,30 @@ class FeedbackPortalTest extends TestCase
         $this->get(route('feedback.reports.show', [$project, $report]))->assertOk();
     }
 
+    public function test_every_status_has_a_distinct_dot_class(): void
+    {
+        $classes = array_map(fn (FeedbackReportStatus $status): string => $status->dotClass(), FeedbackReportStatus::cases());
+
+        $this->assertSame(['bg-slate-500', 'bg-blue-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500'], $classes);
+    }
+
+    public function test_list_rows_show_a_status_dot_matching_the_status_and_explain_statuses(): void
+    {
+        $ownerToken = Str::random(48);
+        $project = FeedbackProject::factory()->create([
+            'owner_token_hash' => hash('sha256', $ownerToken),
+        ]);
+        FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::NeedsInput]);
+
+        $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken);
+
+        $this->get(route('feedback.portal', $project))
+            ->assertOk()
+            ->assertSee('data-status-guide', false)
+            ->assertSee('rounded-full bg-amber-500" aria-hidden="true" data-status-dot', false)
+            ->assertSee('data-dot="bg-emerald-500"', false);
+    }
+
     public function test_owner_can_mark_a_report_completed(): void
     {
         $ownerToken = Str::random(48);

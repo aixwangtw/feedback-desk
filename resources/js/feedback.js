@@ -283,6 +283,15 @@ const announceKanban = (message) => {
     }
 };
 
+const syncStatusDot = (select) => {
+    const dot = select.form?.querySelector('[data-status-dot]');
+    const selected = select.selectedOptions[0];
+
+    if (dot && selected?.dataset.dot) {
+        dot.className = dot.className.replace(/\bbg-\S+/g, '').trim() + ' ' + selected.dataset.dot;
+    }
+};
+
 document.querySelectorAll('[data-status-autosave]').forEach((select) => {
     const form = select.form;
     const feedback = form?.querySelector('[data-status-feedback]');
@@ -298,6 +307,7 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
         try {
             const result = await persistStatus(form, requestedStatus);
             select.dataset.savedValue = result.status;
+            syncStatusDot(select);
             select.querySelector('[data-automation-status]')?.remove();
             updateStatusSummary(result.counts);
 
@@ -314,6 +324,7 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
             announceKanban(result.message);
         } catch {
             select.value = savedValue;
+            syncStatusDot(select);
             feedback.textContent = '儲存失敗，請重新整理後再試';
             announceKanban('狀態儲存失敗，卡片仍在原本的欄位。');
         } finally {

@@ -35,4 +35,18 @@ enum FeedbackReportStatus: string
             self::Failed => '處理失敗',
         };
     }
+
+    /**
+     * Tailwind background class of the colour dot shown beside this status.
+     */
+    public function dotClass(): string
+    {
+        return match ($this) {
+            self::New => 'bg-slate-500',
+            self::InProgress => 'bg-blue-500',
+            self::NeedsInput => 'bg-amber-500',
+            self::Completed => 'bg-emerald-500',
+            self::Failed => 'bg-rose-500',
+        };
+    }
 }

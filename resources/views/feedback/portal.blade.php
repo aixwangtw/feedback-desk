@@ -51,9 +51,9 @@
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
             <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態。' : '狀態可直接在表格中切換，點欄名即可排序。' }}</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到你的回報，等開發者處理。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>開發者已改好並寫了調整說明，請你確認。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>已完成</span><span>你確認沒問題，結案。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到老師的回報，等開發者處理。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>開發者已改好並寫了調整說明，請老師確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>已完成</span><span>老師確認沒問題，該問題修復成功。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整說明、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整說明、調整附圖。' }}</p>
         </div>

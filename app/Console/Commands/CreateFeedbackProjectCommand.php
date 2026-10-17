@@ -8,7 +8,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
-#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation}')]
+#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation} {--client-name= : 開發者端顯示的老師名稱}')]
 #[Description('建立通用問題回報專案、老師入口與開發者入口')]
 class CreateFeedbackProjectCommand extends Command
 {
@@ -43,6 +43,7 @@ class CreateFeedbackProjectCommand extends Command
             'slug' => $slug,
             'owner_token_hash' => hash('sha256', $ownerToken),
             'client_token_hash' => hash('sha256', $clientToken),
+            'client_display_name' => $this->option('client-name') ?: null,
             'repository_path' => $resolvedRepositoryPath,
             'automation_enabled' => $automationEnabled,
         ]);

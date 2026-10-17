@@ -3,6 +3,7 @@
 namespace Tests\Feature\Feedback;
 
 use App\Enums\FeedbackReportStatus;
+use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -25,7 +26,6 @@ class FeedbackLoginTest extends TestCase
         parent::setUp();
 
         config()->set('feedback.accounts.owner.password_hash', Hash::make(self::OWNER_PASSWORD));
-        config()->set('feedback.accounts.client.password_hash', Hash::make(self::CLIENT_PASSWORD));
     }
 
     public function test_guest_opening_the_portal_is_sent_to_a_login_form(): void
@@ -171,8 +171,7 @@ class FeedbackLoginTest extends TestCase
 
     public function test_account_without_a_configured_password_cannot_log_in(): void
     {
-        config()->set('feedback.accounts.client.password_hash', null);
-        $project = FeedbackProject::factory()->create();
+        $project = FeedbackProject::factory()->withoutClientAccount()->create();
 
         $this->post(route('feedback.login.store', $project), ['username' => 'test', 'password' => ''])
             ->assertSessionHasErrors('password');
@@ -319,6 +318,75 @@ class FeedbackLoginTest extends TestCase
     /**
      * Log in and return the decrypted long-lived access cookie value.
      */
+    public function test_each_project_only_accepts_its_own_teacher_account(): void
+    {
+        $chen = FeedbackProject::factory()->create();
+        $clientB = FeedbackProject::factory()->create([
+            'client_username' => 'client-b',
+            'client_password_hash' => Hash::make('client-b-pass'),
+            'login_prefill_username' => 'client-b',
+            'login_prefill_password' => 'client-b-pass',
+        ]);
+
+        $this->post(route('feedback.login.store', $clientB), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
+            ->assertSessionHasErrors('username');
+        $this->post(route('feedback.login.store', $chen), ['username' => 'client-b', 'password' => 'client-b-pass'])
+            ->assertSessionHasErrors('username');
+
+        $this->login($chen, 'test', self::CLIENT_PASSWORD);
+        $this->assertTrue(app(FeedbackAccess::class)->isClient($chen));
+        $this->assertFalse(app(FeedbackAccess::class)->isClient($clientB));
+
+        $this->expireSession();
+        $this->login($clientB, 'client-b', 'client-b-pass');
+        $this->assertTrue(app(FeedbackAccess::class)->isClient($clientB));
+        $this->assertFalse(app(FeedbackAccess::class)->isClient($chen));
+    }
+
+    public function test_owner_and_developer_accounts_work_on_every_project(): void
+    {
+        $developer = FeedbackDeveloper::factory()->create(['username' => 'alex', 'password_hash' => Hash::make('dev-pass')]);
+        $clientB = FeedbackProject::factory()->withoutClientAccount()->create();
+
+        $this->login($clientB, 'admin', self::OWNER_PASSWORD);
+        $this->assertTrue(app(FeedbackAccess::class)->isOwner($clientB));
+
+        $this->expireSession();
+        $this->login($clientB, $developer->username, 'dev-pass');
+        $this->assertTrue(app(FeedbackAccess::class)->isOwner($clientB));
+    }
+
+    public function test_login_page_prefill_follows_the_project(): void
+    {
+        $clientB = FeedbackProject::factory()->create([
+            'login_prefill_username' => 'client-b',
+            'login_prefill_password' => 'abc123',
+        ]);
+        $plain = FeedbackProject::factory()->withoutClientAccount()->create();
+
+        $this->get(route('feedback.login', $clientB))
+            ->assertSee('name="username" value="client-b"', false)
+            ->assertSee('type="password" value="abc123"', false);
+        $this->get(route('feedback.login', $plain))
+            ->assertSee('name="username" value=""', false)
+            ->assertSee('type="password" value=""', false);
+    }
+
+    public function test_changing_the_teacher_password_invalidates_remembered_login(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $cookie = $this->login($project, 'test', self::CLIENT_PASSWORD);
+
+        $this->expireSession();
+        $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
+        $this->get(route('feedback.portal', $project))->assertOk();
+
+        $project->update(['client_password_hash' => Hash::make('changed')]);
+        $this->expireSession();
+        $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
+        $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));
+    }
+
     private function login(FeedbackProject $project, string $username, string $password): string
     {
         /** @var TestResponse $response */

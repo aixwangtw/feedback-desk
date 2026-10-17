@@ -28,8 +28,8 @@ class FeedbackLoginController extends Controller
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
             'isOwnerLogin' => false,
-            'prefillUsername' => (string) config('feedback.login_prefill.client.username'),
-            'prefillPassword' => (string) config('feedback.login_prefill.client.password'),
+            'prefillUsername' => (string) $feedbackProject->login_prefill_username,
+            'prefillPassword' => (string) $feedbackProject->login_prefill_password,
         ]);
     }
 
@@ -58,7 +58,7 @@ class FeedbackLoginController extends Controller
             'password' => ['required', 'string', 'max:200'],
         ], attributes: ['username' => '帳號', 'password' => '密碼']);
 
-        [$role, $developer] = $this->authenticate($credentials['username'], $credentials['password']);
+        [$role, $developer] = $this->authenticate($feedbackProject, $credentials['username'], $credentials['password']);
 
         if ($role === null) {
             throw ValidationException::withMessages(['username' => '帳號或密碼錯誤。']);
@@ -87,25 +87,32 @@ class FeedbackLoginController extends Controller
     }
 
     /**
-     * 共用帳號優先比對，其次是開發者個人帳號（登入後同為 owner 身分）。
+     * 共用 owner 帳號優先比對，其次是開發者個人帳號（登入後同為 owner 身分），最後是該專案自己的老師帳號。
+     * 老師帳號只認專案本身的設定，不退回全域設定。
      *
      * @return array{0: FeedbackAccess::ROLE_*|null, 1: FeedbackDeveloper|null}
      */
-    private function authenticate(string $username, string $password): array
+    private function authenticate(FeedbackProject $project, string $username, string $password): array
     {
-        $role = collect([FeedbackAccess::ROLE_OWNER, FeedbackAccess::ROLE_CLIENT])
-            ->first(fn (string $role): bool => hash_equals((string) config("feedback.accounts.{$role}.username"), $username));
-        $developer = $role === null ? FeedbackDeveloper::where('username', $username)->first() : null;
+        $developer = null;
+        $role = null;
 
-        $hash = $role !== null ? config("feedback.accounts.{$role}.password_hash") : $developer?->password_hash;
-        $hasUsableHash = is_string($hash) && $hash !== '';
-
-        $matches = Hash::check($password, $hasUsableHash ? $hash : self::DUMMY_HASH);
-
-        if (! $hasUsableHash || ! $matches) {
-            return [null, null];
+        if (hash_equals((string) config('feedback.accounts.owner.username'), $username)) {
+            $role = FeedbackAccess::ROLE_OWNER;
+            $hash = config('feedback.accounts.owner.password_hash');
+        } elseif ($developer = FeedbackDeveloper::where('username', $username)->first()) {
+            $role = FeedbackAccess::ROLE_OWNER;
+            $hash = $developer->password_hash;
+        } elseif (filled($project->client_username) && hash_equals($project->client_username, $username)) {
+            $role = FeedbackAccess::ROLE_CLIENT;
+            $hash = $project->client_password_hash;
+        } else {
+            $hash = null;
         }
 
-        return $developer !== null ? [FeedbackAccess::ROLE_OWNER, $developer] : [$role, null];
+        $hasUsableHash = is_string($hash) && $hash !== '';
+        $matches = Hash::check($password, $hasUsableHash ? $hash : self::DUMMY_HASH);
+
+        return $hasUsableHash && $matches ? [$role, $developer] : [null, null];
     }
 }

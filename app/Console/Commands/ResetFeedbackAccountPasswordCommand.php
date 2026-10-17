@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
-#[Signature('feedback:account-password {account : 角色（owner 或 client）} {--password= : 指定密碼；省略則產生隨機密碼}')]
+#[Signature('feedback:account-password {account : 角色（目前只有 owner；老師帳密請用 feedback:client-account）} {--password= : 指定密碼；省略則產生隨機密碼}')]
 #[Description('重設登入帳號密碼，雜湊寫入 .env，明文只顯示這一次')]
 class ResetFeedbackAccountPasswordCommand extends Command
 {
@@ -17,8 +17,8 @@ class ResetFeedbackAccountPasswordCommand extends Command
     {
         $account = (string) $this->argument('account');
 
-        if (! in_array($account, [FeedbackAccess::ROLE_OWNER, FeedbackAccess::ROLE_CLIENT], true)) {
-            $this->components->error('角色只能是 owner 或 client。');
+        if (! in_array($account, [FeedbackAccess::ROLE_OWNER], true)) {
+            $this->components->error('角色只能是 owner；老師帳密請用 feedback:client-account。');
 
             return self::FAILURE;
         }

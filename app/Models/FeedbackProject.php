@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'repository_path', 'automation_enabled'])]
+#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled'])]
 class FeedbackProject extends Model
 {
     /** @use HasFactory<FeedbackProjectFactory> */
     use HasFactory;
+
+    protected $hidden = ['client_password_hash', 'login_prefill_password'];
 
     protected $attributes = [
         'automation_enabled' => false,

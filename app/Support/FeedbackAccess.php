@@ -243,7 +243,9 @@ class FeedbackAccess
     {
         $credentialHash = match ($source) {
             self::SOURCE_LINK => $role === self::ROLE_OWNER ? $project->owner_token_hash : $project->client_token_hash,
-            self::SOURCE_PASSWORD => config("feedback.accounts.{$role}.password_hash"),
+            self::SOURCE_PASSWORD => $role === self::ROLE_OWNER
+                ? config('feedback.accounts.owner.password_hash')
+                : $project->client_password_hash,
             self::SOURCE_DEVELOPER => $developer !== null && $role === self::ROLE_OWNER
                 ? "{$developer->id}|{$developer->password_hash}"
                 : null,

@@ -376,7 +376,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $html = $this->get(route('feedback.portal', $this->project))
             ->assertOk()
-            ->assertSee('<th class="w-56 px-4 text-left py-3.5">調整說明</th>', false)
+            ->assertSee('<th class="whitespace-nowrap min-w-48 w-56 px-4 text-left py-3.5">調整說明</th>', false)
             ->assertSee('清單可見的調整說明')
             ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
             ->getContent();

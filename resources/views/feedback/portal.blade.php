@@ -127,26 +127,26 @@
 
         @if ($viewMode === 'list')
         <div class="sm:overflow-x-auto" data-list-view>
-            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[56rem]" data-report-table>
+            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[64rem]" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
-                        <th class="w-16 px-4 text-center py-3.5">編號</th>
-                        <th class="min-w-72 px-5 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
-                        <th class="w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
+                        <th class="whitespace-nowrap min-min-w-48 w-56 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
                         @if ($isOwner)
-                            <th class="w-28 px-4 py-3.5 text-center">建立者</th>
+                            <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         @endif
-                        <th class="w-44 px-4 text-center py-3.5">圖片</th>
-                        <th class="w-56 px-4 text-left py-3.5">調整說明</th>
-                        <th class="w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
-                        <th class="w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
-                        <th class="w-36 px-4 py-3.5 text-center">操作</th>
+                        <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
+                        <th class="whitespace-nowrap min-w-48 w-56 px-4 text-left py-3.5">調整說明</th>
+                        <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
                     </tr>
                 </thead>
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
                         <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}">
-                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
+                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
                             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
                                 <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                 @if ($isOwner && $report->isDeletedByClient())
@@ -161,7 +161,7 @@
                                     @csrf
                                     @method('PATCH')
                                     <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
-                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
+                                    <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="w-full sm:min-w-28 !px-2 !py-1 !text-xs" data-status-select data-status-autosave />
                                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>

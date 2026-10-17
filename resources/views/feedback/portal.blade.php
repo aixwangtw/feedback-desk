@@ -131,13 +131,13 @@
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
                         <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
-                        <th class="whitespace-nowrap min-min-w-48 w-56 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
                         @if ($isOwner)
                             <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         @endif
                         <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
-                        <th class="whitespace-nowrap min-w-48 w-56 px-4 text-left py-3.5">調整說明</th>
+                        <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
@@ -182,7 +182,7 @@
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
                             </td>
-                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
+                            <td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
                                 <span class="text-xs font-semibold text-slate-500 sm:hidden">調整說明：</span>
                                 @if ($report->hasAdjustment())
                                     @if (filled($report->adjustment_note))

@@ -49,10 +49,10 @@ return [
     'portal_title' => env('FEEDBACK_PORTAL_TITLE', '問題回報追蹤'),
 
     'home' => [
-        'title' => env('FEEDBACK_HOME_TITLE', '問題回報中心'),
-        'eyebrow' => env('FEEDBACK_HOME_EYEBROW', '跨產品問題回報'),
-        'heading' => env('FEEDBACK_HOME_HEADING', '把問題留在正確的專案'),
-        'body' => env('FEEDBACK_HOME_BODY', "請使用{$ownerLabel}提供的{$clientLabel}專屬連結。每個專案的內容、截圖與處理工作區彼此隔離。"),
+        'title' => env('FEEDBACK_HOME_TITLE', '問題回報'),
+        'eyebrow' => env('FEEDBACK_HOME_EYEBROW', 'Feedback Desk'),
+        'heading' => env('FEEDBACK_HOME_HEADING', '問題回報'),
+        'body' => env('FEEDBACK_HOME_BODY', "請開啟{$ownerLabel}給你的專案連結，登入後就能回報問題、查看處理進度。"),
     ],
 
     'automation' => [

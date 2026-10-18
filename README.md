@@ -6,9 +6,31 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
 跟客戶、團隊夥伴溝通系統問題的回報工具。每個專案有自己的私密入口：客戶（或同事）用連結或帳密進來新增問題、附截圖、留言；開發團隊在另一個管理畫面調整狀態、寫調整說明，客戶確認後結案。
 
-![首頁](docs/screenshots/home.png)
-![客戶端問題清單](docs/screenshots/client-portal.png)
-![開發團隊端問題清單](docs/screenshots/owner-portal.png)
+以下為虛構的「晴天咖啡 線上訂位系統」示範資料。
+
+客戶開單：可一次新增多個問題並附截圖。
+
+![客戶開單](docs/screenshots/client-new-issue.jpg)
+
+客戶端問題詳情：看調整說明，並在處理紀錄留言。
+
+![客戶端問題詳情](docs/screenshots/client-detail.jpg)
+
+客戶端問題清單。
+
+![客戶端問題清單](docs/screenshots/client-list.jpg)
+
+開發團隊看板：拖曳卡片即可更新狀態。
+
+![開發團隊看板](docs/screenshots/team-kanban.jpg)
+
+開發團隊問題清單：可看到所有人建立的問題。
+
+![開發團隊問題清單](docs/screenshots/team-list.jpg)
+
+手機版問題清單與詳情。
+
+![手機版清單](docs/screenshots/mobile-list.jpg) ![手機版詳情](docs/screenshots/mobile-detail.jpg)
 
 ## 功能
 
@@ -32,6 +54,8 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 私密連結只在建立時顯示一次，請存入密碼管理器；用 `feedback:client-link`、`feedback:owner-link` 重發後，舊連結與用它登入的長效登入都會失效。
 
 ## 安裝
+
+也可以把這個 repo 的網址交給 Claude Code、Codex 這類 AI agent，請它照本 README 安裝。
 
 需求：PHP 8.3 以上、Composer、Node.js、SQLite（或其他 Laravel 支援的資料庫）。
 
@@ -73,10 +97,10 @@ php artisan feedback:account-password owner     # 先在 .env 設 FEEDBACK_OWNER
 | `FEEDBACK_LABEL_CLIENT` | `客戶` | 介面上對提出問題的一方的稱呼。 |
 | `FEEDBACK_LABEL_OWNER` | `開發團隊` | 介面上對處理問題的一方的稱呼。 |
 | `FEEDBACK_PORTAL_TITLE` | `問題回報追蹤` | 問題清單頁頂端的小標題。 |
-| `FEEDBACK_HOME_TITLE` | `問題回報中心` | 首頁與無專案頁面的標題。 |
-| `FEEDBACK_HOME_EYEBROW` | `跨產品問題回報` | 首頁卡片上的小字。 |
-| `FEEDBACK_HOME_HEADING` | `把問題留在正確的專案` | 首頁主標題。 |
-| `FEEDBACK_HOME_BODY` | 由兩個稱呼組成 | 首頁說明文字；預設為「請使用{開發團隊}提供的{客戶}專屬連結。…」。 |
+| `FEEDBACK_HOME_TITLE` | `問題回報` | 首頁與無專案頁面的標題。 |
+| `FEEDBACK_HOME_EYEBROW` | `Feedback Desk` | 首頁卡片上的小字。 |
+| `FEEDBACK_HOME_HEADING` | `問題回報` | 首頁主標題。 |
+| `FEEDBACK_HOME_BODY` | 由開發團隊稱呼組成 | 首頁說明文字；預設為「請開啟{開發團隊}給你的專案連結，登入後就能回報問題、查看處理進度。」。 |
 | `FEEDBACK_AUTOMATION_ENABLED` | `false` | 實驗功能總開關，見下方。 |
 | `FEEDBACK_WORKSPACE_ROOT` | 空 | 自動處理允許的 repository 根目錄。 |
 | `FEEDBACK_CODEX_BINARY` | `codex` | codex CLI 執行檔。 |

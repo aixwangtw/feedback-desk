@@ -27,7 +27,7 @@ class FeedbackLabelsTest extends TestCase
         $this->assertSame('客戶', $config['labels']['client']);
         $this->assertSame('開發團隊', $config['labels']['owner']);
         $this->assertSame('問題回報追蹤', $config['portal_title']);
-        $this->assertStringContainsString('開發團隊提供的客戶專屬連結', $config['home']['body']);
+        $this->assertStringContainsString('請開啟開發團隊給你的專案連結', $config['home']['body']);
         $this->assertFalse($config['login_prefill']['enabled']);
         $this->assertNull($config['accounts']['owner']['username']);
         $this->assertNull($config['login_prefill']['owner']['password']);

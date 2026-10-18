@@ -320,7 +320,7 @@ class FeedbackLoginTest extends TestCase
      */
     public function test_each_project_only_accepts_its_own_teacher_account(): void
     {
-        $chen = FeedbackProject::factory()->create();
+        $client = FeedbackProject::factory()->create();
         $clientB = FeedbackProject::factory()->create([
             'client_username' => 'client-b',
             'client_password_hash' => Hash::make('client-b-pass'),
@@ -330,17 +330,17 @@ class FeedbackLoginTest extends TestCase
 
         $this->post(route('feedback.login.store', $clientB), ['username' => 'test', 'password' => self::CLIENT_PASSWORD])
             ->assertSessionHasErrors('username');
-        $this->post(route('feedback.login.store', $chen), ['username' => 'client-b', 'password' => 'client-b-pass'])
+        $this->post(route('feedback.login.store', $client), ['username' => 'client-b', 'password' => 'client-b-pass'])
             ->assertSessionHasErrors('username');
 
-        $this->login($chen, 'test', self::CLIENT_PASSWORD);
-        $this->assertTrue(app(FeedbackAccess::class)->isClient($chen));
+        $this->login($client, 'test', self::CLIENT_PASSWORD);
+        $this->assertTrue(app(FeedbackAccess::class)->isClient($client));
         $this->assertFalse(app(FeedbackAccess::class)->isClient($clientB));
 
         $this->expireSession();
         $this->login($clientB, 'client-b', 'client-b-pass');
         $this->assertTrue(app(FeedbackAccess::class)->isClient($clientB));
-        $this->assertFalse(app(FeedbackAccess::class)->isClient($chen));
+        $this->assertFalse(app(FeedbackAccess::class)->isClient($client));
     }
 
     public function test_owner_and_developer_accounts_work_on_every_project(): void

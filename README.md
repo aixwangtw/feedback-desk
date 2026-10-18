@@ -88,7 +88,7 @@ php artisan feedback:account-password owner     # 先在 .env 設 FEEDBACK_OWNER
 ```dotenv
 FEEDBACK_LABEL_CLIENT=老師
 FEEDBACK_LABEL_OWNER=開發者
-FEEDBACK_PORTAL_TITLE=題庫開發追蹤
+FEEDBACK_PORTAL_TITLE=專案開發追蹤
 ```
 
 介面（登入頁、狀態說明、留言作者、建立者篩選、首頁預設文案）會一併改成這組詞。修改後若有執行過 `php artisan config:cache`，請重跑一次。

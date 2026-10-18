@@ -8,7 +8,7 @@
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +36,8 @@ execFileSync(join(root, 'node_modules', '.bin', 'tailwindcss'), ['-i', join(root
     stdio: ['ignore', 'ignore', 'inherit'],
 });
 
-writeFileSync(join(dist, 'public', 'robots.txt'), 'User-agent: *\nDisallow: /\n');
+writeFileSync(join(dist, 'public', 'robots.txt'), 'User-agent: *\nDisallow:\n');
+copyFileSync(join(root, 'client', 'favicon.ico'), join(dist, 'public', 'favicon.ico'));
 
 const assetVersion = createHash('sha256')
     .update(readFileSync(join(assets, 'app.css')))

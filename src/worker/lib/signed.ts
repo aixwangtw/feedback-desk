@@ -1,5 +1,5 @@
 import type { Env } from '../env';
-import { hmac, timingSafeEqualString } from './crypto';
+import { hmac, randomId, timingSafeEqualString } from './crypto';
 
 export const SIGNED_URL_SECONDS = 3600;
 
@@ -23,15 +23,17 @@ export interface UploadGrant {
     purpose: 'adjustment' | 'message';
     developerId: number;
     expires: number;
+    /** Random value; each URL can be used once (recorded in used_upload_nonces). */
+    nonce: string;
 }
 
 function grantMessage(grant: UploadGrant): string {
-    return `upload|${grant.projectSlug}|${grant.reportPublicId}|${grant.purpose}|${grant.developerId}|${grant.expires}`;
+    return `upload|${grant.projectSlug}|${grant.reportPublicId}|${grant.purpose}|${grant.developerId}|${grant.expires}|${grant.nonce}`;
 }
 
 /** Pre-authorised PUT URL so an agent can upload an image with curl without holding the API token in its shell. */
-export async function signedUploadUrl(env: Env, origin: string, grant: Omit<UploadGrant, 'expires'>, nowMs: number, ttlSeconds = 900): Promise<{ url: string; expires: number }> {
-    const full: UploadGrant = { ...grant, expires: Math.floor(nowMs / 1000) + ttlSeconds };
+export async function signedUploadUrl(env: Env, origin: string, grant: Omit<UploadGrant, 'expires' | 'nonce'>, nowMs: number, ttlSeconds = 900): Promise<{ url: string; expires: number }> {
+    const full: UploadGrant = { ...grant, expires: Math.floor(nowMs / 1000) + ttlSeconds, nonce: randomId(12) };
     const signature = await hmac(env.APP_SECRET, grantMessage(full));
     const params = new URLSearchParams({
         p: full.projectSlug,
@@ -39,6 +41,7 @@ export async function signedUploadUrl(env: Env, origin: string, grant: Omit<Uplo
         k: full.purpose,
         d: String(full.developerId),
         e: String(full.expires),
+        n: full.nonce,
         s: signature,
     });
     return { url: `${origin}/files/upload?${params.toString()}`, expires: full.expires };
@@ -55,10 +58,22 @@ export async function readUploadGrant(env: Env, params: URLSearchParams, nowMs: 
         purpose,
         developerId: Number(params.get('d')),
         expires: Number(params.get('e')),
+        nonce: params.get('n') ?? '',
     };
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(grant.nonce)) {
+        return null;
+    }
     if (!Number.isInteger(grant.developerId) || !Number.isInteger(grant.expires) || grant.expires < Math.floor(nowMs / 1000)) {
         return null;
     }
     const expected = await hmac(env.APP_SECRET, grantMessage(grant));
     return timingSafeEqualString(expected, params.get('s') ?? '') ? grant : null;
+}
+
+/** Marks the URL as used; false when it was used before. */
+export async function consumeUploadNonce(env: Env, grant: UploadGrant): Promise<boolean> {
+    const result = await env.DB.prepare('INSERT INTO used_upload_nonces (nonce, expires_at) VALUES (?, ?) ON CONFLICT(nonce) DO NOTHING')
+        .bind(grant.nonce, grant.expires)
+        .run();
+    return (result.meta.changes ?? 0) === 1;
 }

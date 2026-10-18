@@ -206,6 +206,10 @@ if (issueEntry) {
     updateIssueRows();
 }
 
+document.querySelectorAll('[data-private-url]').forEach((input) => {
+    input.addEventListener('focus', () => input.select());
+});
+
 document.querySelectorAll('[data-copy-button]').forEach((button) => {
     button.addEventListener('click', async () => {
         const input = button.parentElement?.querySelector('[data-copy-source]');
@@ -322,25 +326,55 @@ if (imageLightbox) {
 
 const activity = document.querySelector('[data-activity]');
 if (activity) {
-    const refresh = async () => {
-        if (document.hidden) {
-            return;
-        }
+    // Poll for new messages: the server answers 304 when nothing changed. The wait doubles after
+    // each unchanged answer (5 s up to 60 s), resets when something changes, and polling stops
+    // while the tab is hidden.
+    const minDelay = 5000;
+    const maxDelay = 60000;
+    let delay = minDelay;
+    let etag = activity.dataset.etag || null;
+    let timer = null;
 
-        try {
-            const response = await fetch(activity.dataset.refreshUrl, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            });
-
-            if (response.ok) {
-                activity.innerHTML = await response.text();
-            }
-        } catch {
-            // A temporary polling failure should not interrupt the conversation form.
+    const schedule = () => {
+        window.clearTimeout(timer);
+        if (!document.hidden) {
+            timer = window.setTimeout(refresh, delay);
         }
     };
 
-    window.setInterval(refresh, 5000);
+    const refresh = async () => {
+        try {
+            const headers = { 'X-Requested-With': 'XMLHttpRequest' };
+            if (etag) {
+                headers['If-None-Match'] = etag;
+            }
+            const response = await fetch(activity.dataset.refreshUrl, { headers, cache: 'no-store' });
+            if (response.status === 304) {
+                delay = Math.min(maxDelay, delay * 2);
+            } else if (response.ok) {
+                // A full answer means something changed: show it and check again soon.
+                activity.innerHTML = await response.text();
+                etag = response.headers.get('ETag');
+                delay = minDelay;
+            } else {
+                delay = Math.min(maxDelay, delay * 2);
+            }
+        } catch {
+            // A temporary polling failure should not interrupt the conversation form.
+            delay = Math.min(maxDelay, delay * 2);
+        }
+        schedule();
+    };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            window.clearTimeout(timer);
+        } else {
+            delay = minDelay;
+            refresh();
+        }
+    });
+    schedule();
 }
 
 // Report dialogs on the list page are loaded the first time one of them is opened.

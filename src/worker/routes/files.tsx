@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { nowIso } from '../../shared/time';
 import { findDeveloper } from '../lib/db';
 import type { Attachment } from '../lib/models';
-import { readUploadGrant, verifyAttachmentSignature } from '../lib/signed';
+import { consumeUploadNonce, readUploadGrant, verifyAttachmentSignature } from '../lib/signed';
 import { MAX_IMAGE_BYTES, storeImageStream, UploadError } from '../lib/uploads';
 import { reportExists } from './api';
 import { abort, type AppEnv } from './context';
@@ -17,8 +17,11 @@ files.put('/files/upload', async (c) => {
         return c.json({ error: 'invalid_signature', message: '上傳網址無效或已過期。' }, 403);
     }
     const [target, developer] = await Promise.all([reportExists(c, grant.projectSlug, grant.reportPublicId), findDeveloper(c.env.DB, grant.developerId)]);
-    if (!target || !developer) {
+    if (!target || !developer || developer.disabled_at) {
         return c.json({ error: 'not_found', message: '找不到回饋單。' }, 404);
+    }
+    if (!(await consumeUploadNonce(c.env, grant))) {
+        return c.json({ error: 'already_used', message: '這個上傳網址已經用過，請重新取得。' }, 403);
     }
     try {
         const upload = await storeImageStream(c.env, c.req.raw, {

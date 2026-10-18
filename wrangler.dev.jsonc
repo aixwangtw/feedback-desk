@@ -1,0 +1,15 @@
+// Local development: `npm run dev` builds the static assets, applies migrations to the local D1
+// and runs the TypeScript source with wrangler dev (no Cloudflare resources are touched).
+{
+    "name": "feedback-desk-dev",
+    "main": "src/worker/index.tsx",
+    "compatibility_date": "2026-10-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "assets": { "directory": "dist/public", "binding": "ASSETS" },
+    "d1_databases": [{ "binding": "DB", "database_name": "feedback-desk-dev-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
+    "r2_buckets": [{ "binding": "FILES", "bucket_name": "feedback-desk-dev-files" }],
+    "vars": {
+        // Development only. Deployed sites get a random APP_SECRET from `feedback-desk deploy`.
+        "APP_SECRET": "local-development-only-secret-do-not-deploy-0123456789"
+    }
+}

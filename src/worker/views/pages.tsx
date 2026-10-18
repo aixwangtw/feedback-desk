@@ -140,7 +140,7 @@ export const PublicHomePage: FC<{
                             <div id="public-preview" class="mt-3 grid grid-cols-3 gap-3" aria-live="polite"></div>
                         </div>
 
-                        <div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden">
+                        <div aria-hidden="true" class="absolute -left-[10000px] top-auto h-px w-px overflow-hidden">
                             <label for={HONEYPOT_FIELD}>Website</label>
                             <input id={HONEYPOT_FIELD} name={HONEYPOT_FIELD} type="text" tabindex={-1} autocomplete="off" />
                         </div>
@@ -172,16 +172,29 @@ export const MessagePage: FC<{ v: ViewContext; status: number; title: string; bo
     </Layout>
 );
 
+export interface DeviceRequest {
+    code: string;
+    clientName: string;
+    requestedAt: string;
+    requesterIp: string | null;
+}
+
+const DEVICE_WARNING = (
+    <div role="alert" class="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900" data-device-warning>
+        如果你剛才沒有在自己的終端機執行 feedback-desk login，請不要授權。授權後，對方可以用你的身分讀取所有專案的回報單、寫調整說明、改狀態與管理帳號。
+    </div>
+);
+
 export const DevicePage: FC<{
     v: ViewContext;
     developer: { name: string; username: string } | null;
-    code: string;
-    clientName: string | null;
-    state: 'login' | 'confirm' | 'approved' | 'denied' | 'invalid';
+    state: 'login' | 'enter' | 'confirm' | 'approved' | 'denied';
+    request?: DeviceRequest;
     error?: string;
     username?: string;
-}> = ({ v, developer, code, clientName, state, error, username }) => {
+}> = ({ v, developer, state, request, error, username }) => {
     const labels = v.cfg.labels;
+    const errorBox = error ? <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</div> : null;
     return (
         <Layout v={v} title={`授權命令列工具｜${v.cfg.home.title}`}>
             <section class="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" data-device-page>
@@ -193,10 +206,10 @@ export const DevicePage: FC<{
                     <p class="mt-4 text-sm leading-6 text-slate-600" data-device-denied>已拒絕這次授權，終端機那邊會顯示失敗。</p>
                 ) : state === 'login' ? (
                     <>
-                        <p class="mt-2 text-sm leading-6 text-slate-600">請用{labels.owner}個人帳號登入，登入後確認授權碼再按授權。</p>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">請用{labels.owner}個人帳號登入，登入後輸入終端機顯示的授權碼。</p>
+                        {DEVICE_WARNING}
                         <form method="post" action="/device/login" class="mt-6 grid gap-5">
-                            {error ? <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</div> : null}
-                            <input type="hidden" name="code" value={code} />
+                            {errorBox}
                             <div>
                                 <label for="username" class="mb-2 block text-sm font-semibold text-slate-800">帳號</label>
                                 <input id="username" name="username" value={username ?? ''} required maxlength={50} autocomplete="username" autocapitalize="none" autofocus class={INPUT} />
@@ -208,18 +221,31 @@ export const DevicePage: FC<{
                             <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">登入</button>
                         </form>
                     </>
-                ) : (
+                ) : state === 'enter' ? (
                     <>
-                        <p class="mt-2 text-sm leading-6 text-slate-600">
-                            {developer ? `已用 ${developer.name}（${developer.username}）登入。` : ''}確認終端機顯示的授權碼與下面相同再按授權。授權後，命令列工具可以用你的身分讀單、寫調整說明、改狀態與管理專案。
-                        </p>
-                        <form method="post" action="/device/approve" class="mt-6 grid gap-5">
-                            {error ? <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</div> : null}
+                        <p class="mt-2 text-sm leading-6 text-slate-600">{developer ? `已用 ${developer.name}（${developer.username}）登入。` : ''}請輸入終端機上顯示的授權碼（8 個英文字母）。</p>
+                        {DEVICE_WARNING}
+                        <form method="post" action="/device/confirm" class="mt-6 grid gap-5">
+                            {errorBox}
                             <div>
                                 <label for="code" class="mb-2 block text-sm font-semibold text-slate-800">授權碼</label>
-                                <input id="code" name="code" value={code} required maxlength={9} autocomplete="off" autocapitalize="characters" class={`${INPUT} font-mono text-lg tracking-widest`} data-device-code />
-                                {clientName ? <p class="mt-2 text-xs text-slate-500">申請來源：{clientName}</p> : null}
+                                <input id="code" name="code" value="" required maxlength={9} autocomplete="off" autocapitalize="characters" spellcheck={false} placeholder="XXXX-XXXX" autofocus class={`${INPUT} font-mono text-lg tracking-widest`} data-device-code />
                             </div>
+                            <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2" data-device-continue>下一步</button>
+                        </form>
+                    </>
+                ) : (
+                    <>
+                        {DEVICE_WARNING}
+                        <dl class="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm" data-device-request>
+                            <div><dt class="text-xs text-slate-500">授權碼</dt><dd class="mt-0.5 font-mono font-semibold tracking-widest text-slate-900">{request?.code}</dd></div>
+                            <div><dt class="text-xs text-slate-500">申請端自填的名稱（可以任意填寫，不能當作身分證明）</dt><dd class="mt-0.5 font-medium text-slate-900">{request?.clientName}</dd></div>
+                            <div><dt class="text-xs text-slate-500">申請時間</dt><dd class="mt-0.5 font-medium text-slate-900">{request ? <Time v={v} at={request.requestedAt} /> : null}（<Time v={v} at={request?.requestedAt ?? ''} relative />）</dd></div>
+                            {request?.requesterIp ? <div><dt class="text-xs text-slate-500">申請來源 IP（前段）</dt><dd class="mt-0.5 font-mono text-slate-900">{request.requesterIp}</dd></div> : null}
+                        </dl>
+                        <form method="post" action="/device/approve" class="mt-6 grid gap-5">
+                            {errorBox}
+                            <input type="hidden" name="code" value={request?.code ?? ''} />
                             <div class="flex gap-3">
                                 <button type="submit" name="decision" value="approve" class="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2" data-device-approve>授權</button>
                                 <button type="submit" name="decision" value="deny" class="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-device-deny>拒絕</button>

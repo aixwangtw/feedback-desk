@@ -8,6 +8,7 @@ import { signedUploadUrl } from '../lib/signed';
 import * as team from '../lib/team';
 import { MAX_IMAGE_BYTES, storeImageStream, UploadError } from '../lib/uploads';
 import { origin, type AppContext, type AppEnv } from './context';
+import { ipPrefix } from './device';
 import { paths } from './paths';
 import { APP_VERSION } from '../version';
 
@@ -25,9 +26,10 @@ export async function developerForToken(c: AppContext): Promise<{ developer: Dev
         return null;
     }
     const row = await c.env.DB.prepare(
-        `SELECT t.id AS token_id, t.last_used_at, d.* FROM api_tokens t JOIN developers d ON d.id = t.developer_id WHERE t.token_hash = ?`,
+        `SELECT t.id AS token_id, t.last_used_at, d.* FROM api_tokens t JOIN developers d ON d.id = t.developer_id
+         WHERE t.token_hash = ? AND d.disabled_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?)`,
     )
-        .bind(await sha256Hex(match[1]))
+        .bind(await sha256Hex(match[1]), nowIso(c.get('now')))
         .first<Developer & { token_id: number; last_used_at: string | null }>();
     if (!row) {
         return null;
@@ -84,28 +86,34 @@ api.post('/device/code', async (c) => {
     if (retryAfter !== null) {
         return c.json({ error: 'slow_down', message: '申請次數過多，請稍後再試。' }, 429, { 'Retry-After': String(retryAfter) });
     }
-    const input = await body<{ client_name?: string }>(c);
+    const input = await body<{ client_name?: string; expires_in_days?: number | null }>(c);
     const clientName = (input.client_name ?? 'feedback-desk CLI').toString().slice(0, 100);
+    const tokenDays = input.expires_in_days === undefined || input.expires_in_days === null ? null : Number(input.expires_in_days);
+    if (tokenDays !== null && (!Number.isInteger(tokenDays) || tokenDays < 1 || tokenDays > team.MAX_TOKEN_DAYS)) {
+        return c.json({ error: 'invalid_expiry', message: `有效天數必須是 1 到 ${team.MAX_TOKEN_DAYS} 的整數。` }, 422);
+    }
     const deviceCode = randomString(48);
     const userCode = generateUserCode();
     const now = c.get('now');
+    const rawIp = c.req.header('cf-connecting-ip') ?? '';
     await c.env.DB.batch([
         c.env.DB.prepare('DELETE FROM device_codes WHERE expires_at < ?').bind(Math.floor(now / 1000)),
-        c.env.DB.prepare('INSERT INTO device_codes (device_code_hash, user_code, client_name, status, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(
+        c.env.DB.prepare('INSERT INTO device_codes (device_code_hash, user_code, client_name, status, requester_ip, token_days, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(
             await sha256Hex(deviceCode),
             userCode,
             clientName,
             'pending',
+            ipPrefix(rawIp),
+            tokenDays,
             Math.floor(now / 1000) + DEVICE_CODE_TTL_SECONDS,
             nowIso(now),
         ),
     ]);
-    const base = origin(c);
+    // No "complete" URL with the code in it: the person types the code shown in their terminal.
     return c.json({
         device_code: deviceCode,
         user_code: userCode,
-        verification_uri: `${base}${paths.device()}`,
-        verification_uri_complete: `${base}${paths.device()}?code=${userCode}`,
+        verification_uri: `${origin(c)}${paths.device()}`,
         expires_in: DEVICE_CODE_TTL_SECONDS,
         interval: DEVICE_POLL_INTERVAL,
     });
@@ -124,6 +132,7 @@ api.post('/device/token', async (c) => {
         client_name: string;
         last_polled_at: number | null;
         expires_at: number;
+        token_days: number | null;
     }>();
     const nowSeconds = Math.floor(c.get('now') / 1000);
     if (!row) {
@@ -142,7 +151,7 @@ api.post('/device/token', async (c) => {
             return c.json({ error: 'invalid_grant', message: '授權碼已使用。' }, 400);
         }
         const developer = await c.env.DB.prepare('SELECT id, username, name FROM developers WHERE id = ?').bind(row.developer_id).first<{ id: number; username: string; name: string }>();
-        const token = await team.createToken(c.env, row.developer_id, row.client_name, c.get('now'));
+        const token = await team.createToken(c.env, row.developer_id, row.client_name, c.get('now'), row.token_days);
         return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer });
     }
     if (row.status !== 'pending') {
@@ -242,10 +251,15 @@ api.post('/developers/:username/reset', async (c) => {
     return c.json(await team.resetDeveloper(ctx(c), { username: c.req.param('username'), name: input.name }));
 });
 
+api.post('/developers/:username/disable', async (c) => c.json(await team.setDeveloperDisabled(ctx(c), c.req.param('username'), true)));
+api.post('/developers/:username/enable', async (c) => c.json(await team.setDeveloperDisabled(ctx(c), c.req.param('username'), false)));
+api.delete('/developers/:username', async (c) => c.json(await team.deleteDeveloper(ctx(c), c.req.param('username'))));
+
 api.get('/tokens', async (c) => c.json(await team.listTokens(ctx(c), c.get('apiTokenId'))));
 api.post('/tokens', async (c) => {
-    const input = await body<{ name?: string }>(c);
-    return c.json(await team.createToken(c.env, c.get('apiDeveloper').id, String(input.name ?? 'cli'), c.get('now')), 201);
+    const input = await body<{ name?: string; expires_in_days?: number | null }>(c);
+    const days = input.expires_in_days === undefined || input.expires_in_days === null ? null : Number(input.expires_in_days);
+    return c.json(await team.createToken(c.env, c.get('apiDeveloper').id, String(input.name ?? 'cli'), c.get('now'), days), 201);
 });
 api.delete('/tokens/:id', async (c) => c.json(await team.revokeToken(ctx(c), Number(c.req.param('id')))));
 

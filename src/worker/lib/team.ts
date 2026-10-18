@@ -418,7 +418,7 @@ export async function setPublicReporting(ctx: TeamContext, slug: string, input: 
 // ------------------------------------------------------------------ team accounts
 
 function developerSummary(developer: Developer) {
-    return { id: developer.id, username: developer.username, name: developer.name, created_at: developer.created_at };
+    return { id: developer.id, username: developer.username, name: developer.name, disabled: developer.disabled_at !== null, created_at: developer.created_at };
 }
 
 export async function listTeam(ctx: TeamContext) {
@@ -442,6 +442,7 @@ export async function createDeveloper(ctx: TeamContext, input: { username: strin
     return { developer: developerSummary(developer as Developer), password };
 }
 
+/** New generated password; every API token of the account is revoked too (a reset usually means a leaked credential). */
 export async function resetDeveloper(ctx: TeamContext, input: { username: string; name?: string }) {
     const username = validateUsername(input.username);
     const developer = await findDeveloperByUsername(ctx.env.DB, username);
@@ -450,24 +451,66 @@ export async function resetDeveloper(ctx: TeamContext, input: { username: string
     }
     const password = randomString(GENERATED_PASSWORD_LENGTH);
     const name = input.name && input.name.trim() !== '' ? input.name.trim() : developer.name;
-    await ctx.env.DB.prepare('UPDATE developers SET name = ?, password_hash = ?, updated_at = ? WHERE id = ?').bind(name, await hashPassword(password), nowIso(ctx.now), developer.id).run();
-    return { developer: developerSummary({ ...developer, name }), password };
+    const [, revoked] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE developers SET name = ?, password_hash = ?, updated_at = ? WHERE id = ?').bind(name, await hashPassword(password), nowIso(ctx.now), developer.id),
+        ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id),
+    ]);
+    return { developer: developerSummary({ ...developer, name }), password, tokens_revoked: revoked.meta.changes ?? 0 };
+}
+
+async function otherDeveloper(ctx: TeamContext, username: string, action: string): Promise<Developer> {
+    const developer = await findDeveloperByUsername(ctx.env.DB, validateUsername(username));
+    if (!developer) {
+        throw new ServiceError('developer_not_found', '找不到這個團隊帳號。', 404);
+    }
+    if (developer.id === ctx.developer.id) {
+        throw new ServiceError('cannot_change_self', `不能${action}自己目前登入的帳號；請用另一個團隊帳號操作。`, 422);
+    }
+    return developer;
+}
+
+/** Disables the account: web logins and API tokens stop working at once; tokens are deleted. */
+export async function setDeveloperDisabled(ctx: TeamContext, username: string, disabled: boolean) {
+    const developer = await otherDeveloper(ctx, username, disabled ? '停用' : '啟用');
+    const statements = [ctx.env.DB.prepare('UPDATE developers SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? nowIso(ctx.now) : null, nowIso(ctx.now), developer.id)];
+    if (disabled) {
+        statements.push(ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id));
+    }
+    const results = await ctx.env.DB.batch(statements);
+    return { developer: developerSummary({ ...developer, disabled_at: disabled ? nowIso(ctx.now) : null }), tokens_revoked: disabled ? results[1].meta.changes ?? 0 : 0 };
+}
+
+/** Deletes the account and its tokens; reports it created keep existing and show the team label as creator. */
+export async function deleteDeveloper(ctx: TeamContext, username: string) {
+    const developer = await otherDeveloper(ctx, username, '刪除');
+    const [tokens] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id),
+        ctx.env.DB.prepare('UPDATE reports SET creator_developer_id = NULL WHERE creator_developer_id = ?').bind(developer.id),
+        ctx.env.DB.prepare('DELETE FROM developers WHERE id = ?').bind(developer.id),
+    ]);
+    return { deleted: developer.username, tokens_revoked: tokens.meta.changes ?? 0 };
 }
 
 // ------------------------------------------------------------------ API tokens
 
-export async function createToken(env: Env, developerId: number, name: string, now: number) {
+export const MAX_TOKEN_DAYS = 3650;
+
+export async function createToken(env: Env, developerId: number, name: string, now: number, expiresInDays: number | null = null) {
+    if (expiresInDays !== null && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > MAX_TOKEN_DAYS)) {
+        throw new ServiceError('invalid_expiry', `有效天數必須是 1 到 ${MAX_TOKEN_DAYS} 的整數。`, 422);
+    }
     const token = `fdk_${randomString(40)}`;
-    const row = await env.DB.prepare('INSERT INTO api_tokens (developer_id, name, token_hash, created_at) VALUES (?, ?, ?, ?) RETURNING id, name, created_at')
-        .bind(developerId, name.trim() === '' ? 'cli' : name.trim().slice(0, 100), await sha256Hex(token), nowIso(now))
-        .first<{ id: number; name: string; created_at: string }>();
-    return { token, id: row?.id ?? 0, name: row?.name ?? name, created_at: row?.created_at ?? nowIso(now) };
+    const expiresAt = expiresInDays === null ? null : nowIso(now + expiresInDays * 86_400_000);
+    const row = await env.DB.prepare('INSERT INTO api_tokens (developer_id, name, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, name, expires_at, created_at')
+        .bind(developerId, name.trim() === '' ? 'cli' : name.trim().slice(0, 100), await sha256Hex(token), expiresAt, nowIso(now))
+        .first<{ id: number; name: string; expires_at: string | null; created_at: string }>();
+    return { token, id: row?.id ?? 0, name: row?.name ?? name, expires_at: row?.expires_at ?? null, created_at: row?.created_at ?? nowIso(now) };
 }
 
 export async function listTokens(ctx: TeamContext, currentTokenId: number) {
-    const { results } = await ctx.env.DB.prepare('SELECT id, name, last_used_at, created_at FROM api_tokens WHERE developer_id = ? ORDER BY id')
+    const { results } = await ctx.env.DB.prepare('SELECT id, name, last_used_at, expires_at, created_at FROM api_tokens WHERE developer_id = ? ORDER BY id')
         .bind(ctx.developer.id)
-        .all<{ id: number; name: string; last_used_at: string | null; created_at: string }>();
+        .all<{ id: number; name: string; last_used_at: string | null; expires_at: string | null; created_at: string }>();
     return { tokens: results.map((token) => ({ ...token, current: token.id === currentTokenId })) };
 }
 

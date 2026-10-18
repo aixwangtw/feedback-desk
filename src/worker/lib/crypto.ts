@@ -132,7 +132,15 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 const hmacKeys = new Map<string, Promise<CryptoKey>>();
 
+/** Keys are never derived from a missing or short secret, even if a caller forgets the request check. */
+function assertSecret(secret: unknown): asserts secret is string {
+    if (typeof secret !== 'string' || secret.length < 32) {
+        throw new Error('APP_SECRET is missing or shorter than 32 characters.');
+    }
+}
+
 function hmacKey(secret: string): Promise<CryptoKey> {
+    assertSecret(secret);
     let key = hmacKeys.get(secret);
     if (!key) {
         key = crypto.subtle.importKey('raw', encoder.encode(`hmac|${secret}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -149,6 +157,7 @@ export async function hmac(secret: string, message: string): Promise<string> {
 const aesKeys = new Map<string, Promise<CryptoKey>>();
 
 function aesKey(secret: string): Promise<CryptoKey> {
+    assertSecret(secret);
     let key = aesKeys.get(secret);
     if (!key) {
         key = crypto.subtle

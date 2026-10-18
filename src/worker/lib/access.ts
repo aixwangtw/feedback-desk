@@ -40,6 +40,11 @@ interface AuthCookie {
     i?: string;
 }
 
+/** A same-site path: starts with one slash, no backslash (browsers treat it as a slash), no control characters. */
+export function isSafeLocalPath(path: string): boolean {
+    return path.startsWith('/') && !path.startsWith('//') && !/[\\\u0000-\u001f\u007f]/.test(path);
+}
+
 export interface Flash {
     success?: string;
     private_report_url?: string;
@@ -170,7 +175,7 @@ export class Access {
         let developer: Developer | null = null;
         if (entry.s === 'developer') {
             developer = typeof entry.d === 'number' ? await this.developer(entry.d) : null;
-            if (!developer) {
+            if (!developer || developer.disabled_at) {
                 return null;
             }
         }
@@ -309,7 +314,7 @@ export class Access {
             delete cookie.i;
             this.saveAuth(cookie);
         }
-        return intended && intended.startsWith('/') && !intended.startsWith('//') ? intended : fallback;
+        return intended && isSafeLocalPath(intended) ? intended : fallback;
     }
 
     async flash(): Promise<Flash> {
@@ -333,7 +338,7 @@ export class Access {
             return null;
         }
         const developer = await this.developer(entry.i);
-        if (!developer) {
+        if (!developer || developer.disabled_at) {
             return null;
         }
         const expected = await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`);

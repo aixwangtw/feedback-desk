@@ -10,6 +10,17 @@ export const PUBLIC_MAX_SCREENSHOTS = 3;
 export const MAX_SCREENSHOTS = 5;
 /** Uploads that are not attached to anything within this time are deleted. */
 export const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+/** Uploads from public reporters (strangers) are kept for a much shorter time. */
+export const PUBLIC_UPLOAD_TTL_MS = 60 * 60 * 1000;
+
+/** Pending uploads that came from public reporters: the home form, or messages on public reports. */
+const PUBLIC_PENDING = `(u.purpose = 'public' OR (u.purpose = 'message' AND u.report_id IN (SELECT id FROM reports WHERE creator_type = 'public')))`;
+
+/** Number and total size of public uploads that are not attached to anything yet. */
+export async function pendingPublicUploads(db: D1Database): Promise<{ count: number; bytes: number }> {
+    const row = await db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(u.size), 0) AS bytes FROM uploads u WHERE ${PUBLIC_PENDING}`).first<{ count: number; bytes: number }>();
+    return { count: row?.count ?? 0, bytes: row?.bytes ?? 0 };
+}
 
 export type ImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
 
@@ -185,7 +196,7 @@ export async function findClaimableUploads(
 export function claimStatements(
     db: D1Database,
     uploads: Upload[],
-    target: { reportPublicId: string; kind: 'feedback' | 'adjustment'; messageSubquery?: boolean; nowIso: string },
+    target: { reportPublicId: string; kind: 'feedback' | 'adjustment'; messageId?: number | null; nowIso: string },
 ): D1PreparedStatement[] {
     const statements: D1PreparedStatement[] = [];
     for (const upload of uploads) {
@@ -193,20 +204,23 @@ export function claimStatements(
             db
                 .prepare(
                     `INSERT INTO attachments (report_id, message_id, kind, object_key, original_name, mime_type, size, created_at)
-                     VALUES ((SELECT id FROM reports WHERE public_id = ?), ${target.messageSubquery ? '(SELECT MAX(id) FROM messages)' : 'NULL'}, ?, ?, ?, ?, ?, ?)`,
+                     VALUES ((SELECT id FROM reports WHERE public_id = ?), ?, ?, ?, ?, ?, ?, ?)`,
                 )
-                .bind(target.reportPublicId, target.kind, upload.object_key, upload.original_name, upload.mime_type, upload.size, target.nowIso),
+                .bind(target.reportPublicId, target.messageId ?? null, target.kind, upload.object_key, upload.original_name, upload.mime_type, upload.size, target.nowIso),
         );
         statements.push(db.prepare('DELETE FROM uploads WHERE id = ?').bind(upload.id));
     }
     return statements;
 }
 
-/** Deletes uploads that were never attached, oldest first, at most `limit` per run. */
+/** Deletes uploads that were never attached (public ones after an hour, others after a day), at most `limit` per run. */
 export async function pruneStaleUploads(env: Env, nowMs = Date.now(), limit = 50): Promise<number> {
-    const cutoff = new Date(nowMs - UPLOAD_TTL_MS).toISOString();
-    const { results } = await env.DB.prepare('SELECT id, object_key FROM uploads WHERE created_at < ? ORDER BY created_at LIMIT ?')
-        .bind(cutoff, limit)
+    const { results } = await env.DB.prepare(
+        `SELECT u.id, u.object_key FROM uploads u
+         WHERE u.created_at < ? OR (u.created_at < ? AND ${PUBLIC_PENDING})
+         ORDER BY u.created_at LIMIT ?`,
+    )
+        .bind(new Date(nowMs - UPLOAD_TTL_MS).toISOString(), new Date(nowMs - PUBLIC_UPLOAD_TTL_MS).toISOString(), limit)
         .all<{ id: string; object_key: string }>();
     if (results.length === 0) {
         return 0;

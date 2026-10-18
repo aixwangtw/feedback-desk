@@ -74,3 +74,10 @@ describe('scheduled cleanup', () => {
         expect(await env.DB.prepare("SELECT id FROM device_codes WHERE user_code = 'ABCD-EFGH'").first()).toBeNull();
     });
 });
+
+describe('worker entry module', () => {
+    it('exports only handlers (workerd refuses other named exports)', async () => {
+        const entry = await import('../../src/worker/index');
+        expect(Object.keys(entry).sort()).toEqual(['app', 'default']);
+    });
+});

@@ -9,6 +9,7 @@ import { device } from './routes/device';
 import { files } from './routes/files';
 import { web } from './routes/web';
 import { MessagePage } from './views/pages';
+import { CONTENT_SECURITY_POLICY, secretUsable } from './lib/security';
 
 const app = new Hono<AppEnv>();
 
@@ -27,6 +28,11 @@ function isApiPath(path: string): boolean {
 }
 
 app.use('*', async (c, next) => {
+    // Without a proper secret, cookies and signed links cannot be protected, so nothing is served.
+    if (!secretUsable(c.env)) {
+        console.error('APP_SECRET 未設定或少於 32 字元，拒絕服務。請重新執行 npx feedback-desk deploy，或用 wrangler secret put APP_SECRET 設定。');
+        return c.text('Server misconfigured: APP_SECRET is missing or too short.', 500, { 'Cache-Control': 'no-store' });
+    }
     c.set('now', Date.now());
     c.set('access', new Access(c.env, c.req.raw, c.get('now')));
 
@@ -52,6 +58,7 @@ app.use('*', async (c, next) => {
         c.res.headers.set('Cache-Control', 'no-store');
         c.res.headers.set('X-Content-Type-Options', 'nosniff');
         c.res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+        c.res.headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
     }
 });
 
@@ -100,9 +107,14 @@ export { app };
 export default {
     fetch: app.fetch,
     async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+        if (!secretUsable(env)) {
+            console.error('APP_SECRET 未設定或少於 32 字元，排程工作略過。');
+            return;
+        }
         const now = Date.now();
         await pruneStaleUploads(env, now, 200);
         await pruneExpired(env.DB, now);
         await env.DB.prepare("DELETE FROM device_codes WHERE expires_at < ? OR status = 'consumed'").bind(Math.floor(now / 1000) - 3600).run();
+        await env.DB.prepare('DELETE FROM used_upload_nonces WHERE expires_at < ?').bind(Math.floor(now / 1000)).run();
     },
 } satisfies ExportedHandler<Env>;

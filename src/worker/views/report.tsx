@@ -101,6 +101,8 @@ export interface ReportPageProps extends ActivityProps {
     adjustmentOld?: string;
     messageErrors?: string[];
     messageOld?: string;
+    /** ETag of the activity fragment, so the first poll can already get 304. */
+    activityEtag?: string;
 }
 
 export const ReportPage: FC<ReportPageProps> = (props) => {
@@ -129,7 +131,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                     <h2 class="font-semibold">存下這個網址才能回來看</h2>
                     <p class="mt-1 leading-6">這是這張單的私密網址，知道網址的人都能看到並留言。這個畫面只顯示這一次；同一個瀏覽器之後從首頁也找得到這張單。</p>
                     <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <input readonly value={props.privateReportUrl} onfocus="this.select()" aria-label="私密網址" class="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs text-slate-900" data-copy-source data-private-url />
+                        <input readonly value={props.privateReportUrl} aria-label="私密網址" class="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs text-slate-900" data-copy-source data-private-url />
                         <button type="button" class="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600" data-copy-button>複製網址</button>
                     </div>
                 </section>
@@ -219,7 +221,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </section>
                     ) : null}
 
-                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)}>
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
                         <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} />
                     </section>
 

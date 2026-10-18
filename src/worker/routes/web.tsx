@@ -32,6 +32,7 @@ import {
     MAX_SCREENSHOTS,
     PUBLIC_MAX_IMAGE_BYTES,
     PUBLIC_MAX_SCREENSHOTS,
+    pendingPublicUploads,
     pruneStaleUploads,
     storeImageStream,
     UploadError,
@@ -40,6 +41,7 @@ import { nowIso } from '../../shared/time';
 import { HomePage, HONEYPOT_FIELD, LoginPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, type PortalFormState, type PortalRow } from '../views/portal';
 import { Activity, ReportPage } from '../views/report';
+import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
 import { verifyTurnstile } from '../lib/turnstile';
@@ -280,10 +282,14 @@ export async function checkLoginRateLimit(c: AppContext, limits: Limit[]): Promi
 
 /** Personal team accounts first (owner on every project), then the project's own client account. */
 async function authenticate(c: AppContext, project: Project, username: string, password: string): Promise<{ role: 'owner' | 'client'; developer: Developer | null } | null> {
-    const developer = await findDeveloperByUsername(c.env.DB, username);
+    const found = await findDeveloperByUsername(c.env.DB, username);
+    // A disabled team account behaves like an unknown user (same timing, same error).
+    const developer = found && !found.disabled_at ? found : null;
     let hash: string | null = null;
     let role: 'owner' | 'client' | null = null;
-    if (developer) {
+    if (found && !developer) {
+        role = null;
+    } else if (developer) {
         role = 'owner';
         hash = developer.password_hash;
     } else if (project.client_username && timingSafeEqualString(project.client_username, username)) {
@@ -642,13 +648,23 @@ web.put('/p/:slug/uploads', async (c) => {
         abort(404);
     }
 
+    const fromPublic = purpose === 'public' || maxBytes === PUBLIC_MAX_IMAGE_BYTES;
+    if (fromPublic) {
+        // Site-wide cap: strangers together cannot park more than this in storage.
+        const cfg = config(c.env).publicReporting;
+        const pending = await pendingPublicUploads(c.env.DB);
+        const declared = Number(c.req.header('content-length') ?? 0) || 0;
+        if (pending.count >= cfg.pendingUploadsMax || pending.bytes + declared > cfg.pendingUploadBytesMax) {
+            return c.json({ message: '目前上傳量過多，請稍後再試。' }, 429, { 'Retry-After': '600' });
+        }
+    }
     const retryAfter = await attempt(c.env.DB, limits, c.get('now'));
     if (retryAfter !== null) {
         return c.json({ message: '上傳次數過多，請稍後再試。' }, 429, { 'Retry-After': String(retryAfter) });
     }
     try {
         const upload = await storeImageStream(c.env, c.req.raw, { projectId: project.id, reportId, purpose, maxBytes, nowIso: nowIso(c.get('now')) });
-        if (Math.random() < 0.05) {
+        if (fromPublic || Math.random() < 0.05) {
             c.executionCtx.waitUntil(pruneStaleUploads(c.env, c.get('now'), 20).catch(() => 0));
         }
         return c.json({ id: upload.id, name: upload.original_name, size: upload.size, mime_type: upload.mime_type }, 201);
@@ -659,6 +675,10 @@ web.put('/p/:slug/uploads', async (c) => {
         throw error;
     }
 });
+
+export function activityEtag(report: Pick<Report, 'latest_activity_at' | 'updated_at' | 'status'>): string {
+    return `W/"${report.latest_activity_at}|${report.updated_at}|${report.status}"`;
+}
 
 async function reportByPublicIdOr404(c: AppContext, project: Project, publicId: string): Promise<Report> {
     const report = publicId === '' ? null : await findReportInProject(c.env.DB, project.id, publicId);
@@ -708,6 +728,7 @@ async function renderReport(
             attachmentUrl={attachmentUrlFor(project, report)}
             success={flash.success}
             privateReportUrl={flash.private_report_url}
+            activityEtag={activityEtag(report)}
             {...extra}
         />,
         status,
@@ -748,6 +769,13 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
     if (!(await access.reportVisible(project, report))) {
         abort(404);
     }
+    // Every change shown here (messages, status) moves latest_activity_at or updated_at, so the pair
+    // identifies the content; an unchanged report answers 304 without loading messages.
+    const etag = activityEtag(report);
+    const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+    if (c.req.header('if-none-match') === etag) {
+        return c.body(null, 304, cacheHeaders);
+    }
     const [attachments, messages] = await Promise.all([attachmentsForReport(c.env.DB, report.id), messagesForReport(c.env.DB, report.id)]);
     const messageAttachments = new Map<number, Attachment[]>();
     for (const attachment of attachments) {
@@ -755,6 +783,8 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
             messageAttachments.set(attachment.message_id, [...(messageAttachments.get(attachment.message_id) ?? []), attachment]);
         }
     }
+    c.header('ETag', etag);
+    c.header('Cache-Control', 'private, no-cache');
     return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} />);
 });
 
@@ -789,7 +819,7 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
             row={row}
             slug={project.slug}
             isOwner={isOwner}
-            backPath={back.startsWith('/') && !back.startsWith('//') ? back : paths.portal(project.slug)}
+            backPath={isSafeLocalPath(back) ? back : paths.portal(project.slug)}
             attachmentUrl={(target, attachment) => paths.attachment(project.slug, target.public_id, attachment.id)}
         />,
     );

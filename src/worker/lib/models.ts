@@ -21,6 +21,8 @@ export interface Developer {
     name: string;
     username: string;
     password_hash: string;
+    /** Disabled accounts cannot sign in; their logins and API tokens stop working. */
+    disabled_at: string | null;
     created_at: string;
     updated_at: string;
 }

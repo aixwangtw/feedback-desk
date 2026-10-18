@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import type { Access } from '../lib/access';
+import { isSafeLocalPath, type Access } from '../lib/access';
 import type { Developer } from '../lib/models';
 import type { Env } from '../env';
 import { config } from '../env';
@@ -54,7 +54,8 @@ export async function readForm(c: AppContext): Promise<URLSearchParams> {
         }
         return params;
     }
-    return new URLSearchParams(await c.req.text());
+    // Decode the bytes ourselves: Request.text() on a form body logs a warning in workerd.
+    return new URLSearchParams(new TextDecoder().decode(await c.req.arrayBuffer()));
 }
 
 /** Laravel TrimStrings: form values are trimmed. */
@@ -68,7 +69,7 @@ export function field(form: URLSearchParams, name: string): string {
  */
 export function backUrl(c: AppContext, form: URLSearchParams | null, fallback: string): string {
     const back = form?.get('_back') ?? '';
-    if (back.startsWith('/') && !back.startsWith('//') && !back.includes('\\')) {
+    if (isSafeLocalPath(back)) {
         return back;
     }
     const referer = c.req.header('referer');

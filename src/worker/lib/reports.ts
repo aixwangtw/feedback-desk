@@ -129,11 +129,23 @@ export async function addMessage(
 ): Promise<void> {
     const db = env.DB;
     const at = nowIso(now);
-    await db.batch([
-        db.prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(report.id, data.author_type, data.author_name, data.body, at, at),
-        ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageSubquery: true, nowIso: at }),
-        db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id),
-    ]);
+    const message = await db
+        .prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
+        .bind(report.id, data.author_type, data.author_name, data.body, at, at)
+        .first<{ id: number }>();
+    if (!message) {
+        throw new Error('message insert returned no id');
+    }
+    try {
+        // Attachments point at the message by its own id.
+        await db.batch([
+            ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at }),
+            db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id),
+        ]);
+    } catch (error) {
+        await db.prepare('DELETE FROM messages WHERE id = ?').bind(message.id).run();
+        throw error;
+    }
 }
 
 /** Overwrites or appends; blank text is stored as null so the client side shows no empty block. */

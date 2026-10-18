@@ -27,6 +27,9 @@ export interface FeedbackConfig {
         uploadPerMinute: number;
         uploadPerHour: number;
         maxAttachmentsPerReport: number;
+        /** Site-wide cap on public uploads waiting to be attached (count and bytes). */
+        pendingUploadsMax: number;
+        pendingUploadBytesMax: number;
         turnstileSiteKey: string;
         turnstileSecretKey: string;
     };
@@ -95,6 +98,8 @@ export function config(env: Env): FeedbackConfig {
             uploadPerMinute: Math.max(1, int(env, 'FEEDBACK_PUBLIC_UPLOAD_THROTTLE_PER_MINUTE', 10)),
             uploadPerHour: Math.max(1, int(env, 'FEEDBACK_PUBLIC_UPLOAD_THROTTLE_PER_HOUR', 60)),
             maxAttachmentsPerReport: int(env, 'FEEDBACK_PUBLIC_MAX_ATTACHMENTS', 15),
+            pendingUploadsMax: Math.max(1, int(env, 'FEEDBACK_PUBLIC_PENDING_UPLOADS_MAX', 300)),
+            pendingUploadBytesMax: Math.max(1, int(env, 'FEEDBACK_PUBLIC_PENDING_UPLOAD_MB_MAX', 500)) * 1024 * 1024,
             turnstileSiteKey: str(env, 'FEEDBACK_TURNSTILE_SITE_KEY'),
             turnstileSecretKey: str(env, 'FEEDBACK_TURNSTILE_SECRET_KEY'),
         },

@@ -1,6 +1,6 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "js0980420/feedback-desk",
+    "name": "aixwangtw/feedback-desk",
     "type": "project",
     "description": "A lightweight issue-reporting desk for communicating system problems with clients and teammates.",
     "keywords": ["laravel", "feedback", "issue-tracker", "bug-report", "client-communication"],

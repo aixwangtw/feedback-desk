@@ -66,7 +66,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 需求：PHP 8.3 以上、Composer、Node.js、SQLite（或其他 Laravel 支援的資料庫）。
 
 ```bash
-git clone https://github.com/aixwangtw/feedback-desk.git
+git clone -b laravel https://github.com/aixwangtw/feedback-desk.git
 cd feedback-desk
 composer install
 cp .env.example .env

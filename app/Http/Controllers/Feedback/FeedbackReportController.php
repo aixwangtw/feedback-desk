@@ -74,14 +74,21 @@ class FeedbackReportController extends Controller
         FeedbackAccess $access,
     ): View|RedirectResponse {
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
-        $access->ensureReportVisible($feedbackReport);
+        if (! $feedbackReport->isPublicReport()) {
+            $access->ensureReportVisible($feedbackReport);
+        }
         $token = request()->string('access')->toString();
 
         if ($token !== '' && $access->validateReporterToken($feedbackReport, $token)) {
             $access->grantReporter($feedbackReport);
+            if ($feedbackReport->isPublicReport()) {
+                $access->rememberPublicReport($feedbackReport, $token);
+            }
 
             return redirect()->route('feedback.reports.show', [$feedbackProject, $feedbackReport]);
         }
+
+        $access->ensureReportVisible($feedbackReport);
 
         if (! $access->canView($feedbackReport)) {
             $access->deny($feedbackProject);
@@ -97,7 +104,10 @@ class FeedbackReportController extends Controller
         return view('feedback.reports.show', [
             'project' => $feedbackProject,
             'report' => $feedbackReport,
-            'sequenceNumber' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $access->isOwner($feedbackProject)),
+            'sequenceNumber' => $access->isOwner($feedbackProject) || ! $feedbackReport->isPublicReport()
+                ? $feedbackReport->sequenceNumber(clientCreatedOnly: ! $access->isOwner($feedbackProject))
+                : null,
+            'isPublicReporter' => $feedbackReport->isPublicReport() && ! $access->isOwner($feedbackProject),
             'canManage' => $access->canManage($feedbackProject),
             'isOwner' => $access->isOwner($feedbackProject),
         ]);

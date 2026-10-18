@@ -119,7 +119,7 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 開發者端的「建立者」篩選；值為 client、shared 或 developer:{id}。
+     * 開發者端的「建立者」篩選；值為 client、public、shared 或 developer:{id}。
      *
      * @param  Builder<FeedbackReport>  $query
      */
@@ -128,6 +128,7 @@ class FeedbackReport extends Model
     {
         match (true) {
             $creator === 'client' => $query->where('creator_type', FeedbackCreatorType::Client->value),
+            $creator === 'public' => $query->where('creator_type', FeedbackCreatorType::Public->value),
             $creator === 'shared' => $query->where('creator_type', FeedbackCreatorType::OwnerShared->value),
             (bool) preg_match('/^developer:(\d+)$/', $creator, $matches) => $query
                 ->where('creator_type', FeedbackCreatorType::Developer->value)
@@ -141,6 +142,11 @@ class FeedbackReport extends Model
         return $this->creator_type === FeedbackCreatorType::Client;
     }
 
+    public function isPublicReport(): bool
+    {
+        return $this->creator_type === FeedbackCreatorType::Public;
+    }
+
     /**
      * 開發者端顯示的建立者名稱。
      */
@@ -149,6 +155,7 @@ class FeedbackReport extends Model
         return match ($this->creator_type) {
             FeedbackCreatorType::Client => $this->feedbackProject->clientLabel(),
             FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? config('feedback.labels.owner'),
+            FeedbackCreatorType::Public => filled($this->reporter_name) ? "公開回報（{$this->reporter_name}）" : '公開回報',
             FeedbackCreatorType::OwnerShared => config('feedback.labels.owner'),
         };
     }

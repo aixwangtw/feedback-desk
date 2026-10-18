@@ -11,12 +11,19 @@ use Illuminate\Contracts\Session\Session;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class FeedbackAccess
 {
     public const COOKIE_NAME = 'feedback_access';
 
     public const COOKIE_DAYS = 30;
+
+    public const PUBLIC_COOKIE_NAME = 'feedback_public_reports';
+
+    public const PUBLIC_COOKIE_DAYS = 180;
+
+    public const PUBLIC_COOKIE_MAX_REPORTS = 15;
 
     public const ROLE_OWNER = 'owner';
 
@@ -124,15 +131,80 @@ class FeedbackAccess
     public function canView(FeedbackReport $report): bool
     {
         return $this->canManage($report->feedbackProject)
-            || (bool) $this->session->get($this->reportKey($report), false);
+            || $this->hasReporterGrant($report);
+    }
+
+    /**
+     * 回報者身分：這個工作階段開過該單的私密網址，或公開回報的 token 還留在瀏覽器 cookie。
+     */
+    public function hasReporterGrant(FeedbackReport $report): bool
+    {
+        if ($this->session->get($this->reportKey($report), false)) {
+            return true;
+        }
+
+        if (! $report->isPublicReport()) {
+            return false;
+        }
+
+        $token = $this->publicReportTokens()[$report->public_id] ?? null;
+
+        return is_string($token) && $this->validateReporterToken($report, $token);
+    }
+
+    /**
+     * 公開回報者的單，連同 token 一起記在瀏覽器（加密、HttpOnly cookie），之後回來不必再貼私密網址。
+     */
+    public function rememberPublicReport(FeedbackReport $report, string $token): void
+    {
+        $tokens = $this->publicReportTokens();
+        unset($tokens[$report->public_id]);
+        $tokens[$report->public_id] = $token;
+        $tokens = array_slice($tokens, -self::PUBLIC_COOKIE_MAX_REPORTS, null, true);
+
+        $this->cookies->queue($this->cookies->make(
+            self::PUBLIC_COOKIE_NAME,
+            json_encode($tokens),
+            self::PUBLIC_COOKIE_DAYS * 24 * 60,
+        ));
+    }
+
+    /**
+     * 這個瀏覽器記住的公開回報單：只回傳 token 仍有效、屬於該專案的單，新的在前。
+     *
+     * @return Collection<int, FeedbackReport>
+     */
+    public function rememberedPublicReports(FeedbackProject $project): Collection
+    {
+        $tokens = $this->publicReportTokens();
+        if ($tokens === []) {
+            return collect();
+        }
+
+        return FeedbackReport::query()
+            ->where('feedback_project_id', $project->id)
+            ->where('creator_type', FeedbackCreatorType::Public->value)
+            ->whereIn('public_id', array_keys($tokens))
+            ->latest('created_at')
+            ->latest('id')
+            ->get()
+            ->filter(fn (FeedbackReport $report): bool => $this->validateReporterToken($report, (string) $tokens[$report->public_id]))
+            ->values();
     }
 
     /**
      * A report deleted by the teacher, or created by a developer, no longer exists for anyone but the owner.
+     * A public report is visible only to the owner and to the reporter holding its private token.
      */
     public function ensureReportVisible(FeedbackReport $report): true
     {
         $isOwner = $this->isOwner($report->feedbackProject);
+
+        if ($report->isPublicReport()) {
+            abort_unless($isOwner || $this->hasReporterGrant($report), 404);
+
+            return true;
+        }
 
         abort_if(! $isOwner && ($report->isDeletedByClient() || ! $report->isCreatedByClient()), 404);
 
@@ -294,6 +366,21 @@ class FeedbackAccess
         $decoded = json_decode($raw, true);
 
         return is_array($decoded) ? array_filter($decoded, 'is_array') : [];
+    }
+
+    /**
+     * 瀏覽器記住的公開回報 token：public_id => token。
+     *
+     * @return array<string, string>
+     */
+    private function publicReportTokens(): array
+    {
+        $queued = $this->cookies->queued(self::PUBLIC_COOKIE_NAME);
+        $raw = $queued !== null ? $queued->getValue() : $this->request->cookie(self::PUBLIC_COOKIE_NAME);
+
+        $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+
+        return is_array($decoded) ? array_filter($decoded, 'is_string') : [];
     }
 
     /**

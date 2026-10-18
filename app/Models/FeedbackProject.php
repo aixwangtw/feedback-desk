@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled'])]
+#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled', 'public_reporting_enabled'])]
 class FeedbackProject extends Model
 {
     /** @use HasFactory<FeedbackProjectFactory> */
@@ -18,6 +18,7 @@ class FeedbackProject extends Model
 
     protected $attributes = [
         'automation_enabled' => false,
+        'public_reporting_enabled' => false,
     ];
 
     public function getRouteKeyName(): string
@@ -43,6 +44,7 @@ class FeedbackProject extends Model
     {
         return [
             'automation_enabled' => 'boolean',
+            'public_reporting_enabled' => 'boolean',
         ];
     }
 }

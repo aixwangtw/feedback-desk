@@ -1,14 +1,25 @@
-<x-feedback.layout :title="$report->title.'｜'.$project->name" :$project>
+<x-feedback.layout :title="$report->title.'｜'.$project->name" :project="$isPublicReporter ? null : $project">
     <x-slot:headerAction>
-        <a href="{{ route('feedback.portal', $project) }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">返回問題清單</a>
+        <a href="{{ $isPublicReporter ? route('feedback.home') : route('feedback.portal', $project) }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{{ $isPublicReporter ? '回首頁' : '返回問題清單' }}</a>
     </x-slot:headerAction>
+
+    @if (session('private_report_url'))
+        <section class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950" data-private-url-notice>
+            <h2 class="font-semibold">存下這個網址才能回來看</h2>
+            <p class="mt-1 leading-6">這是這張單的私密網址，知道網址的人都能看到並留言。這個畫面只顯示這一次；同一個瀏覽器之後從首頁也找得到這張單。</p>
+            <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input readonly value="{{ session('private_report_url') }}" onfocus="this.select()" aria-label="私密網址" class="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs text-slate-900" data-copy-source data-private-url>
+                <button type="button" class="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600" data-copy-button>複製網址</button>
+            </div>
+        </section>
+    @endif
 
     <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div class="grid gap-6">
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="min-w-0">
-                        <h1 class="text-2xl font-bold tracking-tight text-slate-950"><span class="mr-1 text-slate-400">編號 <span data-report-number>{{ $sequenceNumber }}</span>｜</span>{{ $report->title }}</h1>
+                        <h1 class="text-2xl font-bold tracking-tight text-slate-950">@if ($sequenceNumber !== null)<span class="mr-1 text-slate-400">編號 <span data-report-number>{{ $sequenceNumber }}</span>｜</span>@endif{{ $report->title }}</h1>
                         @if ($isOwner && $report->isDeletedByClient())
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
                                 <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
@@ -104,6 +115,9 @@
                         @error('body')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                     </div>
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        @if ($isPublicReporter)
+                            <span class="text-xs text-slate-500">截圖最多 {{ \App\Support\PublicReporting::MAX_SCREENSHOTS }} 張，每張 5 MB。</span>
+                        @endif
                         <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                             加入截圖
                             <input id="message-screenshots" name="screenshots[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview">

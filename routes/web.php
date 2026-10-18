@@ -7,6 +7,7 @@ use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
 use App\Http\Controllers\Feedback\FeedbackPortalController;
+use App\Http\Controllers\Feedback\FeedbackPublicReportController;
 use App\Http\Controllers\Feedback\FeedbackReportController;
 use App\Http\Controllers\Feedback\FeedbackStatusController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +51,10 @@ $feedbackRoutes = function (): void {
         ->name('feedback.reports.adjustment.update');
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/attachments/{feedbackAttachment}', [FeedbackAttachmentController::class, 'show'])
         ->name('feedback.attachments.show');
+
+    Route::post('/public-reports', [FeedbackPublicReportController::class, 'store'])
+        ->middleware('throttle:feedback-public-submit')
+        ->name('feedback.public.store');
 
     Route::get('/owner/{feedbackProject:slug}/access', [FeedbackOwnerController::class, 'authenticate'])
         ->middleware('throttle:10,1')

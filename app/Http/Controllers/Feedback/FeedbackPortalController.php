@@ -3,19 +3,32 @@
 namespace App\Http\Controllers\Feedback;
 
 use App\Enums\FeedbackAttachmentKind;
+use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\PublicReporting;
 use Illuminate\Contracts\View\View;
 
 class FeedbackPortalController extends Controller
 {
-    public function index(): View
+    public function index(PublicReporting $publicReporting, FeedbackAccess $access): View
     {
-        return view('feedback.home');
+        $project = $publicReporting->project();
+        if ($project === null) {
+            return view('feedback.home');
+        }
+
+        return view('feedback.public-home', [
+            'project' => $project,
+            'myReports' => $access->rememberedPublicReports($project),
+            'turnstileSiteKey' => $publicReporting->turnstileEnabled()
+                ? config('feedback.public_reporting.turnstile.site_key')
+                : null,
+        ]);
     }
 
     public function show(FeedbackProject $feedbackProject, FeedbackAccess $access): View
@@ -93,6 +106,10 @@ class FeedbackPortalController extends Controller
 
         foreach (FeedbackDeveloper::query()->orderBy('name')->orderBy('id')->get() as $developer) {
             $options["developer:{$developer->id}"] = $developer->name;
+        }
+
+        if ($project->public_reporting_enabled || $project->feedbackReports()->where('creator_type', FeedbackCreatorType::Public->value)->exists()) {
+            $options['public'] = '公開回報';
         }
 
         return $options + ['shared' => config('feedback.labels.owner').'（共用）'];

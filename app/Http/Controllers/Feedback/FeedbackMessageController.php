@@ -27,7 +27,11 @@ class FeedbackMessageController extends Controller
             $developer = $access->currentDeveloper($feedbackProject);
             $message = $feedbackReport->feedbackMessages()->create([
                 'author_type' => $isOwner ? FeedbackAuthorType::Owner : FeedbackAuthorType::Reporter,
-                'author_name' => $isOwner ? ($developer?->name ?? config('feedback.labels.owner')) : config('feedback.labels.client'),
+                'author_name' => match (true) {
+                    $isOwner => $developer?->name ?? config('feedback.labels.owner'),
+                    $feedbackReport->isPublicReport() => $feedbackReport->reporter_name ?: '公開回報者',
+                    default => config('feedback.labels.client'),
+                },
                 'body' => $validated['body'],
             ]);
 

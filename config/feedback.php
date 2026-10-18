@@ -55,6 +55,28 @@ return [
         'body' => env('FEEDBACK_HOME_BODY', "請開啟{$ownerLabel}給你的專案連結，登入後就能回報問題、查看處理進度。"),
     ],
 
+    /*
+     * Public reporting: strangers file issues from the home page into one project. It is active
+     * only when `home_project` names a project that was switched on with
+     * `php artisan feedback:public-reporting {project} on`. The links and the notice stay
+     * hidden while their values are empty.
+     */
+    'public_reporting' => [
+        'home_project' => env('FEEDBACK_HOME_PUBLIC_PROJECT'),
+        'intro' => env('FEEDBACK_PUBLIC_INTRO'),
+        'github_url' => env('FEEDBACK_PUBLIC_GITHUB_URL'),
+        'blog_url' => env('FEEDBACK_PUBLIC_BLOG_URL'),
+        'notice' => env('FEEDBACK_PUBLIC_NOTICE'),
+        'throttle' => [
+            'per_minute' => (int) env('FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE', 3),
+            'per_hour' => (int) env('FEEDBACK_PUBLIC_THROTTLE_PER_HOUR', 20),
+        ],
+        'turnstile' => [
+            'site_key' => env('FEEDBACK_TURNSTILE_SITE_KEY'),
+            'secret_key' => env('FEEDBACK_TURNSTILE_SECRET_KEY'),
+        ],
+    ],
+
     'automation' => [
         'enabled' => filter_var(env('FEEDBACK_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
         'workspace_root' => env('FEEDBACK_WORKSPACE_ROOT'),

@@ -43,6 +43,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 - 三種狀態：待處理、待審核（開發團隊已改好並寫了調整說明）、已完成（客戶確認）。
 - 留言串與附圖；開發團隊可寫「調整說明」並附調整圖片。
 - 客戶刪除的問題只是隱藏，開發團隊仍看得到並可還原。
+- 首頁公開回報（選用）：陌生人不用登入就能對單一專案回報問題，拿到私密網址追蹤，見下方。
 - 登入失敗次數限制、私密連結可隨時重發使整批舊登入失效。
 - 稱呼與首頁文案可用 `.env` 改成自己的用語。
 - 實驗功能：自動處理（codex CLI），見下方。
@@ -54,6 +55,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 | client（客戶） | 在專案內新增、編輯、刪除自己的問題，留言，確認完成。看不到開發團隊建立的問題。 | 專屬連結 `/p/{slug}/access?token=...`，或該專案的客戶帳號密碼（`/p/{slug}/login`） |
 | owner（開發團隊） | 看到專案全部問題，改狀態、寫調整說明、還原被刪除的問題、也能自己建立問題。 | 專屬連結 `/owner/{slug}/access?token=...`、`.env` 設定的共用帳密、或個人帳號（`feedback:developer` 建立）；登入頁 `/owner/{slug}/login` |
 | reporter | 只能檢視、留言該一張問題。 | 該問題網址加上 `?access=` 私密 token（建立問題時產生） |
+| 公開回報者 | 就是 reporter，對象是首頁公開回報送出的單。只能看自己那張、留言，看不到調整說明以外的團隊內容，也不是 client。 | 送出後顯示的私密網址；同一個瀏覽器也會記住 |
 
 私密連結只在建立時顯示一次，請存入密碼管理器；用 `feedback:client-link`、`feedback:owner-link` 重發後，舊連結與用它登入的長效登入都會失效。
 
@@ -105,6 +107,14 @@ php artisan feedback:account-password owner     # 先在 .env 設 FEEDBACK_OWNER
 | `FEEDBACK_HOME_EYEBROW` | `Feedback Desk` | 首頁卡片上的小字。 |
 | `FEEDBACK_HOME_HEADING` | `問題回報` | 首頁主標題。 |
 | `FEEDBACK_HOME_BODY` | 由開發團隊稱呼組成 | 首頁說明文字；預設為「請開啟{開發團隊}給你的專案連結，登入後就能回報問題、查看處理進度。」。 |
+| `FEEDBACK_HOME_PUBLIC_PROJECT` | 空 | 首頁公開回報要收進哪個專案（slug）。空白，或該專案沒用 `feedback:public-reporting` 開啟，首頁就維持原樣。 |
+| `FEEDBACK_PUBLIC_INTRO` | 空 | 公開回報表單上方的簡短說明；空白就不顯示。 |
+| `FEEDBACK_PUBLIC_GITHUB_URL` | 空 | 公開首頁的 GitHub 連結；空白就不顯示。 |
+| `FEEDBACK_PUBLIC_BLOG_URL` | 空 | 公開首頁的部落格文章連結；空白就不顯示。 |
+| `FEEDBACK_PUBLIC_NOTICE` | 空 | 公開首頁的一行提示（例如歡迎使用哪些語言回報）；空白就不顯示。 |
+| `FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE` | `3` | 公開送單每個 IP 每分鐘上限。 |
+| `FEEDBACK_PUBLIC_THROTTLE_PER_HOUR` | `20` | 公開送單每個 IP 每小時上限。 |
+| `FEEDBACK_TURNSTILE_SITE_KEY` / `FEEDBACK_TURNSTILE_SECRET_KEY` | 空 | Cloudflare Turnstile 人機驗證，兩個都設才啟用；啟用後伺服器端會呼叫 siteverify 驗證，驗證失敗或連不上都不收單。 |
 | `FEEDBACK_AUTOMATION_ENABLED` | `false` | 實驗功能總開關，見下方。 |
 | `FEEDBACK_WORKSPACE_ROOT` | 空 | 自動處理允許的 repository 根目錄。 |
 | `FEEDBACK_CODEX_BINARY` | `codex` | codex CLI 執行檔。 |
@@ -126,12 +136,32 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | 指令 | 用途 |
 | --- | --- |
 | `feedback:project {name} {--slug=} {--client-name=} {--repository=} {--automation}` | 建立專案並印出客戶與開發團隊入口連結。 |
+| `feedback:public-reporting {project} {on\|off}` | 開關專案的首頁公開回報。 |
 | `feedback:client-link {project}` | 重發客戶私密入口，舊連結失效。 |
 | `feedback:owner-link {project}` | 重發開發團隊私密入口，舊連結失效。 |
 | `feedback:client-account {project} {username} {--password=} {--prefill}` | 設定單一專案的客戶帳密（省略 `--password` 會產生隨機密碼）；`--prefill` 搭配 `FEEDBACK_LOGIN_PREFILL_ENABLED=true` 才會預填。 |
 | `feedback:developer {username} {--name=} {--password=}` | 建立開發團隊個人帳號，或重設既有帳號密碼；個人帳號可建立問題並顯示為建立者。 |
 | `feedback:account-password owner {--password=}` | 重設共用 owner 帳號密碼，雜湊寫入 `.env`，明文只顯示一次。 |
 | `feedback:adjust {project} {report} {--note=} {--append} {--image=*}` | 用指令寫入問題的調整說明與圖片，不改動狀態。 |
+
+## 首頁公開回報（選用）
+
+讓不認識的人直接在首頁回報問題，適合把這個工具本身的問題收進一個專案。預設關閉，首頁維持原本的樣子。
+
+```bash
+php artisan feedback:public-reporting my-project on
+# .env
+FEEDBACK_HOME_PUBLIC_PROJECT=my-project
+```
+
+專案開關和 `FEEDBACK_HOME_PUBLIC_PROJECT` 兩個都成立，首頁才會顯示回報表單。
+
+- 表單欄位：標題、說明（必填），截圖（選填，最多 3 張、每張 5 MB，jpg／png／webp），怎麼稱呼你（選填）。不收 email，也不做任何通知。
+- 送出後建立一張單，建立者顯示為「公開回報」加上稱呼，團隊端清單可用「建立者」篩選。回報者拿到這張單的私密網址（`?access=` token），畫面只顯示這一次。
+- 同一個瀏覽器會把 token 存在加密的 HttpOnly cookie（180 天，最多記 15 張），回首頁會列出「你送出的單」。用 cookie 而不是 localStorage，是因為清單由伺服器產生，不需要前端程式，token 也碰不到頁面上的 JavaScript。換瀏覽器就要用存下的網址。
+- 公開回報者只能看自己那張單、留言（最多 3 張圖、每張 5 MB），看得到調整說明；不能改狀態、編輯、刪除，看不到清單和統計，也不會取得 client 身分。既有的 client 看不到公開回報的單。只有開發團隊能改狀態。
+- 公開回報的單不會觸發自動處理。
+- 防灌單：公開送單每個 IP 有每分鐘與每小時上限，表單有隱藏的 honeypot 欄位，另可啟用 Cloudflare Turnstile。
 
 ## Queue worker 與自動處理（實驗功能）
 

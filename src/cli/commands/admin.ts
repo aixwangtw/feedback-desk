@@ -1,7 +1,7 @@
 import { bool, parse, requirePositional, str } from '../args';
 import { encodePath } from '../api';
 import { escapeInline, escapeTerminal, table } from '../output';
-import { CliError, type Runtime } from '../runtime';
+import { CLI_COMMAND, CliError, type Runtime } from '../runtime';
 import { apiFor } from './auth';
 
 interface ProjectSummary {
@@ -49,7 +49,7 @@ export async function project(rt: Runtime, argv: string[]): Promise<number> {
             const { projects } = await api.get<{ projects: ProjectSummary[] }>('/projects');
             if (bool(args, 'json')) return printJson(rt, projects);
             if (projects.length === 0) {
-                rt.out('還沒有專案：npx feedback-desk project create "專案名稱" --slug my-project');
+                rt.out(`還沒有專案：${CLI_COMMAND} project create "專案名稱" --slug my-project`);
                 return 0;
             }
             rt.out(

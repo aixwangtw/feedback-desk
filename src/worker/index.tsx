@@ -30,7 +30,7 @@ function isApiPath(path: string): boolean {
 app.use('*', async (c, next) => {
     // Without a proper secret, cookies and signed links cannot be protected, so nothing is served.
     if (!secretUsable(c.env)) {
-        console.error('APP_SECRET 未設定或少於 32 字元，拒絕服務。請重新執行 npx feedback-desk deploy，或用 wrangler secret put APP_SECRET 設定。');
+        console.error('APP_SECRET 未設定或少於 32 字元，拒絕服務。請重新執行 npx github:aixwangtw/feedback-desk deploy，或用 wrangler secret put APP_SECRET 設定。');
         return c.text('Server misconfigured: APP_SECRET is missing or too short.', 500, { 'Cache-Control': 'no-store' });
     }
     c.set('now', Date.now());
@@ -86,7 +86,7 @@ app.notFound((c) => {
 app.all('/mcp', async (c) => {
     const result = await developerForToken(c);
     if (!result) {
-        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
+        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
     }
     const { handleMcp } = await import('./mcp');
     return handleMcp(c.req.raw, c.env, c.executionCtx as ExecutionContext, {

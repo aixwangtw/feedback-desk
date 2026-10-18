@@ -23,7 +23,7 @@
     "test:worker": "vitest run --config vitest.config.ts",
     "test:cli": "vitest run --config vitest.cli.config.ts",
     "dev": "npm run build && wrangler d1 migrations apply DB --local -c wrangler.dev.jsonc && wrangler dev -c wrangler.dev.jsonc",
-    "prepack": "node scripts/build.mjs"
+    "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.4",

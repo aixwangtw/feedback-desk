@@ -48,7 +48,7 @@ export async function developerForToken(c: AppContext): Promise<{ developer: Dev
 export const requireToken: MiddlewareHandler<AppEnv> = async (c, next) => {
     const result = await developerForToken(c);
     if (!result) {
-        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx feedback-desk login）。' }, 401);
+        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401);
     }
     c.set('apiDeveloper', result.developer);
     c.set('apiTokenId', result.tokenId);

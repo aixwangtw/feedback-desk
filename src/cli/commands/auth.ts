@@ -6,7 +6,7 @@ import { bool, parse, requirePositional, str } from '../args';
 import { configDir, normalizeSiteUrl, readConfig, resolveSite, writeConfig, writePrivateFile } from '../config';
 import { deployDir, readState } from '../deploy-dir';
 import { escapeInline, table } from '../output';
-import { CliError, type Runtime } from '../runtime';
+import { CLI_COMMAND, CliError, type Runtime } from '../runtime';
 
 interface DeviceCode {
     device_code: string;
@@ -52,7 +52,7 @@ export async function login(rt: Runtime, argv: string[]): Promise<number> {
     const expires = parseExpires(str(args, 'expires'));
     const rawUrl = str(args, 'url') ?? rt.env.FEEDBACK_DESK_URL ?? stateUrl(rt) ?? readConfig(rt).default_site;
     if (!rawUrl) {
-        throw new CliError('請指定站台：npx feedback-desk login --url https://你的站');
+        throw new CliError(`請指定站台：${CLI_COMMAND} login --url https://你的站`);
     }
     const url = normalizeSiteUrl(rawUrl);
     const client = new ApiClient(rt, url, null);
@@ -285,7 +285,7 @@ export async function mcp(rt: Runtime, argv: string[]): Promise<number> {
 
     if (both || bool(args, 'claude')) {
         if (!(await commandExists(rt, 'claude'))) {
-            rt.out('Claude Code：找不到 claude 指令，略過。安裝 Claude Code 後再執行 npx feedback-desk mcp install --claude。');
+            rt.out(`Claude Code：找不到 claude 指令，略過。安裝 Claude Code 後再執行 ${CLI_COMMAND} mcp install --claude。`);
         } else {
             await revokePrevious(rt, api, 'claude');
             const created = await api.post<{ token: string; id: number }>('/tokens', { name: 'Claude Code MCP' });
@@ -306,7 +306,7 @@ export async function mcp(rt: Runtime, argv: string[]): Promise<number> {
 
     if (both || bool(args, 'codex')) {
         if (!(await commandExists(rt, 'codex'))) {
-            rt.out('Codex：找不到 codex 指令，略過。安裝 Codex CLI 後再執行 npx feedback-desk mcp install --codex。');
+            rt.out(`Codex：找不到 codex 指令，略過。安裝 Codex CLI 後再執行 ${CLI_COMMAND} mcp install --codex。`);
         } else {
             const path = codexConfigPath(rt);
             const current = existsSync(path) ? readFileSync(path, 'utf8') : '';

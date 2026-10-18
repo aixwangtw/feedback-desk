@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CliError, type Runtime } from './runtime';
+import { CLI_COMMAND, CliError, type Runtime } from './runtime';
 
 export const ARTIFACT_DIR = '.feedback-desk';
 export const COMPATIBILITY_DATE = '2026-10-01';
@@ -91,7 +91,7 @@ export interface WranglerConfig {
 export function readWranglerConfig(dir: string): WranglerConfig {
     const path = join(dir, 'wrangler.jsonc');
     if (!existsSync(path)) {
-        throw new CliError(`${dir} 沒有 wrangler.jsonc，請先執行 npx feedback-desk init。`);
+        throw new CliError(`${dir} 沒有 wrangler.jsonc，請先執行 ${CLI_COMMAND} init。`);
     }
     try {
         return JSON.parse(stripJsonc(readFileSync(path, 'utf8'))) as WranglerConfig;
@@ -126,7 +126,7 @@ export function wranglerTemplate(options: TemplateOptions): string {
     const cron = options.cron
         ? `\n    // 每天清一次沒用到的暫存上傳檔與過期的限流紀錄（免費方案每個帳號可有 5 個 Cron Trigger）。\n    "triggers": { "crons": ["17 3 * * *"] },`
         : `\n    // 沒有 Cron Trigger 時，暫存上傳檔會在之後的上傳請求中順便清除。\n    // "triggers": { "crons": ["17 3 * * *"] },`;
-    return `// Feedback Desk 的 Cloudflare Workers 設定（由 npx feedback-desk init 產生）。
+    return `// Feedback Desk 的 Cloudflare Workers 設定（由 ${CLI_COMMAND} init 產生）。
 // D1 與 R2 不寫 ID：第一次 deploy 時 wrangler 會依名稱自動建立。
 {
     "name": ${JSON.stringify(options.name)},
@@ -144,7 +144,7 @@ export function wranglerTemplate(options: TemplateOptions): string {
         { "binding": "DB", "database_name": ${JSON.stringify(`${options.name}-db`)}, "migrations_dir": "${ARTIFACT_DIR}/migrations" }
     ],
     "r2_buckets": [{ "binding": "FILES", "bucket_name": ${JSON.stringify(`${options.name}-files`)} }],${cron}
-    // 介面用語與首頁文案；改完重新執行 npx feedback-desk deploy。
+    // 介面用語與首頁文案；改完重新執行 ${CLI_COMMAND} deploy。
     "vars": {
         "FEEDBACK_LABEL_CLIENT": "客戶",
         "FEEDBACK_LABEL_OWNER": "開發團隊",
@@ -155,7 +155,7 @@ export function wranglerTemplate(options: TemplateOptions): string {
         "FEEDBACK_UTC_OFFSET": "+08:00",
         "FEEDBACK_TIMEZONE_NAME": "台北時間",
         "FEEDBACK_LOGIN_PREFILL_ENABLED": "false",
-        // 首頁公開回報：填專案 slug，並用 npx feedback-desk public-reporting <slug> on 開啟。
+        // 首頁公開回報：填專案 slug，並用 ${CLI_COMMAND} public-reporting <slug> on 開啟。
         "FEEDBACK_HOME_PUBLIC_PROJECT": "",
         "FEEDBACK_PUBLIC_INTRO": "",
         "FEEDBACK_PUBLIC_GITHUB_URL": "",

@@ -2,7 +2,7 @@ import { adjust, message, report, reports, status } from './commands/reports';
 import { developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, token } from './commands/auth';
 import { bootstrap, deploy, init } from './commands/deploy';
-import { CliError, defaultRuntime, type Runtime } from './runtime';
+import { CLI_COMMAND, CliError, defaultRuntime, type Runtime } from './runtime';
 
 declare const __APP_VERSION__: string | undefined;
 const VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
@@ -82,7 +82,7 @@ export async function main(argv: string[], rt: Runtime = defaultRuntime()): Prom
     }
     const command = COMMANDS[name];
     if (!command) {
-        rt.err(`不認得的指令「${name}」。執行 npx feedback-desk help 看全部指令。`);
+        rt.err(`不認得的指令「${name}」。執行 ${CLI_COMMAND} help 看全部指令。`);
         return 1;
     }
     if (rest.includes('--help') || rest.includes('-h')) {

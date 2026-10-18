@@ -1,4 +1,4 @@
-import { CliError, type RunOptions, type RunResult, type Runtime } from './runtime';
+import { CLI_COMMAND, CliError, type RunOptions, type RunResult, type Runtime } from './runtime';
 
 export const WRANGLER_PACKAGE = 'wrangler@4';
 
@@ -35,7 +35,7 @@ export async function ensureWranglerLogin(rt: Runtime, dir: string): Promise<str
     rt.out('尚未登入 Cloudflare，接下來會開啟瀏覽器請你核准 wrangler（只需要做一次）。');
     const login = await wrangler(rt, ['login'], { cwd: dir, interactive: true });
     if (login.code !== 0) {
-        throw new CliError('wrangler login 沒有完成，請重新執行 npx feedback-desk deploy。');
+        throw new CliError(`wrangler login 沒有完成，請重新執行 ${CLI_COMMAND} deploy。`);
     }
     return (await wrangler(rt, ['whoami'], { cwd: dir })).stdout;
 }

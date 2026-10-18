@@ -1,4 +1,4 @@
-import { CliError, type Runtime } from './runtime';
+import { CLI_COMMAND, CliError, type Runtime } from './runtime';
 
 export class ApiError extends CliError {
     constructor(
@@ -27,7 +27,7 @@ export class ApiClient {
 
     async request<T>(method: string, path: string, body?: unknown, options: { auth?: boolean; allowError?: boolean } = {}): Promise<{ status: number; data: T }> {
         if (options.auth !== false && !this.token) {
-            throw new CliError(`尚未登入 ${this.baseUrl}：請先執行 npx feedback-desk login --url ${this.baseUrl}`);
+            throw new CliError(`尚未登入 ${this.baseUrl}：請先執行 ${CLI_COMMAND} login --url ${this.baseUrl}`);
         }
         let response: Response;
         try {
@@ -49,7 +49,7 @@ export class ApiClient {
         if (!response.ok && !options.allowError) {
             const payload = (data ?? {}) as { message?: string; error?: string };
             if (response.status === 401) {
-                throw new ApiError(`登入已失效或 token 已撤銷：請重新執行 npx feedback-desk login --url ${this.baseUrl}`, 401, 'unauthorized');
+                throw new ApiError(`登入已失效或 token 已撤銷：請重新執行 ${CLI_COMMAND} login --url ${this.baseUrl}`, 401, 'unauthorized');
             }
             throw new ApiError(payload.message || `HTTP ${response.status}`, response.status, payload.error ?? 'error');
         }

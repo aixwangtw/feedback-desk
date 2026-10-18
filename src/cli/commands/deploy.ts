@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bool, parse, requirePositional, str } from '../args';
 import { checkWranglerConfig, deployDir, readState, readWranglerConfig, refreshArtifacts, wranglerTemplate, writeState } from '../deploy-dir';
-import { CliError, type Runtime } from '../runtime';
+import { CLI_COMMAND, CliError, type Runtime } from '../runtime';
 import { d1Query, deployedUrls, ensureWranglerLogin, sqlString, wrangler } from '../wrangler';
 
 const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -61,7 +61,7 @@ export async function init(rt: Runtime, argv: string[]): Promise<number> {
             return 1;
         }
         rt.out(`已檢查 ${configPath}：設定可用，建置檔已更新到 .feedback-desk/。`);
-        rt.out('下一步：npx feedback-desk deploy');
+        rt.out(`下一步：${CLI_COMMAND} deploy`);
         return 0;
     }
     const name = str(args, 'name') ?? 'feedback-desk';
@@ -77,7 +77,7 @@ export async function init(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`已產生 ${configPath}`);
     rt.out(`  Worker：${name}　D1：${name}-db　R2：${name}-files${domain ? `　網域：${domain}` : ''}`);
     rt.out('  介面用語、首頁文案在 wrangler.jsonc 的 vars 裡改。');
-    rt.out('下一步：npx feedback-desk deploy');
+    rt.out(`下一步：${CLI_COMMAND} deploy`);
     return 0;
 }
 
@@ -145,7 +145,7 @@ export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
     writeState(dir, { ...readState(dir), url, worker: config.name, deployed_at: new Date(rt.now()).toISOString() });
     rt.out('');
     rt.out(`部署完成：${url ?? '（沒有從 wrangler 輸出找到網址，請看上方訊息）'}`);
-    rt.out('還沒有團隊帳號的話：npx feedback-desk bootstrap <帳號> --name "顯示名稱"');
+    rt.out(`還沒有團隊帳號的話：${CLI_COMMAND} bootstrap <帳號> --name "顯示名稱"`);
     return 0;
 }
 
@@ -172,7 +172,7 @@ export async function bootstrap(rt: Runtime, argv: string[]): Promise<number> {
     } else {
         if (existing.length > 0) {
             throw new CliError(
-                `已經有團隊帳號（${existing.map((row) => row.username).join('、')}）。新增帳號請登入後用 npx feedback-desk developer create；忘記密碼可用 bootstrap ${existing[0].username} --reset。`,
+                `已經有團隊帳號（${existing.map((row) => row.username).join('、')}）。新增帳號請登入後用 ${CLI_COMMAND} developer create；忘記密碼可用 bootstrap ${existing[0].username} --reset。`,
             );
         }
         const name = (str(args, 'name') ?? username).trim() || username;
@@ -187,6 +187,6 @@ export async function bootstrap(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`密碼：${password}`);
     rt.out('密碼只會顯示這一次，請存入密碼管理器。');
     const state = readState(dir);
-    rt.out(`下一步：npx feedback-desk login${state.url ? ` --url ${state.url}` : ' --url https://你的站'}`);
+    rt.out(`下一步：${CLI_COMMAND} login${state.url ? ` --url ${state.url}` : ' --url https://你的站'}`);
     return 0;
 }

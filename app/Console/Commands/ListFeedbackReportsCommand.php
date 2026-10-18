@@ -9,6 +9,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:reports
     {project : 回報專案 slug（網址 /p/ 後面那段）}
@@ -65,7 +66,7 @@ class ListFeedbackReportsCommand extends Command
         $clientNumbers = FeedbackReport::sequenceNumbersForProject($project, clientCreatedOnly: true);
 
         $reports = $project->feedbackReports()
-            ->with('creatorDeveloper')
+            ->with(['creatorDeveloper', 'feedbackProject'])
             ->withCount(['feedbackMessages', 'feedbackAttachments'])
             ->when($statuses !== [], fn ($query) => $query->whereIn('status', $statuses))
             ->when($creator !== '', fn ($query) => $query->createdBy($creator))
@@ -107,8 +108,8 @@ class ListFeedbackReportsCommand extends Command
                 $row['number'],
                 $row['public_id'],
                 $row['status_label'].($row['deleted_by_client'] ? '（已刪除）' : ''),
-                $row['creator'],
-                $row['title'],
+                OutputFormatter::escape($row['creator']),
+                OutputFormatter::escape($row['title']),
                 $row['messages_count'],
                 $row['attachments_count'],
                 $row['latest_activity_at'] ? date('Y-m-d H:i', strtotime($row['latest_activity_at'])) : '',

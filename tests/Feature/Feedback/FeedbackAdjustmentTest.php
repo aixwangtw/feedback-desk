@@ -252,7 +252,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->artisan('feedback:adjust', [
             'project' => $this->project->slug,
-            'report' => (string) $this->report->id,
+            'report' => $this->report->public_id,
             '--note' => '第二次調整',
             '--append' => true,
         ])->assertSuccessful();

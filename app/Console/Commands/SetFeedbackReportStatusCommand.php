@@ -10,6 +10,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:status
     {project : 回報專案 slug（網址 /p/ 後面那段）}
@@ -56,7 +57,7 @@ class SetFeedbackReportStatusCommand extends Command
         $previous = $report->status;
         $changeStatus->handle($report, $status);
 
-        $this->components->info("已更新狀態：{$report->title}");
+        $this->components->info('已更新狀態：'.OutputFormatter::escape($report->title));
         $this->components->twoColumnDetail('原狀態', "{$previous->value}（{$previous->label()}）");
         $this->components->twoColumnDetail('新狀態', "{$status->value}（{$status->label()}）");
 

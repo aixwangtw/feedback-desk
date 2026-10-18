@@ -11,6 +11,7 @@ use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:report
     {project : 回報專案 slug（網址 /p/ 後面那段）}
@@ -121,32 +122,32 @@ class ShowFeedbackReportCommand extends Command
      */
     private function render(array $data): void
     {
-        $this->line("# {$data['title']}");
+        $this->line('# '.$this->e($data['title']));
         $this->components->twoColumnDetail('編號', $data['number'].($data['client_number'] !== null && $data['client_number'] !== $data['number'] ? "（客戶頁面 {$data['client_number']}）" : ''));
-        $this->components->twoColumnDetail('public_id', $data['public_id']);
+        $this->components->twoColumnDetail('public_id', $this->e($data['public_id']));
         $this->components->twoColumnDetail('狀態', "{$data['status']}（{$data['status_label']}）".($data['deleted_by_client'] ? '，客戶已刪除' : ''));
-        $this->components->twoColumnDetail('建立者', $data['creator']);
+        $this->components->twoColumnDetail('建立者', $this->e($data['creator']));
         $this->components->twoColumnDetail('建立時間', $this->time($data['created_at']));
         $this->components->twoColumnDetail('更新時間', $this->time($data['updated_at']));
         if (filled($data['page_url'])) {
-            $this->components->twoColumnDetail('頁面網址', $data['page_url']);
+            $this->components->twoColumnDetail('頁面網址', $this->e($data['page_url']));
         }
 
         $this->newLine();
         $this->line('## 說明');
-        $this->line($data['description']);
+        $this->line($this->e($data['description']));
         $this->renderAttachments('附件', $data['attachments']);
 
         $this->newLine();
         $this->line('## 調整說明');
-        $this->line(filled($data['adjustment_note']) ? $data['adjustment_note'] : '（尚未填寫）');
+        $this->line(filled($data['adjustment_note']) ? $this->e($data['adjustment_note']) : '（尚未填寫）');
         $this->renderAttachments('調整附圖', $data['adjustment_attachments']);
 
         $this->newLine();
         $this->line('## 留言（'.count($data['messages']).'）');
         foreach ($data['messages'] as $message) {
-            $this->line("- {$message['author']}　{$this->time($message['created_at'])}");
-            $this->line('  '.str_replace("\n", "\n  ", (string) $message['body']));
+            $this->line("- {$this->e($message['author'])}　{$this->time($message['created_at'])}");
+            $this->line('  '.str_replace("\n", "\n  ", $this->e($message['body'])));
             $this->renderAttachments('附件', $message['attachments'], '  ');
         }
     }
@@ -163,12 +164,17 @@ class ShowFeedbackReportCommand extends Command
         $this->line("{$indent}{$label}：");
         foreach ($attachments as $attachment) {
             $note = $attachment['is_local'] ? '' : '（非本機磁碟，格式為 磁碟:儲存路徑，無法直接讀檔）';
-            $this->line("{$indent}  - {$attachment['original_name']}　{$attachment['path']}{$note}");
+            $this->line("{$indent}  - {$this->e($attachment['original_name'])}　{$this->e($attachment['path'])}{$note}");
         }
     }
 
     private function time(?string $iso): string
     {
         return $iso ? date('Y-m-d H:i', strtotime($iso)) : '';
+    }
+
+    private function e(?string $text): string
+    {
+        return OutputFormatter::escape((string) $text);
     }
 }

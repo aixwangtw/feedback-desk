@@ -240,4 +240,68 @@ class FeedbackAgentCommandsTest extends TestCase
         }
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
+
+    public function test_number_does_not_resolve_reports_of_another_project(): void
+    {
+        FeedbackReport::factory()->for(FeedbackProject::factory()->create())->create();
+
+        $this->artisan('feedback:report', ['project' => $this->project->slug, 'report' => '1'])->assertFailed();
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'new'])->assertFailed();
+    }
+
+    public function test_number_finds_client_deleted_report(): void
+    {
+        $report = $this->makeReport(['title' => '被刪的', 'client_deleted_at' => now()]);
+
+        $this->artisan('feedback:report', ['project' => $this->project->slug, 'report' => '1'])->assertSuccessful();
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'completed'])->assertSuccessful();
+        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+    }
+
+    public function test_adjust_rejects_bare_number_unless_by_id(): void
+    {
+        $report = $this->makeReport();
+
+        $this->artisan('feedback:adjust', ['project' => $this->project->slug, 'report' => (string) $report->id, '--note' => 'x'])
+            ->expectsOutputToContain('--by-id')
+            ->assertFailed();
+        $this->assertNull($report->refresh()->adjustment_note);
+
+        $this->artisan('feedback:adjust', ['project' => $this->project->slug, 'report' => (string) $report->id, '--by-id' => true, '--note' => 'x'])->assertSuccessful();
+        $this->assertSame('x', $report->refresh()->adjustment_note);
+
+        $this->artisan('feedback:adjust', ['project' => $this->project->slug, 'report' => $report->public_id, '--note' => 'y'])->assertSuccessful();
+        $this->assertSame('y', $report->refresh()->adjustment_note);
+    }
+
+    public function test_unsafe_attachment_paths_are_not_resolved_to_local_files(): void
+    {
+        $report = $this->makeReport();
+        FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id, 'path' => '../../.env', 'original_name' => 'a']);
+        FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id, 'path' => '/etc/passwd', 'original_name' => 'b']);
+
+        Artisan::call('feedback:report', ['project' => $this->project->slug, 'report' => $report->public_id, '--json' => true]);
+        $data = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+
+        foreach ($data['attachments'] as $attachment) {
+            $this->assertFalse($attachment['is_local']);
+            $this->assertStringStartsWith('local:', $attachment['path']);
+        }
+    }
+
+    public function test_user_content_with_formatter_tags_is_printed_literally(): void
+    {
+        $report = $this->makeReport(['title' => '<comment>標題</comment>', 'description' => '<error>說明</error>', 'adjustment_note' => '<info>調整</info>']);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $report->id, 'author_name' => '<fg=red>某人</>', 'body' => '<comment>留言</comment>']);
+        FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id, 'original_name' => '<comment>x</comment>.png']);
+
+        Artisan::call('feedback:report', ['project' => $this->project->slug, 'report' => $report->public_id], null);
+        $output = Artisan::output();
+        foreach (['<comment>標題</comment>', '<error>說明</error>', '<info>調整</info>', '<fg=red>某人</>', '<comment>留言</comment>', '<comment>x</comment>.png'] as $literal) {
+            $this->assertStringContainsString($literal, $output);
+        }
+
+        Artisan::call('feedback:reports', ['project' => $this->project->slug]);
+        $this->assertStringContainsString('<comment>標題</comment>', Artisan::output());
+    }
 }

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Storage;
 class FeedbackAttachmentLocation
 {
     /**
-     * local 磁碟回傳絕對路徑；其他磁碟（例如 S3）沒有本機路徑，回傳 `disk:path` 並標記 is_local 為 false。
+     * local 磁碟回傳絕對路徑（路徑含 `..` 或以 `/` 開頭時不組，視同非本機）；其他磁碟（例如 S3）沒有本機路徑，回傳 `disk:path` 並標記 is_local 為 false。
      *
      * @return array{path: string, is_local: bool}
      */
@@ -19,7 +19,9 @@ class FeedbackAttachmentLocation
     {
         $driver = config("filesystems.disks.{$attachment->disk}.driver");
 
-        if ($driver === 'local') {
+        $isSafePath = ! str_starts_with($attachment->path, '/') && ! in_array('..', explode('/', str_replace('\\', '/', $attachment->path)), true);
+
+        if ($driver === 'local' && $isSafePath) {
             return ['path' => Storage::disk($attachment->disk)->path($attachment->path), 'is_local' => true];
         }
 

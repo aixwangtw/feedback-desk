@@ -10,10 +10,12 @@ use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Http\File;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:adjust
     {project : 回報專案 slug（網址 /p/ 後面那段）}
-    {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）或資料庫 id；不是畫面上的「編號」}
+    {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）；搭配 --by-id 時為資料庫 id}
+    {--by-id : 把 report 當資料庫 id（純數字）；未加時純數字會被拒絕}
     {--note= : 調整說明文字；未給則保留原文字，--note="" 會清空}
     {--append : 把 --note 接在既有內容後面（中間空一行）；未加則覆寫}
     {--image=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內）}')]
@@ -31,9 +33,9 @@ use Illuminate\Http\File;
     php artisan feedback:adjust my-project 0199c3a1-... --image=/tmp/a.png
 
 說明：
-  - report 參數用網址裡的 public_id（UUID），或資料庫 id；不要用畫面上的「編號」（編號會隨新回饋單變動）。
+  - report 參數用網址裡的 public_id（UUID）。純數字會被拒絕，避免和畫面上的「編號」搞混；要用資料庫 id 請加 --by-id。
   - 圖片會複製到私有儲存，原檔不會被移動或刪除；只有登入的客戶／開發團隊能看。
-  - 指令不會改動回饋單狀態；要改狀態請到開發團隊頁面操作。
+  - 指令不會改動回饋單狀態；要改狀態用 php artisan feedback:status。
   - 刪除調整圖片請到開發團隊頁面的回饋單詳情操作。
 HELP)]
 class UpdateFeedbackAdjustmentCommand extends Command
@@ -51,9 +53,16 @@ class UpdateFeedbackAdjustmentCommand extends Command
             return self::FAILURE;
         }
 
-        $report = $this->findReport($project, (string) $this->argument('report'));
+        $identifier = (string) $this->argument('report');
+        if (ctype_digit($identifier) && ! $this->option('by-id')) {
+            $this->components->error('純數字不能直接指定回饋單：請改用 public_id（或加 --by-id 指定資料庫 id）。');
+
+            return self::FAILURE;
+        }
+
+        $report = $this->findReport($project, $identifier);
         if (! $report) {
-            $this->components->error('這個專案裡找不到該回饋單（請用網址中的 public_id 或資料庫 id）。');
+            $this->components->error('這個專案裡找不到該回饋單（請用網址中的 public_id；資料庫 id 請加 --by-id）。');
 
             return self::FAILURE;
         }
@@ -97,7 +106,7 @@ class UpdateFeedbackAdjustmentCommand extends Command
 
         $report = $updateAdjustment->handle($report, $data);
 
-        $this->components->info("已更新調整說明：{$report->title}");
+        $this->components->info('已更新調整說明：'.OutputFormatter::escape($report->title));
         if ($note !== null) {
             $this->components->twoColumnDetail('文字', $append ? '已追加' : '已覆寫');
         }
@@ -111,9 +120,11 @@ class UpdateFeedbackAdjustmentCommand extends Command
     private function findReport(FeedbackProject $project, string $identifier): ?FeedbackReport
     {
         return $project->feedbackReports()
-            ->where(fn ($query) => $query
-                ->where('public_id', $identifier)
-                ->when(ctype_digit($identifier), fn ($query) => $query->orWhere('id', (int) $identifier)))
+            ->when(
+                $this->option('by-id'),
+                fn ($query) => $query->where('id', ctype_digit($identifier) ? (int) $identifier : 0),
+                fn ($query) => $query->where('public_id', $identifier),
+            )
             ->first();
     }
 

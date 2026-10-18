@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Feedback;
 
+use App\Actions\ChangeFeedbackReportStatusAction;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\UpdateFeedbackStatusRequest;
@@ -18,15 +19,12 @@ class FeedbackStatusController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackAccess $access,
+        ChangeFeedbackReportStatusAction $changeStatus,
     ): RedirectResponse|JsonResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $status = FeedbackReportStatus::from($request->validated('status'));
 
-        $feedbackReport->update([
-            'status' => $status,
-            'completed_at' => $status === FeedbackReportStatus::Completed ? now() : null,
-            'latest_activity_at' => now(),
-        ]);
+        $changeStatus->handle($feedbackReport, $status);
 
         if ($request->expectsJson()) {
             return response()->json([

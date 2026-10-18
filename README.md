@@ -8,33 +8,33 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
 以下為虛構的「晴天咖啡 線上訂位系統」示範資料。
 
-客戶開單：可一次新增多個問題並附截圖。
+<table>
+<tr>
+<td width="50%">客戶開單：可一次新增多個問題並附截圖。<br><img src="docs/screenshots/client-new-issue.jpg" alt="客戶開單"></td>
+<td width="50%">客戶端問題詳情：看調整說明，並在處理紀錄留言。<br><img src="docs/screenshots/client-detail.jpg" alt="客戶端問題詳情"></td>
+</tr>
+</table>
 
-![客戶開單](docs/screenshots/client-new-issue.jpg)
+<table>
+<tr>
+<td width="50%">客戶端問題清單。<br><img src="docs/screenshots/client-list.jpg" alt="客戶端問題清單"></td>
+<td width="50%">開發團隊問題清單：可看到所有人建立的問題。<br><img src="docs/screenshots/team-list.jpg" alt="開發團隊問題清單"></td>
+</tr>
+</table>
 
-客戶端問題詳情：看調整說明，並在處理紀錄留言。
+<table>
+<tr>
+<td width="50%">開發團隊看板：拖曳卡片即可更新狀態。<br><img src="docs/screenshots/team-kanban.jpg" alt="開發團隊看板"></td>
+<td width="50%">開發團隊問題詳情：調整說明只有開發團隊能編輯。<br><img src="docs/screenshots/team-detail.jpg" alt="開發團隊問題詳情"></td>
+</tr>
+</table>
 
-![客戶端問題詳情](docs/screenshots/client-detail.jpg)
-
-客戶端問題清單。
-
-![客戶端問題清單](docs/screenshots/client-list.jpg)
-
-開發團隊看板：拖曳卡片即可更新狀態。
-
-![開發團隊看板](docs/screenshots/team-kanban.jpg)
-
-開發團隊問題清單：可看到所有人建立的問題。
-
-![開發團隊問題清單](docs/screenshots/team-list.jpg)
-
-開發團隊問題詳情：調整說明只有開發團隊能編輯。
-
-![開發團隊問題詳情](docs/screenshots/team-detail.jpg)
-
-手機版問題清單與詳情。
-
-![手機版清單](docs/screenshots/mobile-list.jpg) ![手機版詳情](docs/screenshots/mobile-detail.jpg)
+<table>
+<tr>
+<td width="50%">手機版問題清單。<br><img src="docs/screenshots/mobile-list.jpg" alt="手機版清單"></td>
+<td width="50%">手機版問題詳情。<br><img src="docs/screenshots/mobile-detail.jpg" alt="手機版詳情"></td>
+</tr>
+</table>
 
 ## 功能
 
@@ -145,6 +145,9 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | `feedback:developer {username} {--name=} {--password=}` | 建立開發團隊個人帳號，或重設既有帳號密碼；個人帳號可建立問題並顯示為建立者。 |
 | `feedback:account-password owner {--password=}` | 重設共用 owner 帳號密碼，雜湊寫入 `.env`，明文只顯示一次。 |
 | `feedback:adjust {project} {report} {--note=} {--append} {--image=*}` | 用指令寫入問題的調整說明與圖片，不改動狀態。 |
+| `feedback:reports {project} {--status=*} {--creator=} {--include-deleted} {--json}` | 列出專案的問題，最新在前；可依狀態、建立者篩選。 |
+| `feedback:report {project} {report} {--json}` | 讀取單張問題的完整內容，附件與調整附圖會印出檔案路徑。 |
+| `feedback:status {project} {report} {status}` | 改變問題狀態，輸出前後狀態；狀態可用 `new`／`needs_input`／`completed` 或「待處理／待審核／已完成」。 |
 
 ## 首頁公開回報（選用）
 
@@ -170,6 +173,50 @@ FEEDBACK_HOME_PUBLIC_PROJECT=my-project
 - PHP 的 `upload_max_filesize` 與 `post_max_size` 要大於對應上限（單張 5 MB、一次最多 3 張，建議至少 `post_max_size=20M`、`upload_max_filesize=6M`），否則超過上限的上傳會在到達應用程式前被擋下。
 - 只設了一個 Turnstile key 時不會啟用，並在 log 寫一則警告（每天一次）。
 - 防灌單：公開送單每個 IP 有每分鐘與每小時上限，表單有隱藏的 honeypot 欄位，另可啟用 Cloudflare Turnstile。
+
+## 讓 AI agent 處理回報單
+
+Claude Code、Codex 這類 AI agent 只靠 artisan 指令就能完成「讀單、修改、寫調整說明、改狀態」，不必直接查資料庫。四個指令都在專案目錄執行。
+
+```bash
+# 1. 列出待處理與待審核的單（最新在前）
+php artisan feedback:reports my-project --status=new --status=needs_input
+
+# 2. 讀一張單：說明、附件路徑、調整說明、留言
+php artisan feedback:report my-project 3
+php artisan feedback:report my-project 0199c3a1-... --json
+
+# 3. 寫給客戶看的調整說明，並附驗收截圖
+php artisan feedback:adjust my-project 0199c3a1-... --note="已調整手機版版面" --image=/tmp/after.png
+
+# 4. 改成待審核
+php artisan feedback:status my-project 0199c3a1-... needs_input
+```
+
+說明：
+
+- `{report}` 可以填 public_id 或清單編號。純數字視為開發團隊頁面的清單編號（含所有建立者）；客戶頁面只算客戶建立的單，兩邊編號可能不同。編號會隨新單增加而變動，連續處理多張單時建議用 public_id。`feedback:adjust` 不接受清單編號，只接受 public_id 或資料庫 id。
+- `feedback:report` 會印出附件在伺服器上的絕對路徑，agent 可以直接開啟看圖。`FEEDBACK_DISK` 不是 `local` 時沒有本機路徑，指令改印「磁碟:儲存路徑」並註明，這時需要先自行把檔案下載到本機。
+- `--json` 輸出固定欄位，適合讓 agent 解析；輸出不含 token 與密碼雜湊。
+- 狀態寫錯時指令會列出可用值並以非 0 結束。
+
+可直接複製給 Claude Code 或 Codex 的提示詞（把 `my-project` 換成專案 slug）：
+
+```text
+請處理專案 my-project 的待處理回報單，只用 php artisan 指令操作回報系統，不要直接查資料庫。
+
+1. 執行 php artisan feedback:reports my-project --status=new --json，取得待處理的單。
+2. 逐張處理。每張先執行 php artisan feedback:report my-project {public_id} --json，
+   讀說明、留言，並用檔案路徑開啟附件截圖。
+3. 在程式碼修改。說明看不懂或需要客戶補資料時，不要猜，先跳過並在最後回報給我。
+4. 修改完成後實際操作頁面驗收，並截圖存成 png 或 jpg。
+5. 用 php artisan feedback:adjust my-project {public_id} --note="..." --image=截圖路徑
+   寫一段給客戶看的調整說明，講做了什麼、客戶該去哪裡確認，不要出現程式碼或檔名。
+6. 用 php artisan feedback:status my-project {public_id} needs_input 改成待審核。
+   不要改成 completed，客戶確認後才由人結案。
+
+最後列出每張單的處理結果，以及跳過的單與原因。
+```
 
 ## Queue worker 與自動處理（實驗功能）
 

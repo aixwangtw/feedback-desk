@@ -176,6 +176,22 @@ class FeedbackReport extends Model
     }
 
     /**
+     * 用 public_id 或團隊端清單編號（數字）找專案內的單；編號含客戶隱藏刪除的單，與團隊端網頁一致。
+     */
+    public static function findInProject(FeedbackProject $project, string $identifier): ?self
+    {
+        $identifier = trim($identifier);
+
+        if (ctype_digit($identifier)) {
+            $id = array_search((int) $identifier - 1, static::sequenceNumbersForProject($project), true);
+
+            return $id === false ? null : $project->feedbackReports()->find($id);
+        }
+
+        return $project->feedbackReports()->where('public_id', $identifier)->first();
+    }
+
+    /**
      * @return array<int, int> report id => 專案內編號
      */
     public static function sequenceNumbersForProject(FeedbackProject $project, bool $clientCreatedOnly = false): array

@@ -37,7 +37,7 @@ export function runProcess(command: string, args: string[], options: RunOptions 
     return new Promise((resolve) => {
         const spawnOptions: SpawnOptions = {
             cwd: options.cwd,
-            env: { ...process.env, ...options.env } as NodeJS.ProcessEnv,
+            env: Object.fromEntries(Object.entries({ ...process.env, ...options.env }).filter(([, value]) => value !== undefined)) as NodeJS.ProcessEnv,
             stdio: options.interactive ? 'inherit' : ['pipe', 'pipe', 'pipe'],
             shell: process.platform === 'win32',
         };

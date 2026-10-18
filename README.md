@@ -115,7 +115,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
    Claude Code 會用 `claude mcp add --transport http` 加入（token 寫在 Claude Code 自己的設定裡）。Codex 會在 `~/.codex/config.toml` 寫入 `[mcp_servers.feedback-desk]` 並用 `bearer_token_env_var = "FEEDBACK_DESK_TOKEN"` 讀 token；token 存在 `~/.config/feedback-desk/codex.env`，請在 shell 設定檔加上 `source ~/.config/feedback-desk/codex.env`。找不到 `claude` 或 `codex` 指令時會略過並說明。
 
-套件發布到 npm 之前，可以在 repo 執行 `npm install && npm pack`，再把上面的 `npx feedback-desk` 換成 `npx /路徑/feedback-desk-0.1.0.tgz`。
+套件發布到 npm 之前，可以在 repo 執行 `npm install && npm pack`，再把上面的 `npx feedback-desk` 換成 `npx --package=/路徑/feedback-desk-0.1.0.tgz feedback-desk`。
 
 ### 密碼為什麼由系統產生
 
@@ -227,7 +227,7 @@ npx feedback-desk public-reporting public-desk on
 
 - 截圖由瀏覽器每張各送一個請求，直接串流寫進 R2，伺服器檢查檔案開頭的位元組確認是 jpg／png／webp，送出表單時再把截圖關聯到單。所以附截圖需要瀏覽器開啟 JavaScript。沒用到的暫存截圖會在 24 小時後由每日的 Cron Trigger 刪除（免費方案每個帳號 5 個 Cron Trigger；用滿時可 `init --no-cron`，改由之後的上傳請求順便清理）。
 - 日期與時間不用 `Intl`，以固定時差換算。
-- 問題清單每頁 50 題；單張問題的詳情、編輯、刪除對話框在第一次打開時才載入。
+- 問題清單每頁 50 題；單張問題的詳情、編輯、刪除對話框在第一次打開時才載入。一頁超過 20 題時，清單列由瀏覽器依伺服器送來的資料產生（畫面相同），所以長清單需要開啟 JavaScript。
 - MCP 用到的套件比較大，只有 `/mcp` 請求會載入。
 - 免費方案每天的請求數、D1 讀寫量與 R2 用量都有上限，一般團隊使用量遠低於上限。
 

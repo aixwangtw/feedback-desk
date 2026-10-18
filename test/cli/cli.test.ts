@@ -135,7 +135,7 @@ describe('init', () => {
 describe('deploy and bootstrap', () => {
     function wranglerScript(state: { secrets: string[]; developers: Array<{ id: number; username: string }>; sql: string[] }) {
         return (command: string, args: string[]): RunResult => {
-            const wargs = command === 'npx' ? args.slice(2) : args;
+            const wargs = command === 'npx' ? args.slice(args.indexOf('wrangler') + 1) : args;
             const joined = wargs.join(' ');
             if (joined === 'whoami') return { code: 0, stdout: 'You are logged in with an OAuth Token', stderr: '' };
             if (joined.startsWith('secret list')) return { code: 0, stdout: JSON.stringify(state.secrets.map((name) => ({ name, type: 'secret_text' }))), stderr: '' };

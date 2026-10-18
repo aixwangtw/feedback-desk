@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { pruneStaleUploads } from '../../src/worker/lib/uploads';
+import { boardColumnHtml, listHtml } from '../../src/worker/views/rows-client';
 import { Browser, JPEG_BYTES, PNG_BYTES, seedAttachment, seedProject, seedReport, WEBP_BYTES, workerEnv } from './helpers';
 
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
@@ -229,18 +230,31 @@ describe('reports', () => {
         expect((await new Browser().get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(302);
     });
 
-    it('paginates 50 per page', async () => {
+    it('paginates 50 per page; long pages send rows as JSON that the browser builds with the same markup', async () => {
         const seeded = await seedProject();
         const now = Date.now();
         for (let i = 0; i < 52; i++) {
-            await seedReport(seeded.project, { title: `單 ${i}`, at: now - i * 1000 });
+            await seedReport(seeded.project, { title: `單 ${i} <x>`, at: now - i * 1000 });
         }
         const owner = await new Browser().asOwner(seeded);
         const first = await (await owner.get(`/p/${seeded.project.slug}`)).text();
-        expect(first.match(/data-report-row=/g)?.length).toBe(50);
+        expect(first).not.toContain('data-report-row=');
         expect(first).toContain('共 <span class="font-medium">52</span> 筆');
+        const json = /<script type="application\/json" id="portal-rows-data">(.*?)<\/script>/s.exec(first)![1];
+        expect(json).not.toContain('<x>');
+        const payload = JSON.parse(json);
+        expect(payload.rows).toHaveLength(50);
+        const html = listHtml(payload);
+        expect(html.match(/data-report-row=/g)?.length).toBe(50);
+        expect(html).toContain('單 0 &lt;x&gt;');
+        expect(html).toContain('data-dialogs-src=');
+        expect(JSON.stringify(payload)).not.toContain('reporter_token_hash');
+        const board = await (await owner.get(`/p/${seeded.project.slug}?view=board`)).text();
+        const boardPayload = JSON.parse(/id="portal-rows-data">(.*?)<\/script>/s.exec(board)![1]);
+        expect(boardColumnHtml(boardPayload, 'new').match(/data-kanban-card=/g)?.length).toBe(50);
         const second = await (await owner.get(`/p/${seeded.project.slug}?page=2`)).text();
         expect(second.match(/data-report-row=/g)?.length).toBe(2);
+        expect(second).not.toContain('portal-rows-data');
     });
 
     it('team writes the adjustment; clients see it read-only and cannot change it', async () => {

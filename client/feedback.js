@@ -1,4 +1,18 @@
 import Sortable from 'sortablejs';
+import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
+
+// Long portal pages send their rows as JSON; build them before anything below binds to the rows.
+const portalRowsData = document.getElementById(PORTAL_ROWS_ELEMENT_ID);
+if (portalRowsData) {
+    const payload = JSON.parse(portalRowsData.textContent || '{}');
+    if (payload.view === 'board') {
+        document.querySelectorAll('[data-kanban-list]').forEach((list) => {
+            list.querySelector('[data-kanban-empty]')?.insertAdjacentHTML('beforebegin', boardColumnHtml(payload, list.dataset.status));
+        });
+    } else {
+        document.querySelector('[data-report-table] tbody')?.insertAdjacentHTML('afterbegin', listHtml(payload));
+    }
+}
 
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;

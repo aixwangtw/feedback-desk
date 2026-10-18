@@ -11,14 +11,26 @@ export function wrangler(rt: Runtime, args: string[], options: RunOptions = {}):
     if (custom) {
         return rt.run(custom, args, options);
     }
-    return rt.run('npx', ['--yes', WRANGLER_PACKAGE, ...args], options);
+    // When this CLI itself runs through `npx --package=...`, npm passes npm_config_package and
+    // friends to child processes; clear them so the inner npx resolves wrangler on its own.
+    const env: Record<string, string | undefined> = { ...options.env };
+    for (const key of Object.keys(rt.env)) {
+        if (/^npm_config_(package|yes|call)$/i.test(key)) {
+            env[key] = undefined;
+        }
+    }
+    return rt.run('npx', ['--yes', '--package', WRANGLER_PACKAGE, '--', 'wrangler', ...args], { ...options, env });
 }
 
 export async function ensureWranglerLogin(rt: Runtime, dir: string): Promise<string> {
     const whoami = await wrangler(rt, ['whoami'], { cwd: dir });
     const text = `${whoami.stdout}\n${whoami.stderr}`;
-    if (whoami.code === 0 && !/not authenticated|You are not logged in/i.test(text)) {
+    const loggedOut = /not authenticated|not logged in/i.test(text);
+    if (whoami.code === 0 && !loggedOut) {
         return text;
+    }
+    if (!loggedOut) {
+        throw new CliError(`無法執行 wrangler：${text.trim().slice(-600)}`);
     }
     rt.out('尚未登入 Cloudflare，接下來會開啟瀏覽器請你核准 wrangler（只需要做一次）。');
     const login = await wrangler(rt, ['login'], { cwd: dir, interactive: true });

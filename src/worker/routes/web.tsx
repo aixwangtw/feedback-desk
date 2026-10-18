@@ -426,7 +426,9 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const listSql = `WITH numbered AS (
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${clientOnly}
         )
-        SELECT *, COUNT(*) OVER () AS filtered_total FROM numbered ${where}
+        SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, title, adjustment_note, status, client_deleted_at,
+            latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total
+        FROM numbered ${where}
         ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`;
     const totalSql = isOwner
         ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ?'

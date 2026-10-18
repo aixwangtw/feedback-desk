@@ -28,6 +28,10 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
 ![開發團隊問題清單](docs/screenshots/team-list.jpg)
 
+開發團隊問題詳情：調整說明只有開發團隊能編輯。
+
+![開發團隊問題詳情](docs/screenshots/team-detail.jpg)
+
 手機版問題清單與詳情。
 
 ![手機版清單](docs/screenshots/mobile-list.jpg) ![手機版詳情](docs/screenshots/mobile-detail.jpg)

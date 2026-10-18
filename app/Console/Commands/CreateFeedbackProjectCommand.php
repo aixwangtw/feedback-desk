@@ -8,8 +8,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
-#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation} {--client-name= : 開發者端顯示的老師名稱}')]
-#[Description('建立通用問題回報專案、老師入口與開發者入口')]
+#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation} {--client-name= : 開發團隊端顯示的客戶名稱}')]
+#[Description('建立通用問題回報專案、客戶入口與開發團隊入口')]
 class CreateFeedbackProjectCommand extends Command
 {
     public function handle(): int
@@ -49,8 +49,8 @@ class CreateFeedbackProjectCommand extends Command
         ]);
 
         $this->components->info("已建立回報專案：{$project->name}");
-        $this->line('老師入口：'.route('feedback.client.authenticate', $project).'?token='.$clientToken);
-        $this->line('開發者入口：'.route('feedback.owner.authenticate', $project).'?token='.$ownerToken);
+        $this->line('客戶入口：'.route('feedback.client.authenticate', $project).'?token='.$clientToken);
+        $this->line('開發團隊入口：'.route('feedback.owner.authenticate', $project).'?token='.$ownerToken);
         $this->newLine();
         $this->components->warn('私密入口只會顯示這一次，請存入密碼管理器。');
 

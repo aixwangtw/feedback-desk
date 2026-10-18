@@ -17,7 +17,7 @@
             <a href="{{ $project ? route('feedback.portal', $project) : '/' }}" class="flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
                 <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-sm font-bold text-white shadow-sm">回</span>
                 <span class="min-w-0">
-                    <span class="block truncate text-sm font-semibold text-slate-950">{{ $project?->name ?? '問題回報中心' }}</span>
+                    <span class="block truncate text-sm font-semibold text-slate-950">{{ $project?->name ?? config('feedback.home.title') }}</span>
                 </span>
             </a>
             <div class="flex shrink-0 items-center gap-2">

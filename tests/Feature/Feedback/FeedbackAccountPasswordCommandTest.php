@@ -55,7 +55,7 @@ class FeedbackAccountPasswordCommandTest extends TestCase
 
     public function test_it_shows_the_owner_username(): void
     {
-        $this->artisan('feedback:account-password', ['account' => 'owner', '--password' => 'change-me'])
+        $this->artisan('feedback:account-password', ['account' => 'owner', '--password' => 'reset-pass-1'])
             ->expectsOutputToContain('帳號：admin')
             ->assertSuccessful();
     }

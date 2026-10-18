@@ -11,7 +11,7 @@
                         <h1 class="text-2xl font-bold tracking-tight text-slate-950"><span class="mr-1 text-slate-400">編號 <span data-report-number>{{ $sequenceNumber }}</span>｜</span>{{ $report->title }}</h1>
                         @if ($isOwner && $report->isDeletedByClient())
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
-                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">老師已刪除</span>
+                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
                                 <x-feedback.time :at="$report->client_deleted_at" />
                                 <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
                                     @csrf
@@ -45,7 +45,7 @@
                     @if ($isOwner)
                         @php $adjustmentErrors = $errors->getBag('adjustment'); @endphp
                         <details class="mt-5 border-t border-slate-100 pt-4" @if ($adjustmentErrors->any()) open @endif data-adjustment-editor>
-                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整說明（僅開發者）</summary>
+                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整說明（僅{{ config('feedback.labels.owner') }}）</summary>
                             <form method="POST" action="{{ route('feedback.reports.adjustment.update', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
                                 @csrf
                                 @method('PUT')
@@ -100,7 +100,7 @@
                     @csrf
                     <div>
                         <label for="body" class="sr-only">訊息內容</label>
-                        <textarea id="body" name="body" required maxlength="10000" rows="4" placeholder="補充操作步驟、回答開發者問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
+                        <textarea id="body" name="body" required maxlength="10000" rows="4" placeholder="補充操作步驟、回答{{ config('feedback.labels.owner') }}問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
                         @error('body')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                     </div>
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

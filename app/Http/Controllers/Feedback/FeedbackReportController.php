@@ -156,7 +156,7 @@ class FeedbackReportController extends Controller
 
         $feedbackReport->update(['client_deleted_at' => null]);
 
-        return back()->with('success', "已還原「{$feedbackReport->title}」，老師端會重新看到。");
+        return back()->with('success', "已還原「{$feedbackReport->title}」，{config('feedback.labels.client')}端會重新看到。");
     }
 
     private function ensureProjectOwnsReport(FeedbackProject $project, FeedbackReport $report): void

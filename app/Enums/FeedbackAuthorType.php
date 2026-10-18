@@ -11,8 +11,8 @@ enum FeedbackAuthorType: string
     public function label(): string
     {
         return match ($this) {
-            self::Reporter => '老師',
-            self::Owner => '開發者',
+            self::Reporter => (string) config('feedback.labels.client'),
+            self::Owner => (string) config('feedback.labels.owner'),
             self::Agent => 'Vibe coding',
         };
     }

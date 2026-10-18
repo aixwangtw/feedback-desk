@@ -26,9 +26,9 @@ class FeedbackProjectFactory extends Factory
             'slug' => Str::slug($name).'-'.fake()->unique()->randomNumber(4),
             'owner_token_hash' => hash('sha256', Str::random(48)),
             'client_username' => 'test',
-            'client_password_hash' => Hash::make('change-me'),
+            'client_password_hash' => Hash::make('client-pass'),
             'login_prefill_username' => 'test',
-            'login_prefill_password' => 'change-me',
+            'login_prefill_password' => 'client-pass',
             'repository_path' => null,
             'automation_enabled' => false,
         ];

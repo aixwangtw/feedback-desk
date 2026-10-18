@@ -36,7 +36,7 @@ class FeedbackProject extends Model
      */
     public function clientLabel(): string
     {
-        return filled($this->client_display_name) ? $this->client_display_name : '老師';
+        return filled($this->client_display_name) ? $this->client_display_name : (string) config('feedback.labels.client');
     }
 
     protected function casts(): array

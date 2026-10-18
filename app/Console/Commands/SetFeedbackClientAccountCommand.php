@@ -9,8 +9,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
-#[Signature('feedback:client-account {project : 專案 slug} {username : 老師帳號} {--password= : 指定密碼；省略則產生隨機密碼} {--prefill : 登入頁預填這組帳號密碼}')]
-#[Description('設定單一專案的老師登入帳號；帳密只對該專案有效')]
+#[Signature('feedback:client-account {project : 專案 slug} {username : 客戶帳號} {--password= : 指定密碼；省略則產生隨機密碼} {--prefill : 登入頁預填這組帳號密碼}')]
+#[Description('設定單一專案的客戶登入帳號；帳密只對該專案有效')]
 class SetFeedbackClientAccountCommand extends Command
 {
     public function handle(): int
@@ -46,7 +46,7 @@ class SetFeedbackClientAccountCommand extends Command
             'login_prefill_password' => $prefill ? $password : null,
         ]);
 
-        $this->components->info("已設定 {$project->name} 的老師帳號");
+        $this->components->info("已設定 {$project->name} 的客戶帳號");
         $this->line("帳號：{$username}");
         if ($givenPassword === null) {
             $this->line("密碼：{$password}");

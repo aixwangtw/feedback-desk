@@ -95,6 +95,6 @@ class FeedbackPortalController extends Controller
             $options["developer:{$developer->id}"] = $developer->name;
         }
 
-        return $options + ['shared' => '開發者（共用）'];
+        return $options + ['shared' => config('feedback.labels.owner').'（共用）'];
     }
 }

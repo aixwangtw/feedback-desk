@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "js0980420/feedback-desk",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "A lightweight issue-reporting desk for communicating system problems with clients and teammates.",
+    "keywords": ["laravel", "feedback", "issue-tracker", "bug-report", "client-communication"],
     "license": "MIT",
     "require": {
         "php": "^8.3",

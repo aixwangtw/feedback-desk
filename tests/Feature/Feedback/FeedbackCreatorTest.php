@@ -25,9 +25,9 @@ class FeedbackCreatorTest extends TestCase
 
     private FeedbackProject $project;
 
-    private FeedbackDeveloper $alex;
+    private FeedbackDeveloper $devA;
 
-    private FeedbackDeveloper $nick;
+    private FeedbackDeveloper $devB;
 
     private string $clientToken;
 
@@ -46,25 +46,25 @@ class FeedbackCreatorTest extends TestCase
             'client_token_hash' => hash('sha256', $this->clientToken),
             'owner_token_hash' => hash('sha256', $this->ownerToken),
         ]);
-        $this->alex = FeedbackDeveloper::factory()->withPassword('dev-a-pass')->create(['name' => 'Alex', 'username' => 'alex']);
-        $this->nick = FeedbackDeveloper::factory()->withPassword('dev-b-pass')->create(['name' => 'Nick', 'username' => 'nick']);
+        $this->devA = FeedbackDeveloper::factory()->withPassword('dev-a-pass')->create(['name' => 'dev-a', 'username' => 'dev-a']);
+        $this->devB = FeedbackDeveloper::factory()->withPassword('dev-b-pass')->create(['name' => 'dev-b', 'username' => 'dev-b']);
     }
 
     public function test_developer_account_logs_in_with_owner_access_and_remembers_who_it_is(): void
     {
-        $this->post(route('feedback.login.store', $this->project), ['username' => 'alex', 'password' => 'dev-a-pass'])
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'dev-a', 'password' => 'dev-a-pass'])
             ->assertRedirect(route('feedback.portal', $this->project))
             ->assertCookie(FeedbackAccess::COOKIE_NAME);
 
         $access = app(FeedbackAccess::class);
         $this->assertTrue($access->isOwner($this->project));
-        $this->assertSame($this->alex->id, $access->currentDeveloper($this->project)?->id);
+        $this->assertSame($this->devA->id, $access->currentDeveloper($this->project)?->id);
         $this->get(route('feedback.portal', $this->project))->assertOk()->assertSee('data-creator-filter', false);
     }
 
     public function test_wrong_developer_password_is_rejected(): void
     {
-        $this->post(route('feedback.login.store', $this->project), ['username' => 'alex', 'password' => 'dev-b-pass'])
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'dev-a', 'password' => 'dev-b-pass'])
             ->assertSessionHasErrors('username');
         $this->post(route('feedback.login.store', $this->project), ['username' => 'nobody', 'password' => 'dev-a-pass'])
             ->assertSessionHasErrors('username');
@@ -74,14 +74,14 @@ class FeedbackCreatorTest extends TestCase
 
     public function test_long_lived_cookie_restores_the_developer_identity_until_the_password_changes(): void
     {
-        $cookie = $this->loginAs('alex', 'dev-a-pass');
+        $cookie = $this->loginAs('dev-a', 'dev-a-pass');
 
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
         $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => '靠 cookie', 'description' => '內容']]]);
-        $this->assertSame($this->alex->id, FeedbackReport::firstWhere('title', '靠 cookie')->creator_developer_id);
+        $this->assertSame($this->devA->id, FeedbackReport::firstWhere('title', '靠 cookie')->creator_developer_id);
 
-        $this->alex->update(['password_hash' => Hash::make('new-pass')]);
+        $this->devA->update(['password_hash' => Hash::make('new-pass')]);
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
         $this->get(route('feedback.portal', $this->project))->assertRedirect(route('feedback.login', $this->project));
@@ -89,8 +89,8 @@ class FeedbackCreatorTest extends TestCase
 
     public function test_a_cookie_cannot_be_forged_to_claim_another_developer(): void
     {
-        $cookie = json_decode($this->loginAs('alex', 'dev-a-pass'), true);
-        $cookie[(string) $this->project->id]['owner']['developer_id'] = $this->nick->id;
+        $cookie = json_decode($this->loginAs('dev-a', 'dev-a-pass'), true);
+        $cookie[(string) $this->project->id]['owner']['developer_id'] = $this->devB->id;
 
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, json_encode($cookie));
@@ -103,8 +103,8 @@ class FeedbackCreatorTest extends TestCase
         $this->createReport('老師的單');
 
         $this->expireSession();
-        $this->loginAs('alex', 'dev-a-pass');
-        $this->createReport('Alex 的單');
+        $this->loginAs('dev-a', 'dev-a-pass');
+        $this->createReport('dev-a 的單');
 
         $this->expireSession();
         $this->loginAs('admin', self::SHARED_PASSWORD);
@@ -118,9 +118,9 @@ class FeedbackCreatorTest extends TestCase
         $this->assertSame(FeedbackCreatorType::Client, $teacher->creator_type);
         $this->assertNull($teacher->creator_developer_id);
 
-        $alex = FeedbackReport::firstWhere('title', 'Alex 的單');
-        $this->assertSame(FeedbackCreatorType::Developer, $alex->creator_type);
-        $this->assertSame($this->alex->id, $alex->creator_developer_id);
+        $devA = FeedbackReport::firstWhere('title', 'dev-a 的單');
+        $this->assertSame(FeedbackCreatorType::Developer, $devA->creator_type);
+        $this->assertSame($this->devA->id, $devA->creator_developer_id);
 
         foreach (['共用 admin 的單', '連結的單'] as $title) {
             $shared = FeedbackReport::firstWhere('title', $title);
@@ -131,7 +131,7 @@ class FeedbackCreatorTest extends TestCase
 
     public function test_link_login_after_developer_login_drops_the_developer_identity(): void
     {
-        $this->loginAs('alex', 'dev-a-pass');
+        $this->loginAs('dev-a', 'dev-a-pass');
         $this->get(route('feedback.owner.authenticate', $this->project).'?token='.$this->ownerToken);
 
         $this->assertNull(app(FeedbackAccess::class)->currentDeveloper($this->project));
@@ -145,15 +145,15 @@ class FeedbackCreatorTest extends TestCase
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()
             ->assertSee('<th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>', false)
             ->assertSee('<option value="client"', false)
-            ->assertSee('<option value="developer:'.$this->alex->id.'"', false)
-            ->assertSee('<option value="developer:'.$this->nick->id.'"', false)
+            ->assertSee('<option value="developer:'.$this->devA->id.'"', false)
+            ->assertSee('<option value="developer:'.$this->devB->id.'"', false)
             ->assertSee('<option value="shared"', false)
             ->assertSee('開發者（共用）')
             ->getContent();
 
         $this->assertSame('示範客戶', $this->creatorOf($html, 'client-1'));
-        $this->assertSame('Alex', $this->creatorOf($html, 'alex-1'));
-        $this->assertSame('Nick', $this->creatorOf($html, 'nick-1'));
+        $this->assertSame('dev-a', $this->creatorOf($html, 'dev-a-1'));
+        $this->assertSame('dev-b', $this->creatorOf($html, 'dev-b-1'));
         $this->assertSame('開發者', $this->creatorOf($html, 'shared-1'));
     }
 
@@ -163,17 +163,17 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
-            ->assertSee('data-report-creator>· Alex<', false)
+            ->assertSee('data-report-creator>· dev-a<', false)
             ->assertSee('data-report-creator>· 示範客戶<', false);
     }
 
     public function test_creator_filter_narrows_the_list_and_survives_paging_sorting_and_view_switch(): void
     {
         $this->seedMixedReports();
-        FeedbackReport::factory()->for($this->project)->byDeveloper($this->alex)->count(55)->create();
+        FeedbackReport::factory()->for($this->project)->byDeveloper($this->devA)->count(55)->create();
         $this->actingAsOwner();
 
-        $filter = 'developer:'.$this->alex->id;
+        $filter = 'developer:'.$this->devA->id;
         $html = $this->get(route('feedback.portal', $this->project).'?creator='.urlencode($filter).'&sort=title&direction=asc')
             ->assertOk()
             ->assertSee('共 59 題（篩選後 56 題）', false)
@@ -181,16 +181,16 @@ class FeedbackCreatorTest extends TestCase
             ->assertDontSee('data-report-row="'.FeedbackReport::firstWhere('title', 'client-1')->public_id.'"', false)
             ->getContent();
 
-        $this->assertStringContainsString('creator=developer%3A'.$this->alex->id, $html);
+        $this->assertStringContainsString('creator=developer%3A'.$this->devA->id, $html);
         preg_match_all('/<a href="([^"]*creator=[^"]*page=2[^"]*|[^"]*page=2[^"]*creator=[^"]*)"/', $html, $pager);
         $this->assertNotEmpty($pager[1], 'pagination links should keep the creator filter');
         $this->assertMatchesRegularExpression('/data-view-mode="board"[^>]*>/', $html);
         preg_match('/<a href="([^"]*)"[^>]*data-view-mode="board"/', $html, $board);
-        $this->assertStringContainsString('creator=developer%3A'.$this->alex->id, html_entity_decode($board[1]));
+        $this->assertStringContainsString('creator=developer%3A'.$this->devA->id, html_entity_decode($board[1]));
 
         $this->get(route('feedback.portal', $this->project).'?creator=shared')->assertSee('共 59 題（篩選後 1 題）', false);
         $this->get(route('feedback.portal', $this->project).'?creator=client')->assertSee('共 59 題（篩選後 1 題）', false);
-        $this->get(route('feedback.portal', $this->project).'?creator=developer:'.$this->nick->id)->assertSee('共 59 題（篩選後 1 題）', false);
+        $this->get(route('feedback.portal', $this->project).'?creator=developer:'.$this->devB->id)->assertSee('共 59 題（篩選後 1 題）', false);
         $this->get(route('feedback.portal', $this->project).'?creator=bogus')->assertSee('共 59 題', false)->assertDontSee('篩選後', false);
     }
 
@@ -205,25 +205,25 @@ class FeedbackCreatorTest extends TestCase
             ->assertDontSee('data-creator-filter', false)
             ->assertDontSee('data-report-creator', false)
             ->assertDontSee('建立者')
-            ->assertDontSee('Alex')
-            ->assertDontSee('Nick')
+            ->assertDontSee('dev-a')
+            ->assertDontSee('dev-b')
             ->getContent();
 
         $this->assertStringContainsString('data-report-row="'.$this->reportTitled('client-1')->public_id.'"', $html);
-        foreach (['alex-1', 'nick-1', 'shared-1'] as $title) {
+        foreach (['dev-a-1', 'dev-b-1', 'shared-1'] as $title) {
             $this->assertStringNotContainsString('data-report-row="'.$this->reportTitled($title)->public_id.'"', $html);
             $this->assertStringNotContainsString($title, $html);
         }
 
         $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
-            ->assertDontSee('alex-1')->assertDontSee('data-report-creator', false);
+            ->assertDontSee('dev-a-1')->assertDontSee('data-report-creator', false);
     }
 
     public function test_teacher_numbers_are_renumbered_over_visible_reports_only(): void
     {
         $this->project->feedbackReports()->delete();
         $oldest = $this->makeReport('老師最舊', now()->subDays(5));
-        $this->makeReport('開發者夾中間', now()->subDays(4), 'alex');
+        $this->makeReport('開發者夾中間', now()->subDays(4), 'dev-a');
         $middle = $this->makeReport('老師中間', now()->subDays(3));
         $this->makeReport('共用夾中間', now()->subDays(2), 'shared');
         $newest = $this->makeReport('老師最新', now()->subDay());
@@ -274,7 +274,7 @@ class FeedbackCreatorTest extends TestCase
     {
         $attachment = null;
 
-        foreach (['alex-1', 'shared-1'] as $title) {
+        foreach (['dev-a-1', 'shared-1'] as $title) {
             $this->seedMixedReports();
             $report = $this->reportTitled($title);
             $attachment = FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id]);
@@ -306,7 +306,7 @@ class FeedbackCreatorTest extends TestCase
     public function test_owner_can_still_use_developer_reports(): void
     {
         $this->seedMixedReports();
-        $report = $this->reportTitled('alex-1');
+        $report = $this->reportTitled('dev-a-1');
         $this->actingAsOwner();
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
@@ -318,8 +318,8 @@ class FeedbackCreatorTest extends TestCase
     {
         $report = $this->reportTitled('client-1', create: true);
 
-        $this->loginAs('alex', 'dev-a-pass');
-        $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => 'Alex 說'])->assertRedirect();
+        $this->loginAs('dev-a', 'dev-a-pass');
+        $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => 'dev-a 說'])->assertRedirect();
 
         $this->expireSession();
         $this->get(route('feedback.owner.authenticate', $this->project).'?token='.$this->ownerToken);
@@ -330,11 +330,11 @@ class FeedbackCreatorTest extends TestCase
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '老師說'])->assertRedirect();
 
         $names = $report->feedbackMessages()->orderBy('id')->pluck('author_name', 'body')->all();
-        $this->assertSame(['Alex 說' => 'Alex', '共用說' => '開發者', '老師說' => '老師'], $names);
+        $this->assertSame(['dev-a 說' => 'dev-a', '共用說' => '開發者', '老師說' => '老師'], $names);
         $this->assertSame(FeedbackAuthorType::Owner, $report->feedbackMessages()->orderBy('id')->first()->author_type);
     }
 
-    public function test_migration_backfills_existing_reports_as_client_and_names_the_question_bank_teacher(): void
+    public function test_migration_backfills_existing_reports_as_client_without_naming_any_project(): void
     {
         $bank = FeedbackProject::factory()->create(['slug' => 'demo-project']);
         $legacy = FeedbackReport::factory()->for($bank)->create();
@@ -346,7 +346,7 @@ class FeedbackCreatorTest extends TestCase
 
         $this->assertSame(FeedbackCreatorType::Client, $legacy->refresh()->creator_type);
         $this->assertNull($legacy->creator_developer_id);
-        $this->assertSame('示範客戶', $bank->refresh()->client_display_name);
+        $this->assertNull($bank->refresh()->client_display_name);
         $this->assertNull($this->project->refresh()->client_display_name);
     }
 
@@ -364,8 +364,8 @@ class FeedbackCreatorTest extends TestCase
     {
         $this->project->feedbackReports()->delete();
         $this->makeReport('client-1', now()->subDays(4));
-        $this->makeReport('alex-1', now()->subDays(3), 'alex');
-        $this->makeReport('nick-1', now()->subDays(2), 'nick');
+        $this->makeReport('dev-a-1', now()->subDays(3), 'dev-a');
+        $this->makeReport('dev-b-1', now()->subDays(2), 'dev-b');
         $this->makeReport('shared-1', now()->subDay(), 'shared');
     }
 
@@ -373,8 +373,8 @@ class FeedbackCreatorTest extends TestCase
     {
         $factory = FeedbackReport::factory()->for($this->project);
         $factory = match ($by) {
-            'alex' => $factory->byDeveloper($this->alex),
-            'nick' => $factory->byDeveloper($this->nick),
+            'dev-a' => $factory->byDeveloper($this->devA),
+            'dev-b' => $factory->byDeveloper($this->devB),
             'shared' => $factory->byOwnerShared(),
             default => $factory,
         };

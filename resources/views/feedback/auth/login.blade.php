@@ -2,11 +2,11 @@
     <section class="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <p class="text-sm font-semibold text-teal-700">{{ $project->name }}</p>
         @if ($isOwnerLogin)
-            <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-950">開發者登入</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">這個頁面需要開發者權限，請輸入開發者帳號密碼。</p>
+            <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-950">{{ config('feedback.labels.owner') }}登入</h1>
+            <p class="mt-2 text-sm leading-6 text-slate-600">這個頁面需要{{ config('feedback.labels.owner') }}權限，請輸入{{ config('feedback.labels.owner') }}帳號密碼。</p>
         @else
             <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-950">登入問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">連線逾時或尚未登入，請輸入帳號密碼；也可以直接使用開發者提供的專屬連結。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">連線逾時或尚未登入，請輸入帳號密碼；也可以直接使用{{ config('feedback.labels.owner') }}提供的專屬連結。</p>
         @endif
 
         <form method="POST" action="{{ route('feedback.login.store', $project) }}" class="mt-6 grid gap-5">

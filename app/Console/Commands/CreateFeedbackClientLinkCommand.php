@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 #[Signature('feedback:client-link {project : 回報專案 slug}')]
-#[Description('建立或更新老師的私密問題清單入口')]
+#[Description('建立或更新客戶的私密問題清單入口')]
 class CreateFeedbackClientLinkCommand extends Command
 {
     public function handle(): int
@@ -25,9 +25,9 @@ class CreateFeedbackClientLinkCommand extends Command
         $clientToken = Str::random(48);
         $project->update(['client_token_hash' => hash('sha256', $clientToken)]);
 
-        $this->components->info("已建立老師入口：{$project->name}");
+        $this->components->info("已建立客戶入口：{$project->name}");
         $this->line(route('feedback.client.authenticate', $project).'?token='.$clientToken);
-        $this->components->warn('舊的老師入口已失效，請安全保存新連結。');
+        $this->components->warn('舊的客戶入口已失效，請安全保存新連結。');
 
         return self::SUCCESS;
     }

@@ -148,8 +148,8 @@ class FeedbackReport extends Model
     {
         return match ($this->creator_type) {
             FeedbackCreatorType::Client => $this->feedbackProject->clientLabel(),
-            FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? '開發者',
-            FeedbackCreatorType::OwnerShared => '開發者',
+            FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? config('feedback.labels.owner'),
+            FeedbackCreatorType::OwnerShared => config('feedback.labels.owner'),
         };
     }
 

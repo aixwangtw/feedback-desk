@@ -27,11 +27,13 @@ class FeedbackLoginController extends Controller
             return redirect()->intended(route('feedback.portal', $feedbackProject));
         }
 
+        $prefillEnabled = (bool) config('feedback.login_prefill.enabled');
+
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
             'isOwnerLogin' => false,
-            'prefillUsername' => (string) $feedbackProject->login_prefill_username,
-            'prefillPassword' => (string) $feedbackProject->login_prefill_password,
+            'prefillUsername' => $prefillEnabled ? (string) $feedbackProject->login_prefill_username : '',
+            'prefillPassword' => $prefillEnabled ? (string) $feedbackProject->login_prefill_password : '',
         ]);
     }
 
@@ -45,11 +47,13 @@ class FeedbackLoginController extends Controller
             return redirect()->intended(route('feedback.owner.index', $feedbackProject));
         }
 
+        $prefillEnabled = (bool) config('feedback.login_prefill.enabled');
+
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
             'isOwnerLogin' => true,
-            'prefillUsername' => (string) config('feedback.login_prefill.owner.username'),
-            'prefillPassword' => (string) config('feedback.login_prefill.owner.password'),
+            'prefillUsername' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.username') : '',
+            'prefillPassword' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.password') : '',
         ]);
     }
 
@@ -144,7 +148,9 @@ class FeedbackLoginController extends Controller
         $developer = null;
         $role = null;
 
-        if (hash_equals((string) config('feedback.accounts.owner.username'), $username)) {
+        $sharedOwnerUsername = (string) config('feedback.accounts.owner.username');
+
+        if ($sharedOwnerUsername !== '' && hash_equals($sharedOwnerUsername, $username)) {
             $role = FeedbackAccess::ROLE_OWNER;
             $hash = config('feedback.accounts.owner.password_hash');
         } elseif ($developer = FeedbackDeveloper::where('username', $username)->first()) {

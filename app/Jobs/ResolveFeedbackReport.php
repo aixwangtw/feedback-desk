@@ -99,7 +99,7 @@ class ResolveFeedbackReport implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        $summary = $exception?->getMessage() ?? '自動處理失敗，請由開發者檢查執行紀錄。';
+        $summary = $exception?->getMessage() ?? '自動處理失敗，請由'.config('feedback.labels.owner').'檢查執行紀錄。';
 
         DB::transaction(function () use ($summary): void {
             $this->run->update([

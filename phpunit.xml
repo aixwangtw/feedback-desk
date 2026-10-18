@@ -27,6 +27,13 @@
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
+        <env name="FEEDBACK_OWNER_USERNAME" value="admin"/>
+        <env name="FEEDBACK_CLIENT_USERNAME" value="test"/>
+        <env name="FEEDBACK_LOGIN_PREFILL_ENABLED" value="true"/>
+        <env name="FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME" value="admin"/>
+        <env name="FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD" value="owner-prefill-pass"/>
+        <env name="FEEDBACK_LABEL_CLIENT" value="老師"/>
+        <env name="FEEDBACK_LABEL_OWNER" value="開發者"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

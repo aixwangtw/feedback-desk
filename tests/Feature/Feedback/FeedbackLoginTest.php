@@ -19,7 +19,7 @@ class FeedbackLoginTest extends TestCase
 
     private const OWNER_PASSWORD = 'owner-test-password';
 
-    private const CLIENT_PASSWORD = 'change-me';
+    private const CLIENT_PASSWORD = 'client-pass';
 
     protected function setUp(): void
     {
@@ -40,7 +40,7 @@ class FeedbackLoginTest extends TestCase
             ->assertSee('name="username"', false)
             ->assertSee('name="password"', false)
             ->assertSee('name="username" value="test"', false)
-            ->assertSee('type="password" value="change-me"', false)
+            ->assertSee('type="password" value="client-pass"', false)
             ->assertDontSee(self::OWNER_PASSWORD);
     }
 
@@ -86,7 +86,7 @@ class FeedbackLoginTest extends TestCase
             ->assertOk()
             ->assertSee('開發者登入')
             ->assertSee('name="username" value="admin"', false)
-            ->assertSee('type="password" value="change-me"', false)
+            ->assertSee('type="password" value="owner-prefill-pass"', false)
             ->assertDontSee('value="test"', false);
 
         $this->from(route('feedback.owner.login', $project))
@@ -142,7 +142,7 @@ class FeedbackLoginTest extends TestCase
             ->assertOk()
             ->assertSee('登入問題清單')
             ->assertSee('name="username" value="test"', false)
-            ->assertSee('type="password" value="change-me"', false);
+            ->assertSee('type="password" value="client-pass"', false);
     }
 
     public function test_failed_login_keeps_the_typed_username_instead_of_the_prefill(): void
@@ -345,7 +345,7 @@ class FeedbackLoginTest extends TestCase
 
     public function test_owner_and_developer_accounts_work_on_every_project(): void
     {
-        $developer = FeedbackDeveloper::factory()->create(['username' => 'alex', 'password_hash' => Hash::make('dev-pass')]);
+        $developer = FeedbackDeveloper::factory()->create(['username' => 'dev-a', 'password_hash' => Hash::make('dev-pass')]);
         $clientB = FeedbackProject::factory()->withoutClientAccount()->create();
 
         $this->login($clientB, 'admin', self::OWNER_PASSWORD);
@@ -464,6 +464,49 @@ class FeedbackLoginTest extends TestCase
 
         $this->travel(61)->minutes();
         $this->failLogin($project, 'late')->assertSessionHasErrors('username');
+    }
+
+    public function test_login_pages_show_no_credentials_when_prefill_is_disabled(): void
+    {
+        config()->set('feedback.login_prefill.enabled', false);
+        $project = FeedbackProject::factory()->create();
+
+        $this->get(route('feedback.login', $project))
+            ->assertOk()
+            ->assertSee('name="username" value=""', false)
+            ->assertSee('type="password" value=""', false)
+            ->assertDontSee('client-pass')
+            ->assertDontSee('owner-prefill-pass');
+
+        $this->get(route('feedback.owner.login', $project))
+            ->assertOk()
+            ->assertSee('name="username" value=""', false)
+            ->assertSee('type="password" value=""', false)
+            ->assertDontSee('owner-prefill-pass')
+            ->assertDontSee('value="admin"', false);
+    }
+
+    public function test_shared_owner_account_cannot_log_in_without_a_configured_password(): void
+    {
+        config()->set('feedback.accounts.owner.password_hash', null);
+        $project = FeedbackProject::factory()->create();
+
+        foreach (['admin', 'owner-prefill-pass', ''] as $password) {
+            $this->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => $password])
+                ->assertSessionHasErrors();
+        }
+
+        $this->assertFalse(app(FeedbackAccess::class)->isOwner($project));
+    }
+
+    public function test_shared_owner_login_is_refused_when_no_username_is_configured(): void
+    {
+        config()->set('feedback.accounts.owner.username', null);
+        $project = FeedbackProject::factory()->create();
+
+        $this->post(route('feedback.login.store', $project), ['username' => 'admin', 'password' => self::OWNER_PASSWORD])
+            ->assertSessionHasErrors('username');
+        $this->assertFalse(app(FeedbackAccess::class)->isOwner($project));
     }
 
     private function failLogin(FeedbackProject $project, string $username): TestResponse

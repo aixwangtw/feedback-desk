@@ -24,8 +24,6 @@ return new class extends Migration
 
         // 既有的單全部都是老師建立的。
         DB::table('feedback_reports')->update(['creator_type' => 'client', 'creator_developer_id' => null]);
-
-        DB::table('feedback_projects')->where('slug', 'demo-project')->update(['client_display_name' => '示範客戶']);
     }
 
     /**

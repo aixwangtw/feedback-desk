@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 #[Signature('feedback:developer {username : 登入帳號} {--name= : 顯示名稱；新帳號省略則用帳號} {--password= : 指定密碼；省略則產生隨機密碼}')]
-#[Description('建立開發者帳號，或重設既有開發者帳號的密碼（明文只顯示這一次）')]
+#[Description('建立開發團隊帳號，或重設既有開發團隊帳號的密碼（明文只顯示這一次）')]
 class CreateFeedbackDeveloperCommand extends Command
 {
     public function handle(): int
@@ -55,7 +55,7 @@ class CreateFeedbackDeveloperCommand extends Command
         $developer->password_hash = Hash::make($password);
         $developer->save();
 
-        $this->components->info(($created ? '已建立' : '已更新').'開發者帳號');
+        $this->components->info(($created ? '已建立' : '已更新').'開發團隊帳號');
         $this->line("顯示名稱：{$developer->name}");
         $this->line("帳號：{$developer->username}");
 

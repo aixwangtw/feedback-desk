@@ -19,7 +19,7 @@ use Illuminate\Http\File;
     {--image=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內）}')]
 #[Description('寫入回饋單的「調整說明」文字與圖片（不改動回饋單狀態）')]
 #[Help(<<<'HELP'
-寫入回饋單的「調整說明」，老師與開發者都會在回饋單內容下方看到。
+寫入回饋單的「調整說明」，客戶與開發團隊都會在回饋單內容下方看到。
 
   覆寫文字：
     php artisan feedback:adjust my-project 0199c3a1-... --note="已修正登入頁排版"
@@ -32,9 +32,9 @@ use Illuminate\Http\File;
 
 說明：
   - report 參數用網址裡的 public_id（UUID），或資料庫 id；不要用畫面上的「編號」（編號會隨新回饋單變動）。
-  - 圖片會複製到私有儲存，原檔不會被移動或刪除；只有登入的老師／開發者能看。
-  - 指令不會改動回饋單狀態；要改狀態請到開發者頁面操作。
-  - 刪除調整圖片請到開發者頁面的回饋單詳情操作。
+  - 圖片會複製到私有儲存，原檔不會被移動或刪除；只有登入的客戶／開發團隊能看。
+  - 指令不會改動回饋單狀態；要改狀態請到開發團隊頁面操作。
+  - 刪除調整圖片請到開發團隊頁面的回饋單詳情操作。
 HELP)]
 class UpdateFeedbackAdjustmentCommand extends Command
 {

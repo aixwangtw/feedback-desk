@@ -15,15 +15,15 @@ class FeedbackClientAccountCommandTest extends TestCase
     {
         $project = FeedbackProject::factory()->withoutClientAccount()->create(['slug' => 'client-b']);
 
-        $this->artisan('feedback:client-account', ['project' => 'client-b', 'username' => 'client-b', '--password' => 'change-me', '--prefill' => true])
+        $this->artisan('feedback:client-account', ['project' => 'client-b', 'username' => 'client-b', '--password' => 'client-pass', '--prefill' => true])
             ->expectsOutputToContain('帳號：client-b')
             ->assertSuccessful();
 
         $project->refresh();
         $this->assertSame('client-b', $project->client_username);
-        $this->assertTrue(Hash::check('change-me', $project->client_password_hash));
+        $this->assertTrue(Hash::check('client-pass', $project->client_password_hash));
         $this->assertSame('client-b', $project->login_prefill_username);
-        $this->assertSame('change-me', $project->login_prefill_password);
+        $this->assertSame('client-pass', $project->login_prefill_password);
     }
 
     public function test_it_generates_a_random_password_without_prefill_and_clears_old_prefill(): void

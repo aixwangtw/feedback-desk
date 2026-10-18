@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
 import { encodePath } from '../api';
@@ -120,12 +120,35 @@ function safeName(name: string): string {
     return basename(name).replace(/[^\w.\-一-鿿]+/g, '_').slice(0, 80) || 'image';
 }
 
+/** ~/.cache/feedback-desk (XDG_CACHE_HOME; %LOCALAPPDATA% on Windows): private to this user, unlike /tmp. */
+export function cacheDir(rt: Runtime): string {
+    if (rt.platform === 'win32' && rt.env.LOCALAPPDATA) {
+        return join(rt.env.LOCALAPPDATA, 'feedback-desk', 'cache');
+    }
+    return join(rt.env.XDG_CACHE_HOME || join(rt.home, '.cache'), 'feedback-desk');
+}
+
+/** Creates each level with mode 700 so other users on the machine cannot list or read attachments. */
+function makePrivateDir(base: string, parts: string[]): string {
+    let current = base;
+    mkdirSync(current, { recursive: true, mode: 0o700 });
+    for (const part of ['', ...parts]) {
+        current = part === '' ? current : join(current, part);
+        mkdirSync(current, { recursive: true, mode: 0o700 });
+        try {
+            chmodSync(current, 0o700);
+        } catch {
+            // Windows: ACLs
+        }
+    }
+    return current;
+}
+
 async function downloadAll(rt: Runtime, api: ReturnType<typeof apiFor>, detail: ReportDetail, dir: string): Promise<void> {
-    mkdirSync(dir, { recursive: true });
     const all = [...detail.attachments, ...detail.adjustment_attachments, ...detail.messages.flatMap((message) => message.attachments)];
     for (const attachment of all) {
         const path = join(dir, `${attachment.id}-${safeName(attachment.original_name)}`);
-        writeFileSync(path, await api.download(attachment.url));
+        writeFileSync(path, await api.download(attachment.url), { mode: 0o600 });
         attachment.path = path;
     }
 }
@@ -137,7 +160,8 @@ export async function report(rt: Runtime, argv: string[]): Promise<number> {
     const api = apiFor(rt, str(args, 'url'));
     const detail = await api.get<ReportDetail>(`/projects/${encodePath(slug)}/reports/${encodePath(ref)}`);
     if (!bool(args, 'no-download')) {
-        const dir = str(args, 'download-dir') ?? join(rt.tmp, 'feedback-desk', safeName(slug), detail.public_id);
+        const explicit = str(args, 'download-dir');
+        const dir = explicit ? (mkdirSync(explicit, { recursive: true, mode: 0o700 }), explicit) : makePrivateDir(cacheDir(rt), [safeName(slug), safeName(detail.public_id)]);
         await downloadAll(rt, api, detail, dir);
     }
     if (bool(args, 'json')) {

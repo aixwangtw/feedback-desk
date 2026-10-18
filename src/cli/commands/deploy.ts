@@ -25,6 +25,28 @@ export function hashPassword(password: string, iterations = PASSWORD_ITERATIONS)
     return `pbkdf2_sha256$${iterations}$${salt.toString('base64')}$${hash.toString('base64')}`;
 }
 
+/**
+ * present: the Worker has APP_SECRET. missing: the Worker exists without it. no-worker: first
+ * deploy. Any other failure stops the deploy rather than guessing.
+ */
+export async function secretState(rt: Runtime, dir: string): Promise<'present' | 'missing' | 'no-worker'> {
+    const list = await wrangler(rt, ['secret', 'list', '--format', 'json'], { cwd: dir });
+    const output = `${list.stdout}\n${list.stderr}`;
+    if (list.code === 0) {
+        try {
+            const start = list.stdout.indexOf('[');
+            const names = (JSON.parse(list.stdout.slice(start)) as Array<{ name: string }>).map((item) => item.name);
+            return names.includes('APP_SECRET') ? 'present' : 'missing';
+        } catch {
+            throw new CliError(`無法解析 wrangler secret list 的輸出：${list.stdout.slice(0, 300)}`);
+        }
+    }
+    if (/Worker "[^"]*" not found|This Worker does not exist|code: 10007/i.test(output)) {
+        return 'no-worker';
+    }
+    throw new CliError(`查詢 Worker 的 secret 失敗，為了不覆蓋既有的 APP_SECRET 先停止部署：${output.trim().slice(-600)}`);
+}
+
 const WORKER_NAME = /^[a-z0-9][a-z0-9-]{0,52}[a-z0-9]$/;
 
 export async function init(rt: Runtime, argv: string[]): Promise<number> {
@@ -60,7 +82,7 @@ export async function init(rt: Runtime, argv: string[]): Promise<number> {
 }
 
 export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { dir: { type: 'string' }, 'skip-migrations': { type: 'boolean' } });
+    const args = parse(argv, { dir: { type: 'string' }, 'skip-migrations': { type: 'boolean' }, 'new-secret': { type: 'boolean' } });
     const dir = deployDir(rt, str(args, 'dir'));
     const config = readWranglerConfig(dir);
     const problems = checkWranglerConfig(config);
@@ -70,32 +92,42 @@ export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
     refreshArtifacts(dir);
     await ensureWranglerLogin(rt, dir);
 
-    const secretList = await wrangler(rt, ['secret', 'list', '--format', 'json'], { cwd: dir });
-    let hasSecret = false;
-    if (secretList.code === 0) {
-        try {
-            const start = secretList.stdout.indexOf('[');
-            hasSecret = (JSON.parse(secretList.stdout.slice(start)) as Array<{ name: string }>).some((secret) => secret.name === 'APP_SECRET');
-        } catch {
-            hasSecret = false;
-        }
+    const secret = await secretState(rt, dir);
+    if (secret === 'missing' && !bool(args, 'new-secret')) {
+        throw new CliError(
+            'Worker 已存在但沒有 APP_SECRET（網站目前會回 500）。確定要產生新的請加 --new-secret；所有人的登入會失效，已發出的下載網址也會失效。',
+        );
     }
 
     const deployArgs = ['deploy'];
     let secretsDir: string | null = null;
-    if (!hasSecret) {
-        // The secret goes to Cloudflare once and is never written into the deploy folder.
+    const cleanup = () => {
+        if (secretsDir) {
+            rmSync(secretsDir, { recursive: true, force: true });
+            secretsDir = null;
+        }
+    };
+    const onInterrupt = () => {
+        cleanup();
+        process.exit(130);
+    };
+    if (secret !== 'present') {
+        // The secret goes to Cloudflare once and is never kept in the deploy folder.
         secretsDir = mkdtempSync(join(rt.tmp, 'feedback-desk-'));
         const secretsFile = join(secretsDir, 'secrets.json');
         writeFileSync(secretsFile, JSON.stringify({ APP_SECRET: randomBytes(32).toString('base64url') }), { mode: 0o600 });
         deployArgs.push('--secrets-file', secretsFile);
-        rt.out('第一次部署：會一併設定 APP_SECRET（Cloudflare 上的加密變數，用來加密登入 cookie 與簽署下載網址）。');
+        process.once('SIGINT', onInterrupt);
+        process.once('SIGTERM', onInterrupt);
+        rt.out(secret === 'no-worker' ? '第一次部署：會一併設定 APP_SECRET（Cloudflare 上的加密變數，用來加密登入 cookie 與簽署下載網址）。' : '依 --new-secret 產生新的 APP_SECRET。');
     }
     let result;
     try {
         result = await wrangler(rt, deployArgs, { cwd: dir, stream: true });
     } finally {
-        if (secretsDir) rmSync(secretsDir, { recursive: true, force: true });
+        cleanup();
+        process.removeListener('SIGINT', onInterrupt);
+        process.removeListener('SIGTERM', onInterrupt);
     }
     if (result.code !== 0) {
         throw new CliError('wrangler deploy 失敗，訊息見上方。');

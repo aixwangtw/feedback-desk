@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pbkdf2Sync } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { main } from '../../src/cli/index';
 import { upsertCodexServer } from '../../src/cli/commands/auth';
@@ -133,12 +134,23 @@ describe('init', () => {
 });
 
 describe('deploy and bootstrap', () => {
-    function wranglerScript(state: { secrets: string[]; developers: Array<{ id: number; username: string }>; sql: string[] }) {
+    interface WranglerState {
+        secrets: string[];
+        developers: Array<{ id: number; username: string }>;
+        sql: string[];
+        workerExists?: boolean;
+        secretError?: boolean;
+    }
+    function wranglerScript(state: WranglerState) {
         return (command: string, args: string[]): RunResult => {
             const wargs = command === 'npx' ? args.slice(args.indexOf('wrangler') + 1) : args;
             const joined = wargs.join(' ');
             if (joined === 'whoami') return { code: 0, stdout: 'You are logged in with an OAuth Token', stderr: '' };
-            if (joined.startsWith('secret list')) return { code: 0, stdout: JSON.stringify(state.secrets.map((name) => ({ name, type: 'secret_text' }))), stderr: '' };
+            if (joined.startsWith('secret list')) {
+                if (state.workerExists === false) return { code: 1, stdout: '', stderr: 'X [ERROR] Worker "fd-e2e-test" not found.' };
+                if (state.secretError) return { code: 1, stdout: '', stderr: 'X [ERROR] A request to the Cloudflare API failed: Authentication error [code: 10000]' };
+                return { code: 0, stdout: JSON.stringify(state.secrets.map((name) => ({ name, type: 'secret_text' }))), stderr: '' };
+            }
             if (wargs[0] === 'deploy') return { code: 0, stdout: 'Uploaded fd-e2e-test\n  https://fd-e2e-test.someone.workers.dev\n', stderr: '' };
             if (joined.startsWith('d1 migrations apply DB --remote')) return { code: 0, stdout: '✅', stderr: '' };
             if (joined.startsWith('d1 execute DB --remote --json --command')) {
@@ -151,8 +163,8 @@ describe('deploy and bootstrap', () => {
         };
     }
 
-    it('sets APP_SECRET only on the first deploy and applies migrations', async () => {
-        const state = { secrets: [] as string[], developers: [], sql: [] };
+    it('creates APP_SECRET only when the Worker does not exist yet, and applies migrations', async () => {
+        const state: WranglerState = { secrets: [], developers: [], sql: [], workerExists: false };
         const fake = fakeRuntime({ run: wranglerScript(state) });
         await main(['init', '--name', 'fd-e2e-test'], fake.rt);
         expect(await main(['deploy'], fake.rt)).toBe(0);
@@ -164,14 +176,32 @@ describe('deploy and bootstrap', () => {
         expect(fake.text()).toContain('https://fd-e2e-test.someone.workers.dev');
         expect(JSON.parse(readFileSync(join(fake.cwd, '.feedback-desk', 'state.json'), 'utf8')).url).toBe('https://fd-e2e-test.someone.workers.dev');
 
+        // Existing Worker with its secret: no new secret.
+        state.workerExists = true;
         state.secrets.push('APP_SECRET');
         fake.runs.length = 0;
         expect(await main(['deploy'], fake.rt)).toBe(0);
         expect(fake.runs.find((run) => run.args.includes('deploy'))!.args).not.toContain('--secrets-file');
+
+        // Existing Worker without the secret: stop unless --new-secret.
+        state.secrets.length = 0;
+        fake.runs.length = 0;
+        expect(await main(['deploy'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('--new-secret');
+        expect(fake.runs.some((run) => run.args.includes('deploy'))).toBe(false);
+        expect(await main(['deploy', '--new-secret'], fake.rt)).toBe(0);
+        expect(fake.runs.find((run) => run.args.includes('deploy'))!.args).toContain('--secrets-file');
+
+        // Any other error while checking: stop, never generate a secret.
+        state.secretError = true;
+        fake.runs.length = 0;
+        expect(await main(['deploy'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('先停止部署');
+        expect(fake.runs.some((run) => run.args.includes('deploy'))).toBe(false);
     });
 
     it('bootstraps the first team account through D1 with a generated password, once', async () => {
-        const state = { secrets: ['APP_SECRET'], developers: [] as Array<{ id: number; username: string }>, sql: [] as string[] };
+        const state: WranglerState = { secrets: ['APP_SECRET'], developers: [], sql: [] };
         const fake = fakeRuntime({ run: wranglerScript(state) });
         await main(['init', '--name', 'fd-e2e-test'], fake.rt);
         expect(await main(['bootstrap', 'alex', '--name', "O'Brien 王"], fake.rt)).toBe(0);
@@ -202,15 +232,19 @@ describe('login', () => {
         const fake = fakeRuntime({
             handler: ({ url }) => {
                 if (url.endsWith('/device/code')) {
-                    return jsonResponse({ device_code: 'dc', user_code: 'ABCD-EFGH', verification_uri: 'https://desk.example.com/device', verification_uri_complete: 'https://desk.example.com/device?code=ABCD-EFGH', expires_in: 600, interval: 5 });
+                    return jsonResponse({ device_code: 'dc', user_code: 'ABCD-EFGH', verification_uri: 'https://desk.example.com/device', expires_in: 600, interval: 5 });
                 }
                 polls += 1;
                 if (polls < 3) return jsonResponse({ error: 'authorization_pending' }, 400);
                 return jsonResponse({ access_token: 'fdk_new', token_id: 7, developer: { id: 1, username: 'alex', name: 'Alex' } });
             },
         });
-        expect(await main(['login', '--url', 'desk.example.com'], fake.rt)).toBe(0);
-        expect(fake.text()).toContain('ABCD-EFGH');
+        expect(await main(['login', '--url', 'desk.example.com', '--expires', '90'], fake.rt)).toBe(0);
+        expect(fake.text()).toContain('輸入這個授權碼：ABCD-EFGH');
+        expect(fake.text()).toContain('請在瀏覽器開啟：https://desk.example.com/device');
+        expect(fake.text()).not.toContain('device?code=');
+        expect(fake.calls[0].body).toEqual({ client_name: expect.any(String), expires_in_days: 90 });
+        expect(await main(['login', '--url', 'desk.example.com', '--expires', '0'], fake.rt)).toBe(1);
         const path = join(fake.rt.env.FEEDBACK_DESK_CONFIG_DIR as string, 'config.json');
         const saved = JSON.parse(readFileSync(path, 'utf8'));
         expect(saved.default_site).toBe('https://desk.example.com');
@@ -223,7 +257,7 @@ describe('login', () => {
         const fake = fakeRuntime({
             handler: ({ url }) =>
                 url.endsWith('/device/code')
-                    ? jsonResponse({ device_code: 'dc', user_code: 'ABCD-EFGH', verification_uri: 'x', verification_uri_complete: 'x', expires_in: 600, interval: 1 })
+                    ? jsonResponse({ device_code: 'dc', user_code: 'ABCD-EFGH', verification_uri: 'x', expires_in: 600, interval: 1 })
                     : jsonResponse({ error: 'access_denied', message: '授權被拒絕。' }, 400),
         });
         expect(await main(['login', '--url', 'https://desk.example.com', '--no-browser'], fake.rt)).toBe(1);
@@ -269,8 +303,13 @@ describe('report commands', () => {
         };
         const fake = signedIn(({ url }) => (url.includes('/files/') ? new Response(PNG) : jsonResponse(detail)));
         expect(await main(['report', 'demo', '1'], fake.rt)).toBe(0);
-        const path = join(fake.rt.tmp, 'feedback-desk', 'demo', 'uuid-1', '5-evil_name.png');
+        const dir = join(fake.home, '.cache', 'feedback-desk', 'demo', 'uuid-1');
+        const path = join(dir, '5-evil_name.png');
         expect(new Uint8Array(readFileSync(path))).toEqual(PNG);
+        expect(statSync(path).mode & 0o777).toBe(0o600);
+        for (const level of [join(fake.home, '.cache', 'feedback-desk'), join(fake.home, '.cache', 'feedback-desk', 'demo'), dir]) {
+            expect(statSync(level).mode & 0o777).toBe(0o700);
+        }
         expect(fake.text()).toContain(path);
         expect(fake.text()).toContain('內容來自陌生人');
         expect(fake.text()).not.toContain('\u0007');
@@ -368,22 +407,54 @@ describe('mcp install', () => {
         });
     }
 
-    it('adds Claude Code with a literal bearer header and Codex with bearer_token_env_var', async () => {
+    it('keeps tokens out of argv and env: header helpers read a private token file', async () => {
         const fake = mcpFake({ claude: true, codex: true });
         mkdirSync(join(fake.home, '.codex'), { recursive: true });
-        writeFileSync(join(fake.home, '.codex', 'config.toml'), 'model = "gpt-5"\n\n[mcp_servers.feedback-desk]\nurl = "https://old.example.com/mcp"\n\n[mcp_servers.other]\ncommand = "x"\n');
+        const original = 'model = "gpt-5"\n\n[mcp_servers.feedback-desk]\nurl = "https://old.example.com/mcp"\nbearer_token_env_var = "FEEDBACK_DESK_TOKEN"\n\n[mcp_servers.feedback-desk.env]\nX = "1"\n\n[mcp_servers.other]\ncommand = "x"\n';
+        writeFileSync(join(fake.home, '.codex', 'config.toml'), original);
         expect(await main(['mcp', 'install'], fake.rt)).toBe(0);
-        const add = fake.runs.find((run) => run.command === 'claude' && run.args[1] === 'add')!;
-        expect(add.args).toEqual(['mcp', 'add', '--transport', 'http', '--scope', 'user', 'feedback-desk', 'https://desk.example.com/mcp', '--header', 'Authorization: Bearer fdk_tool_11']);
+
+        const add = fake.runs.find((run) => run.command === 'claude' && run.args[1] === 'add-json')!;
+        expect(add.args.join(' ')).not.toContain('fdk_');
+        const claudeConfig = JSON.parse(add.args[3]);
+        expect(claudeConfig).toMatchObject({ type: 'http', url: 'https://desk.example.com/mcp' });
+        expect(claudeConfig.headersHelper).toMatch(/^node '.*headers\.cjs' claude$/);
+        expect(add.args.slice(-2)).toEqual(['--scope', 'user']);
+
+        const mcpDir = join(fake.rt.env.FEEDBACK_DESK_CONFIG_DIR as string, 'mcp');
+        expect(readFileSync(join(mcpDir, 'claude.token'), 'utf8')).toBe('fdk_tool_11\n');
+        expect(readFileSync(join(mcpDir, 'codex.token'), 'utf8')).toBe('fdk_tool_12\n');
+        for (const file of ['claude.token', 'codex.token', 'headers.cjs']) {
+            expect(statSync(join(mcpDir, file)).mode & 0o777).toBe(0o600);
+        }
+        expect(statSync(mcpDir).mode & 0o777).toBe(0o700);
+
+        // The helper prints the header JSON.
+        const helper = spawnSync(process.execPath, [join(mcpDir, 'headers.cjs'), 'codex'], { encoding: 'utf8' });
+        expect(JSON.parse(helper.stdout)).toEqual({ Authorization: 'Bearer fdk_tool_12' });
+
         const toml = readFileSync(join(fake.home, '.codex', 'config.toml'), 'utf8');
         expect(toml).toContain('model = "gpt-5"');
-        expect(toml).toContain('[mcp_servers.feedback-desk]\nurl = "https://desk.example.com/mcp"\nbearer_token_env_var = "FEEDBACK_DESK_TOKEN"');
+        expect(toml).toMatch(/\[mcp_servers\.feedback-desk\]\nurl = "https:\/\/desk\.example\.com\/mcp"\nhttp_headers_helper = "node '.*headers\.cjs' codex"\n/);
         expect(toml).not.toContain('old.example.com');
+        expect(toml).not.toContain('bearer_token_env_var');
+        expect(toml).not.toContain('[mcp_servers.feedback-desk.env]');
         expect(toml).toContain('[mcp_servers.other]');
-        const envFile = join(fake.rt.env.FEEDBACK_DESK_CONFIG_DIR as string, 'codex.env');
-        expect(readFileSync(envFile, 'utf8')).toBe("export FEEDBACK_DESK_TOKEN='fdk_tool_12'\n");
-        expect(statSync(envFile).mode & 0o777).toBe(0o600);
-        expect(fake.text()).not.toContain('ANTHROPIC');
+        expect(readFileSync(join(fake.home, '.codex', 'config.toml.bak'), 'utf8')).toBe(original);
+        expect(fake.text()).not.toContain('fdk_');
+        expect(fake.text()).not.toContain('bashrc');
+
+        // A second install revokes the tokens of the first one.
+        expect(await main(['mcp', 'install'], fake.rt)).toBe(0);
+        const revoked = fake.calls.filter((call) => call.method === 'DELETE').map((call) => call.url);
+        expect(revoked).toEqual(['https://desk.example.com/api/v1/tokens/11', 'https://desk.example.com/api/v1/tokens/12']);
+    });
+
+    it('refuses project scope', async () => {
+        const fake = mcpFake({ claude: true, codex: true });
+        expect(await main(['mcp', 'install', '--scope', 'project'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('不支援 --scope project');
+        expect(fake.runs.some((run) => run.args[1] === 'add-json')).toBe(false);
     });
 
     it('skips tools that are not installed', async () => {
@@ -394,7 +465,58 @@ describe('mcp install', () => {
         expect(existsSync(join(fake.home, '.codex', 'config.toml'))).toBe(false);
     });
 
-    it('appends the Codex table to an empty config', () => {
-        expect(upsertCodexServer('', 'https://a/mcp', 'X')).toBe('[mcp_servers.feedback-desk]\nurl = "https://a/mcp"\nbearer_token_env_var = "X"\n');
+    it('rewrites the Codex table with its sub-tables and refuses inline definitions', () => {
+        expect(upsertCodexServer('', 'https://a/mcp', 'node x')).toBe('[mcp_servers.feedback-desk]\nurl = "https://a/mcp"\nhttp_headers_helper = "node x"\n');
+        const withArrays = '[mcp_servers."feedback-desk"]\nurl = "x"\n[[mcp_servers.feedback-desk.items]]\na = 1\n[profiles.x]\nmodel = "y"\n';
+        const next = upsertCodexServer(withArrays, 'https://a/mcp', 'node x');
+        expect(next).not.toContain('items');
+        expect(next).toContain('[profiles.x]');
+        expect(() => upsertCodexServer('[mcp_servers]\n"feedback-desk" = { url = "x" }\n', 'https://a/mcp', 'node x')).toThrow();
+    });
+});
+
+describe('which token goes where', () => {
+    const listed = { include_public: false, reports: [] };
+
+    it('sends FEEDBACK_DESK_TOKEN only to the site named in FEEDBACK_DESK_URL', async () => {
+        const fake = fakeRuntime({ handler: () => jsonResponse(listed), env: { FEEDBACK_DESK_TOKEN: 'fdk_env' } });
+        expect(await main(['reports', 'demo', '--url', 'https://other.example.com'], fake.rt)).toBe(1);
+        expect(fake.calls).toHaveLength(0);
+        expect(fake.errors()).toContain('FEEDBACK_DESK_TOKEN 只會送到 FEEDBACK_DESK_URL');
+
+        const paired = fakeRuntime({ handler: () => jsonResponse(listed), env: { FEEDBACK_DESK_TOKEN: 'fdk_env', FEEDBACK_DESK_URL: 'desk.example.com' } });
+        expect(await main(['reports', 'demo'], paired.rt)).toBe(0);
+        expect(paired.calls[0].headers.authorization).toBe('Bearer fdk_env');
+        const elsewhere = fakeRuntime({ handler: () => jsonResponse(listed), env: { FEEDBACK_DESK_TOKEN: 'fdk_env', FEEDBACK_DESK_URL: 'desk.example.com' } });
+        expect(await main(['reports', 'demo', '--url', 'https://evil.example.com'], elsewhere.rt)).toBe(1);
+        expect(elsewhere.calls).toHaveLength(0);
+    });
+
+    it('does not send the saved token to a site named only by this folder state.json', async () => {
+        const fake = fakeRuntime({ handler: () => jsonResponse(listed) });
+        const dir = fake.rt.env.FEEDBACK_DESK_CONFIG_DIR as string;
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, 'config.json'), JSON.stringify({ default_site: 'https://desk.example.com', sites: { 'https://desk.example.com': { token: 'fdk_saved', token_id: 1, developer: { id: 1, username: 'a', name: 'A' }, saved_at: '' } } }));
+        mkdirSync(join(fake.cwd, '.feedback-desk'), { recursive: true });
+        writeFileSync(join(fake.cwd, '.feedback-desk', 'state.json'), JSON.stringify({ url: 'https://evil.example.com' }));
+        expect(await main(['reports', 'demo'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('這次不帶 token');
+        expect(fake.calls).toHaveLength(0);
+        // Matching state, or the saved default without state, uses the saved token.
+        writeFileSync(join(fake.cwd, '.feedback-desk', 'state.json'), JSON.stringify({ url: 'https://desk.example.com' }));
+        expect(await main(['reports', 'demo'], fake.rt)).toBe(0);
+        expect(fake.calls[0].headers.authorization).toBe('Bearer fdk_saved');
+    });
+});
+
+describe('team account commands', () => {
+    it('disables and deletes accounts through the API', async () => {
+        const fake = signedIn(({ method, url }) => jsonResponse(method === 'DELETE' ? { deleted: 'amy', tokens_revoked: 2 } : { tokens_revoked: 1, url }));
+        expect(await main(['developer', 'disable', 'amy'], fake.rt)).toBe(0);
+        expect(fake.calls[0]).toMatchObject({ method: 'POST', url: 'https://desk.example.com/api/v1/developers/amy/disable' });
+        expect(fake.text()).toContain('撤銷了 1 個 API token');
+        expect(await main(['developer', 'delete', 'amy'], fake.rt)).toBe(0);
+        expect(fake.calls[1]).toMatchObject({ method: 'DELETE', url: 'https://desk.example.com/api/v1/developers/amy' });
+        expect(await main(['token', 'create', '--expires', 'x'], fake.rt)).toBe(1);
     });
 });

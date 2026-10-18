@@ -128,11 +128,22 @@ export async function developer(rt: Runtime, argv: string[]): Promise<number> {
     if (action === 'list') {
         const { developers } = await api.get<{ developers: Array<{ id: number; username: string; name: string }> }>('/developers');
         if (bool(args, 'json')) return printJson(rt, developers);
-        rt.out(table(['id', '帳號', '顯示名稱'], developers.map((d) => [String(d.id), d.username, d.name])));
+        rt.out(table(['id', '帳號', '顯示名稱', '狀態'], developers.map((d) => [String(d.id), d.username, d.name, (d as { disabled?: boolean }).disabled ? '已停用' : '啟用中'])));
+        return 0;
+    }
+    if (action === 'disable' || action === 'enable' || action === 'delete') {
+        const target = requirePositional(args, 0, '<帳號>');
+        const result =
+            action === 'delete'
+                ? await api.delete<{ deleted: string; tokens_revoked: number }>(`/developers/${encodePath(target)}`)
+                : await api.post<{ tokens_revoked: number }>(`/developers/${encodePath(target)}/${action}`);
+        if (bool(args, 'json')) return printJson(rt, result);
+        const verb = action === 'delete' ? '已刪除' : action === 'disable' ? '已停用' : '已重新啟用';
+        rt.out(`${verb}團隊帳號 ${escapeTerminal(target)}。${action === 'enable' ? '' : `撤銷了 ${result.tokens_revoked} 個 API token；網頁登入也立即失效。`}`);
         return 0;
     }
     if (action !== 'create' && action !== 'reset') {
-        throw new CliError('用法：feedback-desk developer create|reset|list');
+        throw new CliError('用法：feedback-desk developer create|reset|disable|enable|delete|list');
     }
     const username = requirePositional(args, 0, '<帳號>');
     const result =
@@ -144,6 +155,6 @@ export async function developer(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`顯示名稱：${escapeTerminal(result.developer.name)}`);
     rt.out(`帳號：${escapeTerminal(result.developer.username)}`);
     rt.out(`密碼：${result.password}`);
-    rt.out(action === 'create' ? '密碼只會顯示這一次，請交給本人存入密碼管理器。' : '密碼只會顯示這一次；此帳號先前的網頁長效登入已全部失效（CLI token 不受影響，要停用請 token revoke）。');
+    rt.out(action === 'create' ? '密碼只會顯示這一次，請交給本人存入密碼管理器。' : '密碼只會顯示這一次；此帳號先前的網頁登入與所有 API token（CLI、MCP）都已失效，本人要重新 login。');
     return 0;
 }

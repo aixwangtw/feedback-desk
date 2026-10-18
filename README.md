@@ -59,6 +59,8 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
 私密連結只在建立時顯示一次，請存入密碼管理器；用 `project client-link`、`project owner-link` 重發後，舊連結與用它登入的長效登入都會失效。
 
+登入會在這個瀏覽器記住 30 天。按「登出」只清除這個瀏覽器的登入；其他裝置上的登入不受影響。要讓所有裝置都登出：客戶用 `project client-link` 重發連結（連結登入）或 `project client-account` 重設密碼（帳密登入）；團隊成員用 `developer reset`，或 `developer disable` 立即停用。
+
 ## 如何安裝
 
 需要：Node.js 20 以上、一個 Cloudflare 帳號（免費方案即可）。不需要自己的主機。
@@ -97,7 +99,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
    npx feedback-desk login --url https://my-feedback-desk.<你的子網域>.workers.dev
    ```
 
-   會開瀏覽器到你的站，用團隊帳號登入後，確認畫面上的授權碼和終端機相同，按「授權」。token 存在 `~/.config/feedback-desk/config.json`（權限 600）。這個做法在遠端主機、容器裡也能用，因為瀏覽器不必連回執行 CLI 的機器。
+   終端機會顯示一組授權碼並開啟瀏覽器到你的站。用團隊帳號登入後，自己輸入終端機上的授權碼，確認頁面顯示的申請時間與來源是你剛才的操作，再按「授權」。授權碼不會放在網址裡，別人傳來的連結無法替你填好；如果你沒有在自己的終端機執行 login，不要在這個頁面授權。token 存在 `~/.config/feedback-desk/config.json`（權限 600），要讓 token 自動到期可加 `--expires 90`（天）。這個做法在遠端主機、容器裡也能用，因為瀏覽器不必連回執行 CLI 的機器。
 
 5. 建立專案，取得入口連結：
 
@@ -113,7 +115,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
    npx feedback-desk mcp install
    ```
 
-   Claude Code 會用 `claude mcp add --transport http` 加入（token 寫在 Claude Code 自己的設定裡）。Codex 會在 `~/.codex/config.toml` 寫入 `[mcp_servers.feedback-desk]` 並用 `bearer_token_env_var = "FEEDBACK_DESK_TOKEN"` 讀 token；token 存在 `~/.config/feedback-desk/codex.env`，請在 shell 設定檔加上 `source ~/.config/feedback-desk/codex.env`。找不到 `claude` 或 `codex` 指令時會略過並說明。
+   兩個工具各拿一個獨立的 token，存在 `~/.config/feedback-desk/mcp/`（目錄 700、檔案 600）。Claude Code 用 `claude mcp add-json` 加入，設定裡只有 `headersHelper`；Codex 在 `~/.codex/config.toml` 寫入 `[mcp_servers.feedback-desk]` 與 `http_headers_helper`（原檔備份為 `config.toml.bak`）。兩者都是連線時執行一個小程式讀 token 檔、產生 Authorization header，所以 token 不會出現在指令參數（`ps` 看得到的地方）或 shell 環境變數裡，也不必在 `~/.bashrc` 設定任何東西。重新執行會撤銷上一次的 token；只接受 `--scope user`（預設）或 `local`，不接受會進版控的 `project`。找不到 `claude` 或 `codex` 指令時會略過並說明。
 
 套件發布到 npm 之前，可以在 repo 執行 `npm install && npm pack`，再把上面的 `npx feedback-desk` 換成 `npx --package=/路徑/feedback-desk-0.1.0.tgz feedback-desk`。
 
@@ -146,13 +148,14 @@ Workers 免費方案每個請求只有 10 ms 的 CPU 時間。慢速雜湊（bcr
 | `FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_MINUTE` / `_PER_HOUR` | `5` / `30` | 公開回報者留言每個 IP 的上限；團隊留言不受限。 |
 | `FEEDBACK_PUBLIC_UPLOAD_THROTTLE_PER_MINUTE` / `_PER_HOUR` | `10` / `60` | 公開回報者上傳截圖每個 IP 的上限。 |
 | `FEEDBACK_PUBLIC_MAX_ATTACHMENTS` | `15` | 每張公開單的附圖總數上限（含留言附圖）。 |
+| `FEEDBACK_PUBLIC_PENDING_UPLOADS_MAX` / `FEEDBACK_PUBLIC_PENDING_UPLOAD_MB_MAX` | `300` / `500` | 全站還沒送出、等待關聯的公開上傳最多幾個檔、合計幾 MB；超過時所有公開上傳暫時回 429。這些暫存檔 1 小時後刪除。 |
 | `FEEDBACK_TURNSTILE_SITE_KEY` | 空 | Cloudflare Turnstile 的 site key；secret 用 `npx wrangler secret put FEEDBACK_TURNSTILE_SECRET_KEY` 設定，兩個都有才啟用。 |
 
-`APP_SECRET`（加密登入 cookie、簽署下載網址）在第一次部署時自動產生並存成 Cloudflare 的加密變數，不會寫進資料夾。
+`APP_SECRET`（加密登入 cookie、簽署下載網址）只在第一次部署（Worker 還不存在）時自動產生並存成 Cloudflare 的加密變數，不會寫進資料夾。之後部署時查詢失敗會停止，不會重新產生；Worker 存在但缺少它時要加 `deploy --new-secret` 才會產生新的（所有登入會失效）。APP_SECRET 不存在或短於 32 字元時，網站對所有請求回 500。
 
 ## 命令列指令
 
-管理類指令透過 API 執行，需要先 `login`；也可以用環境變數 `FEEDBACK_DESK_URL`、`FEEDBACK_DESK_TOKEN` 指定站台與 token（CI、agent 用）。
+管理類指令透過 API 執行，需要先 `login`；也可以用環境變數 `FEEDBACK_DESK_URL`、`FEEDBACK_DESK_TOKEN` 指定站台與 token（CI、agent 用）。`FEEDBACK_DESK_TOKEN` 只會送到 `FEEDBACK_DESK_URL` 指定的站；部署資料夾裡 `.feedback-desk/state.json` 記的網址和你登入的預設站不同時，指令會提醒並且不帶 token，要用 `--url` 明確指定。
 
 | 指令 | 用途 |
 | --- | --- |
@@ -160,16 +163,17 @@ Workers 免費方案每個請求只有 10 ms 的 CPU 時間。慢速雜湊（bcr
 | `deploy` | 部署 Worker、自動建立 D1／R2、套用資料庫 migrations。 |
 | `bootstrap <帳號> [--name] [--reset]` | 用 wrangler 直接寫 D1，建立第一個團隊帳號；`--reset` 重設既有帳號密碼（忘記密碼時用）。 |
 | `login [--url]` / `logout` | 瀏覽器授權取得 API token／撤銷並刪除本機 token。 |
-| `mcp install [--claude] [--codex]` | 寫入 Claude Code、Codex 的 MCP 設定，各用一個獨立 token。 |
-| `token create\|list\|revoke <id>` | 管理自己的 API token。 |
+| `mcp install [--claude] [--codex] [--scope user\|local]` | 寫入 Claude Code、Codex 的 MCP 設定，各用一個獨立 token，重新執行會撤銷舊的。 |
+| `token create [--expires 天數]\|list\|revoke <id>` | 管理自己的 API token。 |
 | `project create <名稱> [--slug] [--client-name] [--no-client]` | 建立專案並印出客戶與開發團隊入口連結。 |
 | `project list` | 列出專案。 |
 | `project client-link <slug>` / `project owner-link <slug>` | 重發私密入口，舊連結失效。 |
 | `project client-account <slug> <帳號> [--prefill]` | 設定該專案的客戶帳號，密碼由系統產生。 |
 | `public-reporting <slug> on\|off [--force]` | 開關首頁公開回報；專案有客戶入口或帳號時拒絕開啟，除非 `--force`。 |
-| `developer create <帳號> [--name]` / `developer reset <帳號>` / `developer list` | 團隊個人帳號，密碼由系統產生。 |
+| `developer create <帳號> [--name]` / `developer reset <帳號>` / `developer list` | 團隊個人帳號，密碼由系統產生；`reset` 同時撤銷該帳號所有 API token。 |
+| `developer disable\|enable\|delete <帳號>` | 停用（網頁登入與 API token 立即失效）、重新啟用（token 要重新 login）、刪除（建立過的單保留，建立者改顯示團隊稱呼）。不能對自己目前登入的帳號操作。 |
 | `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
-| `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到暫存資料夾並印出路徑，`--no-download` 改印一小時內有效的下載網址。 |
+| `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/`（目錄 700、檔案 600）並印出路徑，`--no-download` 改印一小時內有效的下載網址。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id]` | 寫調整說明與圖片，不改狀態。 |
 | `status <project> <public_id\|編號> <狀態>` | 改狀態，可用 `new`／`needs_input`／`completed` 或中文。 |
 | `message <project> <public_id\|編號> --body [--image]...` | 以團隊帳號留言。 |
@@ -180,7 +184,7 @@ Workers 免費方案每個請求只有 10 ms 的 CPU 時間。慢速雜湊（bcr
 
 Claude Code、Codex 可以用命令列工具或 MCP 工具處理回報單，兩者走同一組 API 與規則。
 
-MCP 工具：`list_reports`、`get_report`（附件給一小時內有效的下載網址，1 MB 內的圖片可直接附上）、`request_image_upload`（取得上傳網址給 curl 用）、`write_adjustment`、`set_status`、`add_message`。
+MCP 工具：`list_reports`、`get_report`（附件給一小時內有效的下載網址，1 MB 內的圖片可直接附上）、`request_image_upload`（取得 15 分鐘內有效、只能用一次的上傳網址給 curl 用）、`write_adjustment`、`set_status`、`add_message`。回傳結果裡由外部使用者寫的內容（標題、說明、留言、附件檔名、公開回報者稱呼）都放在 `untrusted_content` 欄位。
 
 回報單的標題、說明、留言、附件檔名都是外部使用者寫的；首頁公開回報的單（`source` 為 `public_stranger`）更是來自不認識的人。工具說明裡已提醒 agent 只把內容當需求描述看，列單預設也不含公開回報。公開回報的單請先由人看過再交給 agent。
 
@@ -229,6 +233,8 @@ npx feedback-desk public-reporting public-desk on
 - 日期與時間不用 `Intl`，以固定時差換算。
 - 問題清單每頁 50 題；單張問題的詳情、編輯、刪除對話框在第一次打開時才載入。一頁超過 20 題時，清單列由瀏覽器依伺服器送來的資料產生（畫面相同），所以長清單需要開啟 JavaScript。
 - MCP 用到的套件比較大，只有 `/mcp` 請求會載入。
+- 單張問題頁每 5 秒檢查一次新留言，沒有變動時伺服器回 304 並把間隔逐步拉長到 60 秒，分頁切到背景時暫停。
+- 頁面送出 Content-Security-Policy，只載入本站的 CSS 與 JS（開啟 Turnstile 時另外允許 Cloudflare 的驗證程式）。
 - 免費方案每天的請求數、D1 讀寫量與 R2 用量都有上限，一般團隊使用量遠低於上限。
 
 ## 開發
@@ -237,6 +243,7 @@ npx feedback-desk public-reporting public-desk on
 npm install
 npm test          # 建置 + Workers 測試（本機 workerd）+ CLI 測試
 npm run build     # 產生 dist/（Worker、靜態檔、CLI）
+npm run dev       # 本機執行（wrangler.dev.jsonc，本機 D1／R2，不會動到 Cloudflare 上的資源）
 ```
 
 Laravel 版保留在 `main` 分支（之後會移到 `laravel` 分支）。

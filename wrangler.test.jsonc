@@ -1,0 +1,14 @@
+// Used only by the Vitest Workers integration (runs the TypeScript source locally in workerd).
+{
+    "name": "feedback-desk-test",
+    "main": "src/worker/index.tsx",
+    "compatibility_date": "2026-10-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "d1_databases": [{ "binding": "DB", "database_name": "feedback-desk-test-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
+    "r2_buckets": [{ "binding": "FILES", "bucket_name": "feedback-desk-test-files" }],
+    "vars": {
+        "APP_SECRET": "test-secret-not-used-in-production-0123456789",
+        "FEEDBACK_LABEL_CLIENT": "客戶",
+        "FEEDBACK_LABEL_OWNER": "開發團隊"
+    }
+}

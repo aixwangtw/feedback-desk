@@ -1,22 +1,43 @@
 {
-    "$schema": "https://www.schemastore.org/package.json",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "build": "vite build",
-        "dev": "vite"
-    },
-    "devDependencies": {
-        "@tailwindcss/vite": "^4.0.0",
-        "concurrently": "^10.0.3",
-        "laravel-vite-plugin": "^3.1",
-        "tailwindcss": "^4.0.0",
-        "vite": "^8.0.0"
-    },
-    "optionalDependencies": {
-        "@laravel/multiplex": "^0.4.1"
-    },
-    "dependencies": {
-        "sortablejs": "^1.15.7"
-    }
+  "name": "feedback-desk",
+  "version": "0.1.0",
+  "description": "Issue-reporting desk for clients and teams, running on Cloudflare Workers free plan. CLI deploys it and lets AI agents work on reports.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "feedback-desk": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && vitest run --config vitest.config.ts && vitest run --config vitest.cli.config.ts",
+    "test:worker": "vitest run --config vitest.config.ts",
+    "test:cli": "vitest run --config vitest.cli.config.ts",
+    "dev": "npm run build && wrangler dev -c wrangler.dev.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.4",
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/node": "^22.20.5",
+    "agents": "^0.28.1",
+    "esbuild": "^0.28.2",
+    "hono": "^4.13.13",
+    "sortablejs": "^1.15.7",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "4.1",
+    "wrangler": "^4.151.1",
+    "zod": "^4.6.7"
+  }
 }

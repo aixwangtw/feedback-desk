@@ -1,5 +1,8 @@
 @php
     $publicConfig = config('feedback.public_reporting');
+    $httpsOnly = fn (?string $url): ?string => is_string($url) && str_starts_with(strtolower($url), 'https://') ? $url : null;
+    $githubUrl = $httpsOnly($publicConfig['github_url']);
+    $blogUrl = $httpsOnly($publicConfig['blog_url']);
     $inputClasses = 'block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10';
 @endphp
 <x-feedback.layout :title="config('feedback.home.title')" max-width="max-w-3xl">
@@ -11,13 +14,13 @@
                 <p class="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600" data-public-intro>{{ $publicConfig['intro'] }}</p>
             @endif
             <p class="mt-4 text-sm leading-7 text-slate-600">送出後會得到一個私密網址，用它可以回來查看處理進度、補充說明。不需要註冊，也不用留 email。</p>
-            @if (filled($publicConfig['github_url']) || filled($publicConfig['blog_url']))
+            @if ($githubUrl || $blogUrl)
                 <p class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
-                    @if (filled($publicConfig['github_url']))
-                        <a href="{{ $publicConfig['github_url'] }}" target="_blank" rel="noopener" class="text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950" data-public-github>GitHub</a>
+                    @if ($githubUrl)
+                        <a href="{{ $githubUrl }}" target="_blank" rel="noopener noreferrer" class="text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950" data-public-github>GitHub</a>
                     @endif
-                    @if (filled($publicConfig['blog_url']))
-                        <a href="{{ $publicConfig['blog_url'] }}" target="_blank" rel="noopener" class="text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950" data-public-blog>部落格文章</a>
+                    @if ($blogUrl)
+                        <a href="{{ $blogUrl }}" target="_blank" rel="noopener noreferrer" class="text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950" data-public-blog>部落格文章</a>
                     @endif
                 </p>
             @endif

@@ -3,6 +3,8 @@
 namespace App\Support;
 
 use App\Models\FeedbackProject;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class PublicReporting
 {
@@ -28,7 +30,13 @@ class PublicReporting
 
     public function turnstileEnabled(): bool
     {
-        return filled(config('feedback.public_reporting.turnstile.site_key'))
-            && filled(config('feedback.public_reporting.turnstile.secret_key'));
+        $hasSiteKey = filled(config('feedback.public_reporting.turnstile.site_key'));
+        $hasSecretKey = filled(config('feedback.public_reporting.turnstile.secret_key'));
+
+        if ($hasSiteKey !== $hasSecretKey && Cache::add('feedback.turnstile-half-configured-warned', true, now()->addDay())) {
+            Log::warning('FEEDBACK_TURNSTILE_SITE_KEY 與 FEEDBACK_TURNSTILE_SECRET_KEY 只設了一個，Turnstile 沒有啟用。');
+        }
+
+        return $hasSiteKey && $hasSecretKey;
     }
 }

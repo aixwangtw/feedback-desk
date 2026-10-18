@@ -44,7 +44,7 @@ $feedbackRoutes = function (): void {
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/activity', [FeedbackReportController::class, 'activity'])
         ->name('feedback.reports.activity');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
-        ->middleware('throttle:30,1')
+        ->middleware(['throttle:30,1', 'throttle:feedback-public-message'])
         ->name('feedback.messages.store');
     Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/adjustment', [FeedbackAdjustmentController::class, 'update'])
         ->middleware('throttle:30,1')

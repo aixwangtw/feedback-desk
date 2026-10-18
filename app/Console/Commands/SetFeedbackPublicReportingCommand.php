@@ -7,7 +7,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('feedback:public-reporting {project : 專案 slug} {mode : on 開啟，off 關閉}')]
+#[Signature('feedback:public-reporting {project : 專案 slug} {mode : on 開啟，off 關閉} {--force : 即使專案已有客戶入口或帳號仍強制開啟}')]
 #[Description('開關專案的首頁公開回報；實際顯示還需要 FEEDBACK_HOME_PUBLIC_PROJECT 指向這個專案')]
 class SetFeedbackPublicReportingCommand extends Command
 {
@@ -27,6 +27,12 @@ class SetFeedbackPublicReportingCommand extends Command
             return self::FAILURE;
         }
 
+        if ($mode === 'on' && ! $this->option('force') && $this->clientAccessSettings($project) !== []) {
+            $this->components->error('這個專案已有客戶入口或帳號：'.implode('、', $this->clientAccessSettings($project)).'。公開回報請開在專用專案；確定要開請加 --force。');
+
+            return self::FAILURE;
+        }
+
         $project->update(['public_reporting_enabled' => $mode === 'on']);
 
         if ($mode === 'off') {
@@ -41,5 +47,18 @@ class SetFeedbackPublicReportingCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function clientAccessSettings(FeedbackProject $project): array
+    {
+        return array_keys(array_filter([
+            'client_username' => filled($project->client_username),
+            'client_token_hash' => filled($project->client_token_hash),
+            'login_prefill_username' => filled($project->login_prefill_username),
+            'login_prefill_password' => filled($project->login_prefill_password),
+        ]));
     }
 }

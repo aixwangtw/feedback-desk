@@ -8,7 +8,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
-#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation} {--client-name= : 開發團隊端顯示的客戶名稱}')]
+#[Signature('feedback:project {name} {--slug=} {--repository=} {--automation} {--client-name= : 開發團隊端顯示的客戶名稱} {--no-client : 不建立客戶入口（公開回報專用專案）}')]
 #[Description('建立通用問題回報專案、客戶入口與開發團隊入口')]
 class CreateFeedbackProjectCommand extends Command
 {
@@ -37,19 +37,21 @@ class CreateFeedbackProjectCommand extends Command
         }
 
         $ownerToken = Str::random(48);
-        $clientToken = Str::random(48);
+        $clientToken = $this->option('no-client') ? null : Str::random(48);
         $project = FeedbackProject::create([
             'name' => $name,
             'slug' => $slug,
             'owner_token_hash' => hash('sha256', $ownerToken),
-            'client_token_hash' => hash('sha256', $clientToken),
+            'client_token_hash' => $clientToken !== null ? hash('sha256', $clientToken) : null,
             'client_display_name' => $this->option('client-name') ?: null,
             'repository_path' => $resolvedRepositoryPath,
             'automation_enabled' => $automationEnabled,
         ]);
 
         $this->components->info("已建立回報專案：{$project->name}");
-        $this->line('客戶入口：'.route('feedback.client.authenticate', $project).'?token='.$clientToken);
+        if ($clientToken !== null) {
+            $this->line('客戶入口：'.route('feedback.client.authenticate', $project).'?token='.$clientToken);
+        }
         $this->line('開發團隊入口：'.route('feedback.owner.authenticate', $project).'?token='.$ownerToken);
         $this->newLine();
         $this->components->warn('私密入口只會顯示這一次，請存入密碼管理器。');

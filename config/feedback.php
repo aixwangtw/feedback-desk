@@ -71,6 +71,11 @@ return [
             'per_minute' => (int) env('FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE', 3),
             'per_hour' => (int) env('FEEDBACK_PUBLIC_THROTTLE_PER_HOUR', 20),
         ],
+        'message_throttle' => [
+            'per_minute' => (int) env('FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_MINUTE', 5),
+            'per_hour' => (int) env('FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_HOUR', 30),
+        ],
+        'max_attachments_per_report' => (int) env('FEEDBACK_PUBLIC_MAX_ATTACHMENTS', 15),
         'turnstile' => [
             'site_key' => env('FEEDBACK_TURNSTILE_SITE_KEY'),
             'secret_key' => env('FEEDBACK_TURNSTILE_SECRET_KEY'),

@@ -105,6 +105,9 @@
                 @include('feedback.reports._activity', ['project' => $project, 'report' => $report])
             </section>
 
+            @if ($isPublicReporter && ! $project->public_reporting_enabled)
+                <section class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:p-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</section>
+            @else
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                 <h2 class="text-base font-semibold text-slate-950">補充訊息</h2>
                 <form method="POST" action="{{ route('feedback.messages.store', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
@@ -127,6 +130,7 @@
                     <div id="message-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                 </form>
             </section>
+            @endif
         </div>
 
         <aside class="grid gap-4 lg:sticky lg:top-6">

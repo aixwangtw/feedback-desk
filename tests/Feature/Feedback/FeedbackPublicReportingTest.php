@@ -4,6 +4,7 @@ namespace Tests\Feature\Feedback;
 
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
+use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Services\TurnstileVerifier;
@@ -12,6 +13,7 @@ use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -538,7 +540,13 @@ class FeedbackPublicReportingTest extends TestCase
 
     public function test_command_switches_public_reporting_on_and_off(): void
     {
-        $this->project->update(['public_reporting_enabled' => false]);
+        $this->project->update([
+            'public_reporting_enabled' => false,
+            'client_username' => null,
+            'client_token_hash' => null,
+            'login_prefill_username' => null,
+            'login_prefill_password' => null,
+        ]);
 
         $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on'])->assertSuccessful();
         $this->assertTrue($this->project->fresh()->public_reporting_enabled);
@@ -548,6 +556,130 @@ class FeedbackPublicReportingTest extends TestCase
 
         $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'maybe'])->assertFailed();
         $this->artisan('feedback:public-reporting', ['project' => 'nope', 'mode' => 'on'])->assertFailed();
+    }
+
+    public function test_command_refuses_projects_with_client_access_unless_forced(): void
+    {
+        $this->project->update(['public_reporting_enabled' => false]);
+
+        $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on'])->assertFailed();
+        $this->assertFalse($this->project->fresh()->public_reporting_enabled);
+
+        $this->project->update(['client_username' => null, 'client_token_hash' => null, 'login_prefill_username' => null, 'login_prefill_password' => 'x']);
+        $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on'])->assertFailed();
+
+        $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on', '--force' => true])->assertSuccessful();
+        $this->assertTrue($this->project->fresh()->public_reporting_enabled);
+    }
+
+    public function test_project_command_can_create_a_project_without_client_entry(): void
+    {
+        $this->artisan('feedback:project', ['name' => 'Dedicated', '--no-client' => true])->assertSuccessful();
+        $dedicated = FeedbackProject::where('slug', 'dedicated')->firstOrFail();
+        $this->assertNull($dedicated->client_token_hash);
+
+        $this->artisan('feedback:public-reporting', ['project' => 'dedicated', 'mode' => 'on'])->assertSuccessful();
+    }
+
+    public function test_reporter_messages_are_throttled_but_team_messages_are_not(): void
+    {
+        config()->set('feedback.public_reporting.message_throttle.per_minute', 2);
+        [$report, $privateUrl] = $this->submitAsNewBrowser();
+        $url = route('feedback.messages.store', [$this->project, $report]);
+
+        $this->post($url, ['body' => '1'])->assertSessionHasNoErrors();
+        $this->post($url, ['body' => '2'])->assertSessionHasNoErrors();
+        $this->post($url, ['body' => '3'])->assertStatus(429);
+        $this->assertSame(2, $report->feedbackMessages()->count());
+
+        $this->expireSession();
+        $this->actingAsOwner();
+        foreach (range(1, 4) as $n) {
+            $this->post($url, ['body' => "team {$n}"])->assertSessionHasNoErrors();
+        }
+        $this->assertSame(6, $report->feedbackMessages()->count());
+    }
+
+    public function test_message_throttle_does_not_apply_to_ordinary_client_reports(): void
+    {
+        config()->set('feedback.public_reporting.message_throttle.per_minute', 1);
+        $report = FeedbackReport::factory()->for($this->project)->create();
+        $this->actingAsClient();
+
+        foreach (range(1, 3) as $n) {
+            $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => "m{$n}"])->assertSessionHasNoErrors();
+        }
+        $this->assertSame(3, $report->feedbackMessages()->count());
+    }
+
+    public function test_attachments_per_public_report_are_capped(): void
+    {
+        config()->set('feedback.public_reporting.max_attachments_per_report', 4);
+        config()->set('feedback.public_reporting.message_throttle.per_minute', 100);
+        [$report] = $this->submitAsNewBrowser(['screenshots' => [$this->image('a.png'), $this->image('b.png')]]);
+        $url = route('feedback.messages.store', [$this->project, $report]);
+
+        $this->post($url, ['body' => 'ok', 'screenshots' => [$this->image('c.png'), $this->image('d.png')]])->assertSessionHasNoErrors();
+        $this->post($url, ['body' => 'too many', 'screenshots' => [$this->image('e.png')]])->assertSessionHasErrors('screenshots');
+        $this->assertSame(4, $report->feedbackAttachments()->count());
+    }
+
+    public function test_public_report_becomes_read_only_when_intake_stops(): void
+    {
+        [$report] = $this->submitAsNewBrowser();
+        $this->project->update(['public_reporting_enabled' => false]);
+
+        $this->get(route('feedback.reports.show', [$this->project, $report]))
+            ->assertOk()
+            ->assertSee('已停止收件')
+            ->assertDontSee('送出訊息');
+        $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => 'late'])->assertForbidden();
+        $this->assertSame(0, $report->feedbackMessages()->count());
+
+        $this->expireSession();
+        $this->actingAsOwner();
+        $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => 'team still can'])->assertSessionHasNoErrors();
+    }
+
+    public function test_team_messages_on_public_reports_show_only_the_team_label(): void
+    {
+        $developer = FeedbackDeveloper::factory()->withPassword('dev-pass')->create(['name' => '小明工程師', 'username' => 'dev-x']);
+        [$report, $privateUrl] = $this->submitAsNewBrowser();
+        $this->expireSession();
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'dev-x', 'password' => 'dev-pass']);
+        $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '處理中']);
+        $this->assertSame(config('feedback.labels.owner'), $report->feedbackMessages()->firstOrFail()->author_name);
+
+        $this->expireSession();
+        $this->get($privateUrl);
+        $this->get(route('feedback.reports.show', [$this->project, $report]))->assertDontSee('小明工程師');
+
+        $clientReport = FeedbackReport::factory()->for($this->project)->create();
+        $this->expireSession();
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'dev-x', 'password' => 'dev-pass']);
+        $this->post(route('feedback.messages.store', [$this->project, $clientReport]), ['body' => '一般單']);
+        $this->assertSame('小明工程師', $clientReport->feedbackMessages()->firstOrFail()->author_name);
+    }
+
+    public function test_links_accept_https_only(): void
+    {
+        config()->set('feedback.public_reporting.github_url', 'http://github.com/x/y');
+        config()->set('feedback.public_reporting.blog_url', 'javascript:alert(1)');
+        $this->get('/')->assertDontSee('data-public-github', false)->assertDontSee('data-public-blog', false)->assertDontSee('javascript:alert');
+
+        config()->set('feedback.public_reporting.github_url', 'https://github.com/x/y');
+        $this->get('/')->assertSee('href="https://github.com/x/y"', false)->assertSee('rel="noopener noreferrer"', false);
+    }
+
+    public function test_half_configured_turnstile_logs_one_warning_and_stays_off(): void
+    {
+        Log::spy();
+        config()->set('feedback.public_reporting.turnstile.site_key', 'site');
+
+        $this->get('/')->assertDontSee('data-turnstile', false);
+        $this->get('/');
+
+        Log::shouldHaveReceived('warning')->once();
     }
 
     public function test_new_projects_default_to_public_reporting_off(): void

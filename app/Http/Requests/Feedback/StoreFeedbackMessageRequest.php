@@ -9,6 +9,7 @@ use App\Support\PublicReporting;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\File;
+use Illuminate\Validation\Validator;
 
 class StoreFeedbackMessageRequest extends FormRequest
 {
@@ -21,9 +22,43 @@ class StoreFeedbackMessageRequest extends FormRequest
     {
         $report = $this->route('feedbackReport');
 
-        return $report instanceof FeedbackReport
+        $allowed = $report instanceof FeedbackReport
             && app(FeedbackAccess::class)->canView($report)
             && app(FeedbackAccess::class)->ensureReportVisible($report);
+
+        // 公開回報停止收件後，公開單對回報者唯讀。
+        abort_if($allowed && $this->isPublicReporter() && ! $report->feedbackProject->public_reporting_enabled, 403, '這個專案已停止收件，這張單只能查看。');
+
+        return $allowed;
+    }
+
+    private function isPublicReporter(): bool
+    {
+        $report = $this->route('feedbackReport');
+
+        return $report instanceof FeedbackReport
+            && $report->isPublicReport()
+            && ! app(FeedbackAccess::class)->isOwner($report->feedbackProject);
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $report = $this->route('feedbackReport');
+                if (! $report instanceof FeedbackReport || ! $this->isPublicReporter() || $validator->errors()->isNotEmpty()) {
+                    return;
+                }
+
+                $limit = (int) config('feedback.public_reporting.max_attachments_per_report');
+                if ($report->feedbackAttachments()->count() + count($this->file('screenshots', [])) > $limit) {
+                    $validator->errors()->add('screenshots', "這張單的附圖總數不可超過 {$limit} 張。");
+                }
+            },
+        ];
     }
 
     /**

@@ -114,6 +114,8 @@ php artisan feedback:account-password owner     # 先在 .env 設 FEEDBACK_OWNER
 | `FEEDBACK_PUBLIC_NOTICE` | 空 | 公開首頁的一行提示（例如歡迎使用哪些語言回報）；空白就不顯示。 |
 | `FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE` | `3` | 公開送單每個 IP 每分鐘上限。 |
 | `FEEDBACK_PUBLIC_THROTTLE_PER_HOUR` | `20` | 公開送單每個 IP 每小時上限。 |
+| `FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_MINUTE` / `FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_HOUR` | `5` / `30` | 公開回報者在自己單上留言的每 IP 上限；團隊留言不受限。 |
+| `FEEDBACK_PUBLIC_MAX_ATTACHMENTS` | `15` | 每張公開單的附圖總數上限（含留言附圖）。 |
 | `FEEDBACK_TURNSTILE_SITE_KEY` / `FEEDBACK_TURNSTILE_SECRET_KEY` | 空 | Cloudflare Turnstile 人機驗證，兩個都設才啟用；啟用後伺服器端會呼叫 siteverify 驗證，驗證失敗或連不上都不收單。 |
 | `FEEDBACK_AUTOMATION_ENABLED` | `false` | 實驗功能總開關，見下方。 |
 | `FEEDBACK_WORKSPACE_ROOT` | 空 | 自動處理允許的 repository 根目錄。 |
@@ -135,8 +137,8 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 
 | 指令 | 用途 |
 | --- | --- |
-| `feedback:project {name} {--slug=} {--client-name=} {--repository=} {--automation}` | 建立專案並印出客戶與開發團隊入口連結。 |
-| `feedback:public-reporting {project} {on\|off}` | 開關專案的首頁公開回報。 |
+| `feedback:project {name} {--slug=} {--client-name=} {--no-client} {--repository=} {--automation}` | 建立專案並印出客戶與開發團隊入口連結。 |
+| `feedback:public-reporting {project} {on\|off} {--force}` | 開關專案的首頁公開回報；專案有客戶入口或帳號時拒絕開啟，除非 `--force`。 |
 | `feedback:client-link {project}` | 重發客戶私密入口，舊連結失效。 |
 | `feedback:owner-link {project}` | 重發開發團隊私密入口，舊連結失效。 |
 | `feedback:client-account {project} {username} {--password=} {--prefill}` | 設定單一專案的客戶帳密（省略 `--password` 會產生隨機密碼）；`--prefill` 搭配 `FEEDBACK_LOGIN_PREFILL_ENABLED=true` 才會預填。 |
@@ -159,8 +161,14 @@ FEEDBACK_HOME_PUBLIC_PROJECT=my-project
 - 表單欄位：標題、說明（必填），截圖（選填，最多 3 張、每張 5 MB，jpg／png／webp），怎麼稱呼你（選填）。不收 email，也不做任何通知。
 - 送出後建立一張單，建立者顯示為「公開回報」加上稱呼，團隊端清單可用「建立者」篩選。回報者拿到這張單的私密網址（`?access=` token），畫面只顯示這一次。
 - 同一個瀏覽器會把 token 存在加密的 HttpOnly cookie（180 天，最多記 15 張），回首頁會列出「你送出的單」。用 cookie 而不是 localStorage，是因為清單由伺服器產生，不需要前端程式，token 也碰不到頁面上的 JavaScript。換瀏覽器就要用存下的網址。
-- 公開回報者只能看自己那張單、留言（最多 3 張圖、每張 5 MB），看得到調整說明；不能改狀態、編輯、刪除，看不到清單和統計，也不會取得 client 身分。既有的 client 看不到公開回報的單。只有開發團隊能改狀態。
+- 公開回報者只能看自己那張單、留言（每則最多 3 張圖、每張 5 MB，每張單附圖總數上限 15 張），看得到調整說明與團隊回覆；團隊成員的留言在公開單上一律顯示為團隊稱呼，不顯示個人名字；不能改狀態、編輯、刪除，看不到清單和統計，也不會取得 client 身分。既有的 client 看不到公開回報的單。只有開發團隊能改狀態。
+- 公開回報請開在專用專案，不要開在已有客戶的專案：專案有客戶入口或客戶帳號時，`feedback:public-reporting ... on` 會拒絕，加 `--force` 才能強制開啟。建立專用專案可用 `feedback:project "名稱" --no-client`。
+- 關閉專案的公開回報後，既有公開單對回報者變成唯讀：看得到，不能再留言。
 - 公開回報的單不會觸發自動處理。
+- 網址設定只接受 `https://` 開頭的連結，否則視為未設定。
+- 正式環境建議設 `SESSION_SECURE_COOKIE=true`，讓 cookie 只走 HTTPS。
+- PHP 的 `upload_max_filesize` 與 `post_max_size` 要大於對應上限（單張 5 MB、一次最多 3 張，建議至少 `post_max_size=20M`、`upload_max_filesize=6M`），否則超過上限的上傳會在到達應用程式前被擋下。
+- 只設了一個 Turnstile key 時不會啟用，並在 log 寫一則警告（每天一次）。
 - 防灌單：公開送單每個 IP 有每分鐘與每小時上限，表單有隱藏的 honeypot 欄位，另可啟用 Cloudflare Turnstile。
 
 ## Queue worker 與自動處理（實驗功能）

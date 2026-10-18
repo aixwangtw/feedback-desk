@@ -1,4 +1,6 @@
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
+import { app } from '../../src/worker/index';
 import { hashPassword, randomString, sha256Hex } from '../../src/worker/lib/crypto';
 import type { Developer, Project, Report } from '../../src/worker/lib/models';
 import { createReport } from '../../src/worker/lib/reports';
@@ -111,9 +113,12 @@ export async function reload<T extends { id: number }>(table: 'reports' | 'proje
 export class Browser {
     cookies = new Map<string, string>();
     ip: string;
+    /** Extra Worker vars for this browser's requests (configuration such as FEEDBACK_HOME_PUBLIC_PROJECT). */
+    vars: Record<string, string> = {};
 
-    constructor(ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`) {
+    constructor(ip = `10.0.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`, vars: Record<string, string> = {}) {
         this.ip = ip;
+        this.vars = vars;
     }
 
     async request(method: string, path: string, init: { body?: BodyInit | null; headers?: Record<string, string> } = {}): Promise<Response> {
@@ -122,7 +127,15 @@ export class Browser {
         if (this.cookies.size > 0) {
             headers.set('cookie', [...this.cookies.entries()].map(([name, value]) => `${name}=${value}`).join('; '));
         }
-        const response = await exports.default.fetch(new Request(`${BASE}${path}`, { method, headers, body: init.body ?? null, redirect: 'manual' }));
+        const request = new Request(`${BASE}${path}`, { method, headers, body: init.body ?? null, redirect: 'manual' });
+        let response: Response;
+        if (Object.keys(this.vars).length > 0) {
+            const ctx = createExecutionContext();
+            response = await app.fetch(request, { ...env, ...this.vars }, ctx);
+            await waitOnExecutionContext(ctx);
+        } else {
+            response = await exports.default.fetch(request);
+        }
         for (const cookie of response.headers.getSetCookie()) {
             const [pair, ...attributes] = cookie.split(';');
             const index = pair.indexOf('=');

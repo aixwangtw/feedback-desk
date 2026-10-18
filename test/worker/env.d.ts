@@ -5,4 +5,7 @@ declare namespace Cloudflare {
         APP_SECRET: string;
         TEST_MIGRATIONS: import('cloudflare:test').D1Migration[];
     }
+    interface GlobalProps {
+        mainModule: typeof import('../../src/worker/index');
+    }
 }

@@ -3,7 +3,7 @@ import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared
 import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
-import { attachmentsForReport, findDeveloperByUsername, findProjectBySlug, findReportInProject, likeContains, listDevelopers, messagesForReport, placeholders } from '../lib/db';
+import { attachmentsForReport, findDeveloper, findDeveloperByUsername, findProjectBySlug, findReportInProject, likeContains, listDevelopers, messagesForReport, placeholders } from '../lib/db';
 import { isPublicReport, type Attachment, type Developer, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
@@ -38,7 +38,7 @@ import {
 } from '../lib/uploads';
 import { nowIso } from '../../shared/time';
 import { HomePage, HONEYPOT_FIELD, LoginPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
-import { PortalPage, type PortalFormState, type PortalRow } from '../views/portal';
+import { PortalPage, ReportDialogs, type PortalFormState, type PortalRow } from '../views/portal';
 import { Activity, ReportPage } from '../views/report';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
@@ -754,6 +754,43 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
         }
     }
     return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} />);
+});
+
+/** Detail, edit and delete dialogs of one report, loaded by the portal page when first opened. */
+web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    if (!(await access.reportVisible(project, report))) {
+        abort(404);
+    }
+    const isOwner = await access.isOwner(project);
+    const [attachments, number, developer] = await Promise.all([
+        c.env.DB.prepare('SELECT * FROM attachments WHERE report_id = ? AND message_id IS NULL ORDER BY id').bind(report.id).all<Attachment>(),
+        sequenceNumber(c.env.DB, report, !isOwner),
+        isOwner && report.creator_developer_id ? findDeveloper(c.env.DB, report.creator_developer_id) : Promise.resolve(null),
+    ]);
+    const back = c.req.query('back') ?? '';
+    const row: PortalRow = {
+        report,
+        number,
+        creatorLabel: isOwner ? creatorLabel(c.env, report, project, developer?.name ?? null) : '',
+        attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
+        adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
+    };
+    return c.html(
+        <ReportDialogs
+            v={viewContext(c)}
+            row={row}
+            slug={project.slug}
+            isOwner={isOwner}
+            backPath={back.startsWith('/') && !back.startsWith('//') ? back : paths.portal(project.slug)}
+            attachmentUrl={(target, attachment) => paths.attachment(project.slug, target.public_id, attachment.id)}
+        />,
+    );
 });
 
 web.get('/p/:slug/reports/:publicId/attachments/:attachmentId', async (c) => {

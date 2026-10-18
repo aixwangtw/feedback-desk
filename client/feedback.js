@@ -329,10 +329,41 @@ if (activity) {
     window.setInterval(refresh, 5000);
 }
 
-document.addEventListener('click', (event) => {
+// Report dialogs on the list page are loaded the first time one of them is opened.
+const loadReportDialogs = async (opener) => {
+    const source = opener.closest('[data-dialogs-src]');
+    const container = document.querySelector('[data-report-dialogs]');
+    if (!source || !container) {
+        return;
+    }
+    if (!source.dialogsLoading) {
+        source.dialogsLoading = fetch(source.dataset.dialogsSrc, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then((response) => (response.ok ? response.text() : Promise.reject(new Error(`HTTP ${response.status}`))))
+            .then((html) => container.insertAdjacentHTML('beforeend', html))
+            .catch((error) => {
+                source.dialogsLoading = null;
+                throw error;
+            });
+    }
+    await source.dialogsLoading;
+};
+
+document.addEventListener('click', async (event) => {
     const opener = event.target.closest('[data-dialog-open]');
     if (opener) {
-        document.getElementById(opener.dataset.dialogOpen)?.showModal();
+        let dialog = document.getElementById(opener.dataset.dialogOpen);
+        if (!dialog) {
+            opener.setAttribute('aria-busy', 'true');
+            try {
+                await loadReportDialogs(opener);
+            } catch {
+                window.alert('載入失敗，請重新整理頁面後再試。');
+            } finally {
+                opener.removeAttribute('aria-busy');
+            }
+            dialog = document.getElementById(opener.dataset.dialogOpen);
+        }
+        dialog?.showModal();
 
         return;
     }

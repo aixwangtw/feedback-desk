@@ -254,14 +254,25 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 <Pagination page={props.page} lastPage={props.lastPage} total={props.filteredTotal} perPage={50} url={(page) => portalUrl({ page: page > 1 ? page : null })} />
             </div>
 
-            {rows.map((row) => (
-                <ReportDialogs v={v} row={row} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} form={form} />
-            ))}
+            {/* Per-report dialogs are fetched from /dialogs the first time one is opened, which keeps the
+                page small enough to render within the Workers CPU budget. After a failed edit, that
+                report's dialogs are rendered here directly so the edit dialog can reopen with errors. */}
+            <div id="report-dialogs" data-report-dialogs>
+                {rows
+                    .filter((row) => form?.bag === 'editReport' && form.editing?.publicId === row.report.public_id)
+                    .map((row) => (
+                        <ReportDialogs v={v} row={row} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} form={form} />
+                    ))}
+            </div>
 
             <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} />
         </Layout>
     );
 };
+
+function dialogsSrc(slug: string, publicId: string, backPath: string): string {
+    return `${paths.reportDialogs(slug, publicId)}?back=${encodeURIComponent(backPath)}`;
+}
 
 type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
@@ -271,7 +282,7 @@ const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachmentUrl 
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
     const labels = v.cfg.labels;
     return (
-        <tr class={cx('block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle', deleted ? 'bg-slate-50 text-slate-500' : null)} data-report-row={report.public_id}>
+        <tr class={cx('block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle', deleted ? 'bg-slate-50 text-slate-500' : null)} data-report-row={report.public_id} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)}>
             <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{row.number}</span></td>
             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
                 <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
@@ -356,7 +367,7 @@ const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slug, isOw
     const firstAttachment = row.attachments[0];
     const firstAdjustment = row.adjustmentAttachments[0];
     return (
-        <article class={cx('cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} title="拖拉卡片可改變狀態">
+        <article class={cx('cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)} title="拖拉卡片可改變狀態">
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span>{isOwner ? <span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {row.creatorLabel}</span> : null}</p>
@@ -420,7 +431,7 @@ const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slug, isOw
     );
 };
 
-const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, row, slug, isOwner, backPath, attachmentUrl, form }) => {
+export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, row, slug, isOwner, backPath, attachmentUrl, form }) => {
     const report = row.report;
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
     const editing = form?.bag === 'editReport' && form.editing?.publicId === report.public_id ? form.editing : null;

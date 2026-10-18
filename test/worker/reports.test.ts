@@ -208,6 +208,27 @@ describe('reports', () => {
         expect(creator).toContain('data-kanban-board');
     });
 
+    it('loads report dialogs on demand with the right actions per role', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project, { title: '對話框' });
+        await seedAttachment(report);
+        const owner = await new Browser().asOwner(seeded);
+        const list = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        expect(list).not.toContain(`id="edit-report-${report.public_id}"`);
+        expect(list).toContain(`data-dialogs-src="/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=`);
+        const ownerDialogs = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=%2Fp%2F${seeded.project.slug}%3Fstatus%3Dnew`)).text();
+        expect(ownerDialogs).toContain(`id="detail-report-${report.public_id}"`);
+        expect(ownerDialogs).toContain(`id="delete-report-${report.public_id}"`);
+        expect(ownerDialogs).toContain(`value="/p/${seeded.project.slug}?status=new"`);
+        expect(ownerDialogs).toContain('建立者：客戶');
+        const client = await new Browser().asClient(seeded);
+        const clientDialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=//evil.example`)).text();
+        expect(clientDialogs).toContain(`id="client-delete-report-${report.public_id}"`);
+        expect(clientDialogs).not.toContain('建立者');
+        expect(clientDialogs).not.toContain('evil.example');
+        expect((await new Browser().get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(302);
+    });
+
     it('paginates 50 per page', async () => {
         const seeded = await seedProject();
         const now = Date.now();

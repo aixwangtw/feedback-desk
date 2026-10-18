@@ -157,6 +157,7 @@ describe('isolation', () => {
         ]) {
             expect((await client.get(path)).status).toBe(404);
         }
+        expect((await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(404);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/status`, { status: 'completed' })).status).toBe(404);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: 'hi' })).status).toBe(404);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/update`, { title: 'x', description: 'y' })).status).toBe(404);

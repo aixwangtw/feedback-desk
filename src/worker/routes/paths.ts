@@ -16,6 +16,7 @@ export const paths = {
     reportClientDestroy: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/client-delete`,
     reportRestore: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/restore`,
     reportStatus: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/status`,
+    reportDialogs: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/dialogs`,
     reportActivity: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/activity`,
     reportMessages: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/messages`,
     reportAdjustment: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/adjustment`,

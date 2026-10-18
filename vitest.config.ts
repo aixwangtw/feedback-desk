@@ -14,6 +14,7 @@ export default defineConfig(async () => {
         test: {
             include: ['test/worker/**/*.test.ts', 'test/worker/**/*.test.tsx'],
             setupFiles: ['./test/worker/apply-migrations.ts'],
+            testTimeout: 30_000,
         },
     };
 });

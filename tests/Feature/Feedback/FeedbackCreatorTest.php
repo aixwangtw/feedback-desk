@@ -46,8 +46,8 @@ class FeedbackCreatorTest extends TestCase
             'client_token_hash' => hash('sha256', $this->clientToken),
             'owner_token_hash' => hash('sha256', $this->ownerToken),
         ]);
-        $this->devA = FeedbackDeveloper::factory()->withPassword('dev-a-pass')->create(['name' => 'dev-a', 'username' => 'dev-a']);
-        $this->devB = FeedbackDeveloper::factory()->withPassword('dev-b-pass')->create(['name' => 'dev-b', 'username' => 'dev-b']);
+        $this->devA = FeedbackDeveloper::factory()->withPassword('dev-a-pass')->create(['name' => 'Dev A', 'username' => 'dev-a']);
+        $this->devB = FeedbackDeveloper::factory()->withPassword('dev-b-pass')->create(['name' => 'Dev B', 'username' => 'dev-b']);
     }
 
     public function test_developer_account_logs_in_with_owner_access_and_remembers_who_it_is(): void
@@ -152,8 +152,8 @@ class FeedbackCreatorTest extends TestCase
             ->getContent();
 
         $this->assertSame('示範客戶', $this->creatorOf($html, 'client-1'));
-        $this->assertSame('dev-a', $this->creatorOf($html, 'dev-a-1'));
-        $this->assertSame('dev-b', $this->creatorOf($html, 'dev-b-1'));
+        $this->assertSame('Dev A', $this->creatorOf($html, 'dev-a-1'));
+        $this->assertSame('Dev B', $this->creatorOf($html, 'dev-b-1'));
         $this->assertSame('開發者', $this->creatorOf($html, 'shared-1'));
     }
 
@@ -163,7 +163,7 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
-            ->assertSee('data-report-creator>· dev-a<', false)
+            ->assertSee('data-report-creator>· Dev A<', false)
             ->assertSee('data-report-creator>· 示範客戶<', false);
     }
 
@@ -205,8 +205,8 @@ class FeedbackCreatorTest extends TestCase
             ->assertDontSee('data-creator-filter', false)
             ->assertDontSee('data-report-creator', false)
             ->assertDontSee('建立者')
-            ->assertDontSee('dev-a')
-            ->assertDontSee('dev-b')
+            ->assertDontSee('Dev A')
+            ->assertDontSee('Dev B')
             ->getContent();
 
         $this->assertStringContainsString('data-report-row="'.$this->reportTitled('client-1')->public_id.'"', $html);
@@ -330,7 +330,7 @@ class FeedbackCreatorTest extends TestCase
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '老師說'])->assertRedirect();
 
         $names = $report->feedbackMessages()->orderBy('id')->pluck('author_name', 'body')->all();
-        $this->assertSame(['dev-a 說' => 'dev-a', '共用說' => '開發者', '老師說' => '老師'], $names);
+        $this->assertSame(['dev-a 說' => 'Dev A', '共用說' => '開發者', '老師說' => '老師'], $names);
         $this->assertSame(FeedbackAuthorType::Owner, $report->feedbackMessages()->orderBy('id')->first()->author_type);
     }
 

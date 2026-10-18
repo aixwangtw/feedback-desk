@@ -30,7 +30,7 @@ return [
      * /owner/{slug}/login.
      */
     'login_prefill' => [
-        'enabled' => (bool) env('FEEDBACK_LOGIN_PREFILL_ENABLED', false),
+        'enabled' => filter_var(env('FEEDBACK_LOGIN_PREFILL_ENABLED', false), FILTER_VALIDATE_BOOL),
         'owner' => [
             'username' => env('FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME'),
             'password' => env('FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD'),
@@ -56,7 +56,7 @@ return [
     ],
 
     'automation' => [
-        'enabled' => env('FEEDBACK_AUTOMATION_ENABLED', false),
+        'enabled' => filter_var(env('FEEDBACK_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
         'workspace_root' => env('FEEDBACK_WORKSPACE_ROOT'),
         'codex_binary' => env('FEEDBACK_CODEX_BINARY', 'codex'),
         'queue' => env('FEEDBACK_AUTOMATION_QUEUE', 'feedback-automation'),

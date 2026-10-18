@@ -41,7 +41,11 @@ class ResetFeedbackAccountPasswordCommand extends Command
         $this->writeEnvironmentValue($envPath, $key, Hash::make($password));
 
         $this->components->info("已重設 {$account} 的密碼");
-        $this->line('帳號：'.config("feedback.accounts.{$account}.username"));
+        $username = config("feedback.accounts.{$account}.username");
+        $this->line('帳號：'.$username);
+        if (blank($username)) {
+            $this->components->warn('尚未設定 FEEDBACK_OWNER_USERNAME，共用帳號在設定前無法登入。');
+        }
         $this->line("密碼：{$password}");
         $this->components->warn('明文只會顯示這一次；以此帳號登入的長效登入已全部失效。');
 

@@ -160,7 +160,7 @@ class FeedbackClientDeletionTest extends TestCase
 
         $this->patch(route('feedback.reports.restore', [$this->project, $report]))
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', '已還原「要還原的問題」，老師端會重新看到。');
         $this->assertNull($report->refresh()->client_deleted_at);
 
         $this->flushTestAccess();

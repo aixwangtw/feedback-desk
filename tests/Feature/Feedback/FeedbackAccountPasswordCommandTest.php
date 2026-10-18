@@ -60,6 +60,15 @@ class FeedbackAccountPasswordCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_it_warns_when_the_owner_username_is_not_configured(): void
+    {
+        config()->set('feedback.accounts.owner.username', null);
+
+        $this->artisan('feedback:account-password', ['account' => 'owner', '--password' => 'reset-pass-1'])
+            ->expectsOutputToContain('FEEDBACK_OWNER_USERNAME')
+            ->assertSuccessful();
+    }
+
     public function test_it_rejects_an_empty_password(): void
     {
         $this->artisan('feedback:account-password', ['account' => 'owner', '--password' => ''])

@@ -423,7 +423,7 @@ npx github:aixwangtw/feedback-desk public-reporting public-desk on
 
 ## 想自己掌控主機或需要自動處理怎麼辦？
 
-請用 [`laravel` 分支](https://github.com/aixwangtw/feedback-desk/tree/laravel)。Laravel 版裝在你自己的主機（PHP 8.3 以上，資料庫用 SQLite 或其他 Laravel 支援的資料庫），有實驗功能「自動處理」：新單進來時，由主機上的 Codex 在指定的程式碼目錄嘗試處理並回寫結果。安裝方式見該分支的 README。這個分支之後只修 bug。
+請用 [`laravel` 分支](https://github.com/aixwangtw/feedback-desk/tree/laravel)。Laravel 版裝在你自己的主機（PHP 8.3 以上，資料庫用 SQLite 或其他 Laravel 支援的資料庫），有實驗功能「自動處理」：新單進來時，由主機上的 Codex 在指定的程式碼目錄嘗試處理並回寫結果。安裝方式見該分支的 README。兩個版本的功能同步維護：每人一個帳號、改名字與密碼、多人多 AI 認領與交接在兩版都有。
 
 ## 有哪些設定可以改？
 

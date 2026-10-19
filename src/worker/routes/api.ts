@@ -71,7 +71,7 @@ export async function tokenOwner(c: AppContext): Promise<{ owner: TokenOwner; to
 export const requireToken: MiddlewareHandler<AppEnv> = async (c, next) => {
     const result = await tokenOwner(c);
     if (!result) {
-        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401);
+        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx --allow-git=all github:aixwangtw/feedback-desk login）。' }, 401);
     }
     if (result.owner.kind === 'developer') {
         c.set('apiDeveloper', result.owner.developer);

@@ -33,7 +33,7 @@ function isApiPath(path: string): boolean {
 app.use('*', async (c, next) => {
     // Without a proper secret, cookies and signed links cannot be protected, so nothing is served.
     if (!secretUsable(c.env)) {
-        console.error('APP_SECRET 未設定或少於 32 字元，拒絕服務。請重新執行 npx github:aixwangtw/feedback-desk deploy，或用 wrangler secret put APP_SECRET 設定。');
+        console.error('APP_SECRET 未設定或少於 32 字元，拒絕服務。請重新執行 npx --allow-git=all github:aixwangtw/feedback-desk deploy，或用 wrangler secret put APP_SECRET 設定。');
         return c.text('Server misconfigured: APP_SECRET is missing or too short.', 500, { 'Cache-Control': 'no-store' });
     }
     c.set('now', Date.now());
@@ -116,7 +116,7 @@ async function initializeClientName(request: Request): Promise<string | null> {
 app.all('/mcp', async (c) => {
     const result = await tokenOwner(c);
     if (!result) {
-        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
+        return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx --allow-git=all github:aixwangtw/feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
     }
     // The client names itself (clientInfo.name) only in `initialize`; remember it on the token so the
     // tool calls that follow, each a separate request, are labelled with it too.

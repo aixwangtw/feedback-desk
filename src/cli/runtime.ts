@@ -2,7 +2,7 @@ import { spawn, type SpawnOptions } from 'node:child_process';
 import { homedir, platform, tmpdir } from 'node:os';
 
 /** How people run this CLI in hints and messages. Change to `npx feedback-desk` once the package is on npm. */
-export const CLI_COMMAND = 'npx github:aixwangtw/feedback-desk';
+export const CLI_COMMAND = 'npx --allow-git=all github:aixwangtw/feedback-desk';
 
 export interface RunResult {
     code: number;

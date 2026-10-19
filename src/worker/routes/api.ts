@@ -190,17 +190,23 @@ api.post('/device/token', async (c) => {
             return c.json({ error: 'invalid_grant', message: '授權碼已使用。' }, 400);
         }
         if (row.developer_id) {
-            const developer = await c.env.DB.prepare('SELECT id, username, name FROM developers WHERE id = ?').bind(row.developer_id).first<{ id: number; username: string; name: string }>();
+            const developer = await c.env.DB.prepare('SELECT id, username, name FROM developers WHERE id = ? AND disabled_at IS NULL').bind(row.developer_id).first<{ id: number; username: string; name: string }>();
+            if (!developer) {
+                return c.json({ error: 'access_denied', message: '這個帳號已停用。' }, 400);
+            }
             const token = await team.createToken(c.env, { developerId: row.developer_id }, row.client_name, c.get('now'), row.token_days);
             return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer, account_type: 'developer' });
         }
         const account = await c.env.DB.prepare(
-            'SELECT ca.id, ca.username, ca.name, p.slug AS project FROM client_accounts ca JOIN projects p ON p.id = ca.project_id WHERE ca.id = ?',
+            'SELECT ca.id, ca.username, ca.name, p.slug AS project FROM client_accounts ca JOIN projects p ON p.id = ca.project_id WHERE ca.id = ? AND ca.disabled_at IS NULL',
         )
             .bind(row.client_account_id)
             .first<{ id: number; username: string; name: string; project: string }>();
+        if (!account) {
+            return c.json({ error: 'access_denied', message: '這個帳號已停用。' }, 400);
+        }
         const token = await team.createToken(c.env, { clientAccountId: row.client_account_id as number }, row.client_name, c.get('now'), row.token_days);
-        return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer: account, account_type: 'client', project: account?.project ?? null });
+        return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer: account, account_type: 'client', project: account.project });
     }
     if (row.status !== 'pending') {
         return c.json({ error: 'invalid_grant', message: '授權碼已使用。' }, 400);

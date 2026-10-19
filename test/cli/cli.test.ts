@@ -177,6 +177,9 @@ describe('deploy and bootstrap', () => {
         expect(secretsIndex).toBeGreaterThan(0);
         expect(existsSync(deployRun!.args[secretsIndex + 1])).toBe(false);
         expect(fake.runs.some((run) => run.args.join(' ').includes('d1 migrations apply DB --remote'))).toBe(true);
+        // First deploy: the database is created by wrangler deploy, so migrations run after it.
+        const order = fake.runs.map((run) => run.args.join(' '));
+        expect(order.findIndex((line) => line.includes('d1 migrations apply'))).toBeGreaterThan(order.findIndex((line) => / deploy( |$)/.test(` ${line}`)));
         expect(fake.text()).toContain('https://fd-e2e-test.someone.workers.dev');
         expect(JSON.parse(readFileSync(join(fake.cwd, '.feedback-desk', 'state.json'), 'utf8')).url).toBe('https://fd-e2e-test.someone.workers.dev');
 
@@ -186,6 +189,9 @@ describe('deploy and bootstrap', () => {
         fake.runs.length = 0;
         expect(await main(['deploy'], fake.rt)).toBe(0);
         expect(fake.runs.find((run) => run.args.includes('deploy'))!.args).not.toContain('--secrets-file');
+        // Existing site: new database structure first, then the new Worker.
+        const later = fake.runs.map((run) => run.args.join(' '));
+        expect(later.findIndex((line) => line.includes('d1 migrations apply'))).toBeLessThan(later.findIndex((line) => / deploy( |$)/.test(` ${line}`) && !line.includes('migrations')));
 
         // Existing Worker without the secret: stop unless --new-secret.
         state.secrets.length = 0;
@@ -222,7 +228,7 @@ describe('deploy and bootstrap', () => {
         expect(await main(['bootstrap', 'second'], fake.rt)).toBe(1);
         expect(fake.errors()).toContain('已經有團隊帳號');
         expect(await main(['bootstrap', 'alex', '--reset'], fake.rt)).toBe(0);
-        expect(state.sql.some((sql) => sql.startsWith('UPDATE developers SET password_hash'))).toBe(true);
+        expect(state.sql.some((sql) => sql.includes('UPDATE developers SET password_hash'))).toBe(true);
     });
 
     it('bootstraps with a password the deployer chose, refusing weak ones', async () => {
@@ -279,7 +285,7 @@ describe('deploy and bootstrap', () => {
         const fake = fakeRuntime({ run });
         await main(['init', '--name', 'fd-e2e-test'], fake.rt);
         expect(await main(['account', 'recover', 'alex'], fake.rt)).toBe(0);
-        const update = sql.find((statement) => statement.startsWith('UPDATE developers'))!;
+        const update = sql.find((statement) => statement.includes('UPDATE developers SET password_hash'))!;
         expect(update).toContain('password_set_by_self = 0');
         expect(update).toContain('DELETE FROM api_tokens WHERE developer_id = 3');
         expect(update).toContain("UPDATE device_codes SET status = 'denied' WHERE developer_id = 3");
@@ -295,7 +301,7 @@ describe('deploy and bootstrap', () => {
         clients = [clients[0]];
         expect(await main(['account', 'recover', 'amy', '--project', 'a'], fake.rt)).toBe(0);
         expect(sql.some((statement) => statement.includes("p.slug = 'a'"))).toBe(true);
-        const clientUpdate = sql.find((statement) => statement.startsWith('UPDATE client_accounts'))!;
+        const clientUpdate = sql.find((statement) => statement.includes('UPDATE client_accounts SET password_hash'))!;
         expect(clientUpdate).toContain('password_set_by_self = 0');
         expect(clientUpdate).toContain('WHERE id = 7');
         expect(clientUpdate).toContain('login_prefill_password = NULL');

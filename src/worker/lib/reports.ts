@@ -270,16 +270,29 @@ export function clientReadAtSql(table: string, viewer: ClientViewer): string {
     return `COALESCE((SELECT cr.last_read_at FROM client_reads cr WHERE cr.client_account_id = ${viewer.id} AND cr.report_id = ${table}.id), '${viewer.created_at}')`;
 }
 
+/**
+ * Column for list queries: compute the viewer's read time once per report in the CTE
+ * (`SELECT …, ${viewerReadAtColumnSql('reports', viewer)} FROM reports`) and pass `precomputed`
+ * to the helpers below, instead of looking it up again for every message counted.
+ */
+export function viewerReadAtColumnSql(table: string, viewer: ClientViewer): string {
+    return `${clientReadAtSql(table, viewer)} AS viewer_read_at`;
+}
+
+function readAtFor(table: string, viewer: ClientViewer, precomputed: boolean): string {
+    return precomputed ? `${table}.viewer_read_at` : clientReadAtSql(table, viewer);
+}
+
 /** SQL for the number of team (and AI) messages the client viewer has not seen. */
-export function clientUnreadRepliesSql(table: string, viewer: ClientViewer = null): string {
-    const readAt = clientReadAtSql(table, viewer);
+export function clientUnreadRepliesSql(table: string, viewer: ClientViewer = null, precomputed = false): string {
+    const readAt = readAtFor(table, viewer, precomputed);
     return `(SELECT COUNT(*) FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
         AND (${readAt} IS NULL OR rm.created_at > ${readAt}))`;
 }
 
 /** SQL: 1 when the adjustment note or images changed after the client viewer last opened the report. */
-export function adjustmentNewForClientSql(table: string, viewer: ClientViewer = null): string {
-    const readAt = clientReadAtSql(table, viewer);
+export function adjustmentNewForClientSql(table: string, viewer: ClientViewer = null, precomputed = false): string {
+    const readAt = readAtFor(table, viewer, precomputed);
     return `(CASE WHEN ${table}.adjustment_updated_at IS NOT NULL AND (${readAt} IS NULL OR ${table}.adjustment_updated_at > ${readAt}) THEN 1 ELSE 0 END)`;
 }
 
@@ -287,8 +300,8 @@ export function adjustmentNewForClientSql(table: string, viewer: ClientViewer = 
  * SQL for the unread count on the chat buttons and in the chat panel: client messages for the team
  * (shared by the whole team); team messages for the client viewer, plus 1 when the adjustment changed.
  */
-export function viewerUnreadSql(table: string, isOwner: boolean, viewer: ClientViewer = null): string {
-    return isOwner ? unreadMessagesSql(table) : `(${clientUnreadRepliesSql(table, viewer)} + ${adjustmentNewForClientSql(table, viewer)})`;
+export function viewerUnreadSql(table: string, isOwner: boolean, viewer: ClientViewer = null, precomputed = false): string {
+    return isOwner ? unreadMessagesSql(table) : `(${clientUnreadRepliesSql(table, viewer, precomputed)} + ${adjustmentNewForClientSql(table, viewer, precomputed)})`;
 }
 
 /** When the client viewer last opened the report (null: never), for checks outside SQL. */

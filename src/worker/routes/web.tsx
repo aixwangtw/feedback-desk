@@ -14,6 +14,7 @@ import {
     clientLabel,
     clientReadAt,
     creatorClientNameSql,
+    viewerReadAtColumnSql,
     type ClientViewer,
     countRemovable,
     createReport,
@@ -482,12 +483,12 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             ? conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })
             : `${sort} ${direction}, id ${direction}`;
     const listSql = `WITH numbered AS (
-            SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${clientOnly}
+            SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq${isOwner ? '' : `, ${viewerReadAtColumnSql('reports', viewer)}`} FROM reports WHERE project_id = ? ${clientOnly}
         )
         SELECT * FROM (
             SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, adjustment_note, status, client_deleted_at,
                 latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
-                ${viewerUnreadSql('numbered', isOwner, viewer)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count,
+                ${viewerUnreadSql('numbered', isOwner, viewer, true)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count,
                 ${creatorClientNameSql('numbered')} AS creator_client_name
             FROM numbered ${where}
         ) listed
@@ -916,14 +917,14 @@ web.get('/p/:slug/conversations', async (c) => {
     const { results } = await db
         .prepare(
             `WITH numbered AS (
-                SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${scope}
+                SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq${isOwner ? '' : `, ${viewerReadAtColumnSql('reports', viewer)}`} FROM reports WHERE project_id = ? ${scope}
             )
             SELECT * FROM (
                 SELECT public_id, title, status, client_deleted_at, created_at, seq,
                     ${latestMessageSql('numbered')} AS latest_message_at,
-                    ${viewerUnreadSql('numbered', isOwner, viewer)} AS unread_count,
+                    ${viewerUnreadSql('numbered', isOwner, viewer, true)} AS unread_count,
                     ${messagesCountSql('numbered')} AS messages_count,
-                    ${isOwner ? '0' : adjustmentNewForClientSql('numbered', viewer)} AS adjustment_updated,
+                    ${isOwner ? '0' : adjustmentNewForClientSql('numbered', viewer, true)} AS adjustment_updated,
                     creator_type, creator_developer_id, creator_agent, reporter_name, ${creatorClientNameSql('numbered')} AS creator_client_name,
                     (SELECT d.name FROM developers d WHERE d.id = numbered.creator_developer_id) AS creator_developer_name,
                     ${latest(`substr(lm2.body, 1, ${PREVIEW_SOURCE_CHARS})`)} AS latest_body,
@@ -1324,6 +1325,7 @@ async function webTeamContext(c: AppContext, project: Project): Promise<TeamCont
 }
 
 web.post('/p/:slug/reports/:publicId/claim', async (c) => {
+    await throttle(c, 'claim', 30);
     const project = await projectOr404(c);
     const report = await reportOr404(c, project);
     const access = c.get('access');
@@ -1336,12 +1338,20 @@ web.post('/p/:slug/reports/:publicId/claim', async (c) => {
     }
     const form = await readForm(c);
     const action = field(form, 'action');
-    if (action === 'release') {
-        await releaseReport(team, project.slug, report.public_id);
-        access.setFlash({ success: '已釋放認領。' });
-    } else {
-        const result = await claimReport(team, project.slug, report.public_id, { force: action === 'takeover' });
-        access.setFlash({ success: result.took_over_from ? `已接手（原本是 ${result.took_over_from}）。` : '已認領，其他人會看到你正在處理。' });
+    try {
+        if (action === 'release') {
+            await releaseReport(team, project.slug, report.public_id);
+            access.setFlash({ success: '已釋放認領。' });
+        } else {
+            const result = await claimReport(team, project.slug, report.public_id, { force: action === 'takeover' });
+            access.setFlash({ success: result.took_over_from ? `已接手（原本是 ${result.took_over_from}）。` : '已認領，其他人會看到你正在處理。' });
+        }
+    } catch (error) {
+        // Someone else claimed or took it over since this page loaded.
+        if (error instanceof ServiceError) {
+            abort(409, error.message);
+        }
+        throw error;
     }
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });

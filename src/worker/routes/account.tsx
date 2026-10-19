@@ -8,6 +8,7 @@ import type { ClientAccount, Developer, Project } from '../lib/models';
 import { clear, clientIp, hit } from '../lib/rate-limit';
 import { MAX_ACCOUNT_NAME } from '../lib/team';
 import { AccountPage, type AccountView } from '../views/pages';
+import { config } from '../env';
 import { abort, field, readForm, viewContext, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
 import { checkLoginRateLimit, loginLimits } from './web';
@@ -56,6 +57,22 @@ async function accountFor(c: AppContext, project: Project): Promise<Account | nu
     const client = await access.currentClientAccount(project);
     return client ? { kind: 'client', client } : null;
 }
+
+/**
+ * Accounts whose password the login page shows to everyone (FEEDBACK_LOGIN_PREFILL_ENABLED): letting
+ * one visitor make it their own would lock everyone else out of a shared demo account.
+ */
+function isPrefilled(c: AppContext, project: Project, holder: Account): boolean {
+    const prefill = config(c.env).loginPrefill;
+    if (!prefill.enabled) {
+        return false;
+    }
+    return holder.kind === 'developer'
+        ? prefill.ownerUsername !== '' && prefill.ownerUsername === holder.developer.username
+        : project.login_prefill_username !== null && project.login_prefill_username === holder.client.username;
+}
+
+const PREFILLED = '這是登入頁公開預填的示範帳號，不能改密碼。';
 
 function accountKey(holder: Account): string {
     return holder.kind === 'developer' ? `d|${holder.developer.id}` : `c|${holder.client.id}`;
@@ -159,6 +176,9 @@ account.post('/p/:slug/account/verify', async (c) => {
     if (!holder) {
         return render(c, project, null, { status: 403 });
     }
+    if (isPrefilled(c, project, holder)) {
+        return render(c, project, holder, { step: 'current', passwordErrors: [PREFILLED], status: 403 });
+    }
     const form = await readForm(c);
     const current = form.get('current_password') ?? '';
     if (current === '' || charLength(current) > MAX_PASSWORD_LENGTH) {
@@ -185,6 +205,9 @@ account.post('/p/:slug/account/password', async (c) => {
         return render(c, project, null, { status: 403 });
     }
     const access = c.get('access');
+    if (isPrefilled(c, project, holder)) {
+        return render(c, project, holder, { step: 'current', passwordErrors: [PREFILLED], status: 403 });
+    }
     if (!(await reauthValid(c, holder))) {
         access.jar.forget(REAUTH_COOKIE);
         return render(c, project, holder, { step: 'current', passwordErrors: ['確認目前密碼已逾時，請重新輸入目前的密碼。'], status: 422 });

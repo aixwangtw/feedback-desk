@@ -300,7 +300,7 @@ npx github:aixwangtw/feedback-desk public-reporting public-desk on
 | 任何人忘記自己設定的密碼 | 部署者在部署的資料夾執行 `account recover <帳號>`（客戶帳號名稱重複時加 `--project slug`） |
 | 查看、撤銷 token | `token list` 查 id，`token revoke <id>` 撤銷 |
 | 這台電腦登出命令列 | `logout`（撤銷並刪除本機 token） |
-| 更新到最新版 | 在部署的資料夾執行 `deploy`（資料庫結構會一起更新，資料保留） |
+| 更新到最新版 | 在部署的資料夾執行 `deploy`：已上線的站會先更新資料庫結構、再換新程式，資料保留。更新前可先備份：`npx wrangler d1 export DB --remote --output backup.sql` |
 
 指令前面都要加 `npx github:aixwangtw/feedback-desk`。
 

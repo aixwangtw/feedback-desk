@@ -341,10 +341,24 @@ async function guardClaim(ctx: TeamContext, report: Report, force: boolean): Pro
         );
     }
     const at = nowIso(ctx.now);
-    await ctx.env.DB.batch([
-        ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ?').bind(ctx.developer.id, ctx.agent ?? null, at, report.id),
-        eventStatement(ctx.env.DB, report, 'takeover', teamAuthor(ctx), at, withAgent(holder.name, holder.agent)),
+    // Takes over only the claim that was read; a change in between is reported instead.
+    const [taken] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ? AND claimed_by_developer_id = ? AND claimed_at = ?').bind(
+            ctx.developer.id,
+            ctx.agent ?? null,
+            at,
+            report.id,
+            holder.developer_id,
+            holder.since,
+        ),
+        ctx.env.DB.prepare(
+            `INSERT INTO report_events (report_id, kind, developer_id, client_account_id, actor_name, agent, detail, created_at)
+             SELECT ?, 'takeover', ?, NULL, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM reports WHERE id = ? AND claimed_by_developer_id = ? AND claimed_at = ?)`,
+        ).bind(report.id, ctx.developer.id, ctx.developer.name, ctx.agent ?? null, withAgent(holder.name, holder.agent), at, report.id, ctx.developer.id, at),
     ]);
+    if ((taken.meta.changes ?? 0) === 0) {
+        throw new ServiceError('claimed_by_other', '認領剛剛有變動，請重新讀取看是誰在處理。', 409);
+    }
     return description;
 }
 
@@ -388,10 +402,19 @@ export async function claimReport(ctx: TeamContext, slug: string, identifier: st
         takenOver = await guardClaim(ctx, report, options.force === true);
     } else {
         const at = nowIso(ctx.now);
-        await ctx.env.DB.batch([
-            ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ?').bind(ctx.developer.id, ctx.agent ?? null, holder?.since ?? at, report.id),
-            ...(holder ? [] : [eventStatement(ctx.env.DB, report, 'claim', teamAuthor(ctx), at)]),
-        ]);
+        if (!holder) {
+            // Only when still unclaimed: of two people claiming at once, one wins and the other is told.
+            const [claimed] = await ctx.env.DB.batch([
+                ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ? AND (claimed_by_developer_id IS NULL OR claimed_at IS NULL)').bind(ctx.developer.id, ctx.agent ?? null, at, report.id),
+                ctx.env.DB.prepare(
+                    `INSERT INTO report_events (report_id, kind, developer_id, client_account_id, actor_name, agent, detail, created_at)
+                     SELECT ?, 'claim', ?, NULL, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM reports WHERE id = ? AND claimed_by_developer_id = ? AND claimed_at = ?)`,
+                ).bind(report.id, ctx.developer.id, ctx.developer.name, ctx.agent ?? null, at, report.id, ctx.developer.id, at),
+            ]);
+            if ((claimed.meta.changes ?? 0) === 0) {
+                throw new ServiceError('claimed_by_other', '這張單剛剛被別人認領，請重新讀取看是誰在處理。', 409);
+            }
+        }
     }
     return { public_id: report.public_id, title: report.title, claimed_by: withAgent(ctx.developer.name, ctx.agent ?? null), took_over_from: takenOver };
 }
@@ -636,6 +659,9 @@ export function validateAccountName(name: string): string {
     return trimmed;
 }
 
+/** SQL condition for a login name already used by a team or client account; binds the name twice. */
+const USERNAME_IN_USE = 'SELECT 1 FROM developers WHERE lower(username) = lower(?) UNION ALL SELECT 1 FROM client_accounts WHERE lower(username) = lower(?)';
+
 /** New login names may not repeat any team or client login name of the deployment (ignoring case). */
 async function assertUsernameFree(ctx: TeamContext, username: string): Promise<void> {
     if (await usernameTaken(ctx.env.DB, username)) {
@@ -702,18 +728,27 @@ export async function createClient(ctx: TeamContext, slug: string, input: { user
     const password = randomString(GENERATED_PASSWORD_LENGTH);
     const at = nowIso(ctx.now);
     const prefill = input.prefill === true;
+    const hash = await hashPassword(password);
     const [inserted] = await ctx.env.DB.batch([
-        ctx.env.DB.prepare('INSERT INTO client_accounts (project_id, username, name, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *').bind(
-            project.id,
-            username,
-            name,
-            await hashPassword(password),
-            at,
-            at,
-        ),
-        ...(prefill ? prefillStatements(ctx, project, { username }, password) : []),
+        // The name check repeats inside the insert, so two requests at once cannot both take a name.
+        ctx.env.DB.prepare(
+            `INSERT INTO client_accounts (project_id, username, name, password_hash, created_at, updated_at)
+             SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (${USERNAME_IN_USE}) RETURNING *`,
+        ).bind(project.id, username, name, hash, at, at, username, username),
+        ...(prefill
+            ? [
+                  // Only when this request created the account (a name taken meanwhile leaves the prefill alone).
+                  ctx.env.DB.prepare(
+                      'UPDATE projects SET login_prefill_username = ?, login_prefill_password = ?, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM client_accounts WHERE project_id = ? AND username = ? AND password_hash = ?)',
+                  ).bind(username, password, at, project.id, project.id, username, hash),
+              ]
+            : []),
     ]);
-    return clientPasswordResult(ctx, project, inserted.results[0] as ClientAccount, password, prefill);
+    const account = inserted.results[0] as ClientAccount | undefined;
+    if (!account) {
+        throw new ServiceError('username_taken', `帳號名稱「${username}」已經有人使用，請換一個。`, 409);
+    }
+    return clientPasswordResult(ctx, project, account, password, prefill);
 }
 
 /**
@@ -729,10 +764,22 @@ export async function resetClient(ctx: TeamContext, slug: string, username: stri
     const password = randomString(GENERATED_PASSWORD_LENGTH);
     const hash = await hashPassword(password);
     const prefill = input.prefill === true;
+    // Prefill and revocations only run when the reset itself happened (the new hash is in place).
+    const applied = 'EXISTS (SELECT 1 FROM client_accounts WHERE id = ? AND password_hash = ?)';
+    const at = nowIso(ctx.now);
     const [updated] = await ctx.env.DB.batch([
-        ctx.env.DB.prepare('UPDATE client_accounts SET password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(hash, nowIso(ctx.now), account.id),
-        ...prefillStatements(ctx, project, account, prefill ? password : null),
-        ...revokeClientCredentials(ctx.env.DB, account.id),
+        ctx.env.DB.prepare('UPDATE client_accounts SET password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(hash, at, account.id),
+        prefill
+            ? ctx.env.DB.prepare(`UPDATE projects SET login_prefill_username = ?, login_prefill_password = ?, updated_at = ? WHERE id = ? AND ${applied}`).bind(account.username, password, at, project.id, account.id, hash)
+            : ctx.env.DB.prepare(`UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL, updated_at = ? WHERE id = ? AND login_prefill_username = ? AND ${applied}`).bind(
+                  at,
+                  project.id,
+                  account.username,
+                  account.id,
+                  hash,
+              ),
+        ctx.env.DB.prepare(`DELETE FROM api_tokens WHERE client_account_id = ? AND ${applied}`).bind(account.id, account.id, hash),
+        ctx.env.DB.prepare(`UPDATE device_codes SET status = 'denied' WHERE client_account_id = ? AND status = 'approved' AND ${applied}`).bind(account.id, account.id, hash),
     ]);
     if ((updated.meta.changes ?? 0) === 0) {
         throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
@@ -838,10 +885,15 @@ export async function createDeveloper(ctx: TeamContext, input: { username: strin
     }
     const password = randomString(GENERATED_PASSWORD_LENGTH);
     const at = nowIso(ctx.now);
-    const developer = await ctx.env.DB.prepare('INSERT INTO developers (name, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING *')
-        .bind(name, username, await hashPassword(password), at, at)
+    const developer = await ctx.env.DB.prepare(
+        `INSERT INTO developers (name, username, password_hash, created_at, updated_at) SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (${USERNAME_IN_USE}) RETURNING *`,
+    )
+        .bind(name, username, await hashPassword(password), at, at, username, username)
         .first<Developer>();
-    return { developer: developerSummary(developer as Developer), password };
+    if (!developer) {
+        throw new ServiceError('username_taken', `帳號名稱「${username}」已經有人使用，請換一個。`, 409);
+    }
+    return { developer: developerSummary(developer), password };
 }
 
 /**
@@ -862,9 +914,12 @@ export async function resetDeveloper(ctx: TeamContext, input: { username: string
     const name = input.name && input.name.trim() !== '' ? input.name.trim() : developer.name;
     const hash = await hashPassword(password);
     // The condition repeats the check so a password the holder sets meanwhile is never overwritten.
+    // Revocations only run when the reset itself happened (the new hash is in place).
+    const applied = 'EXISTS (SELECT 1 FROM developers WHERE id = ? AND password_hash = ?)';
     const [updated, revoked] = await ctx.env.DB.batch([
         ctx.env.DB.prepare('UPDATE developers SET name = ?, password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(name, hash, nowIso(ctx.now), developer.id),
-        ...revokeDeveloperCredentials(ctx.env.DB, developer.id),
+        ctx.env.DB.prepare(`DELETE FROM api_tokens WHERE developer_id = ? AND ${applied}`).bind(developer.id, developer.id, hash),
+        ctx.env.DB.prepare(`UPDATE device_codes SET status = 'denied' WHERE developer_id = ? AND status = 'approved' AND ${applied}`).bind(developer.id, developer.id, hash),
     ]);
     if ((updated.meta.changes ?? 0) === 0) {
         throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
@@ -888,7 +943,7 @@ export async function setDeveloperDisabled(ctx: TeamContext, username: string, d
     const developer = await otherDeveloper(ctx, username, disabled ? '停用' : '啟用');
     const statements = [ctx.env.DB.prepare('UPDATE developers SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? nowIso(ctx.now) : null, nowIso(ctx.now), developer.id)];
     if (disabled) {
-        statements.push(ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id));
+        statements.push(...revokeDeveloperCredentials(ctx.env.DB, developer.id));
     }
     const results = await ctx.env.DB.batch(statements);
     return { developer: developerSummary({ ...developer, disabled_at: disabled ? nowIso(ctx.now) : null }), tokens_revoked: disabled ? results[1].meta.changes ?? 0 : 0 };
@@ -908,6 +963,7 @@ export async function deleteDeveloper(ctx: TeamContext, username: string) {
     const [tokens] = await ctx.env.DB.batch([
         ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id),
         ctx.env.DB.prepare('UPDATE reports SET creator_developer_id = NULL WHERE creator_developer_id = ?').bind(developer.id),
+        ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = NULL, claimed_agent = NULL, claimed_at = NULL WHERE claimed_by_developer_id = ?').bind(developer.id),
         ctx.env.DB.prepare('DELETE FROM developers WHERE id = ?').bind(developer.id),
     ]);
     return { deleted: developer.username, tokens_revoked: tokens.meta.changes ?? 0 };

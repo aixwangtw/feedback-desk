@@ -122,6 +122,25 @@ export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
         process.once('SIGTERM', onInterrupt);
         rt.out(secret === 'no-worker' ? '第一次部署：會一併設定 APP_SECRET（Cloudflare 上的加密變數，用來加密登入 cookie 與簽署下載網址）。' : '依 --new-secret 產生新的 APP_SECRET。');
     }
+    const migrate = async () => {
+        rt.out('套用資料庫 migrations…');
+        const applied = await wrangler(rt, ['d1', 'migrations', 'apply', 'DB', '--remote'], { cwd: dir, stream: true });
+        if (applied.code !== 0) {
+            throw new CliError('D1 migrations 套用失敗，訊息見上方。修正後可再執行一次 deploy。');
+        }
+    };
+    // An existing site gets the new database structure first: the old Worker keeps working on it
+    // (new tables and columns only), while new code on the old structure would fail every request.
+    // A first deploy creates the database during `wrangler deploy`, so migrations come after it.
+    const migrateFirst = secret !== 'no-worker' && !bool(args, 'skip-migrations');
+    if (migrateFirst) {
+        try {
+            await migrate();
+        } catch (error) {
+            cleanup();
+            throw error;
+        }
+    }
     let result;
     try {
         result = await wrangler(rt, deployArgs, { cwd: dir, stream: true });
@@ -134,12 +153,8 @@ export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
         throw new CliError('wrangler deploy 失敗，訊息見上方。');
     }
     const urls = deployedUrls(`${result.stdout}\n${result.stderr}`);
-    if (!bool(args, 'skip-migrations')) {
-        rt.out('套用資料庫 migrations…');
-        const migrate = await wrangler(rt, ['d1', 'migrations', 'apply', 'DB', '--remote'], { cwd: dir, stream: true });
-        if (migrate.code !== 0) {
-            throw new CliError('D1 migrations 套用失敗，訊息見上方。修正後可再執行一次 deploy。');
-        }
+    if (!migrateFirst && !bool(args, 'skip-migrations')) {
+        await migrate();
     }
     const preferred = config.routes?.find((route) => route.custom_domain && route.pattern)?.pattern;
     const url = preferred ? `https://${preferred}` : urls[0];
@@ -271,7 +286,8 @@ async function recoverAccount(rt: Runtime, dir: string, username: string, projec
         await d1Query(
             rt,
             dir,
-            [`UPDATE developers SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${id}`, ...revokeDeveloperSql(id)].join('; '),
+            // Revoke first: if the statements stop halfway, the old credentials are already gone.
+            [...revokeDeveloperSql(id), `UPDATE developers SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${id}`].join('; '),
         );
         rt.out(`已救回團隊帳號 ${developers[0].name}（${username}）：網頁登入、CLI／MCP 的 API token 全部失效。`);
     } else {
@@ -280,9 +296,9 @@ async function recoverAccount(rt: Runtime, dir: string, username: string, projec
             rt,
             dir,
             [
-                `UPDATE client_accounts SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${target.id}`,
-                `UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL WHERE id = ${target.project_id} AND login_prefill_username = ${sqlString(username)}`,
                 ...clientRevokeSql(target.id),
+                `UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL WHERE id = ${target.project_id} AND login_prefill_username = ${sqlString(username)}`,
+                `UPDATE client_accounts SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${target.id}`,
             ].join('; '),
         );
         rt.out(`已救回專案 ${target.slug} 的客戶帳號 ${target.name}（${username}）：這個帳號的登入全部失效。`);

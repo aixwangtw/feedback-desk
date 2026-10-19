@@ -111,7 +111,11 @@ export async function hashPassword(password: string, iterations = PASSWORD_ITERA
     return `pbkdf2_sha256$${iterations}$${base64Encode(salt)}$${base64Encode(hash)}`;
 }
 
-/** A well-formed hash that matches no password; checked for unknown users so timing does not reveal them. */
+/**
+ * A well-formed hash that matches no password; checked for unknown users so timing does not reveal
+ * them. Its 10,000 iterations must stay equal to PASSWORD_ITERATIONS and SELF_SET_PASSWORD_ITERATIONS
+ * (a test checks this); raising those means raising this too.
+ */
 export const DUMMY_PASSWORD_HASH = 'pbkdf2_sha256$10000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {

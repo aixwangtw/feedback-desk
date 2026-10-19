@@ -37,8 +37,9 @@ ALTER TABLE device_codes ADD COLUMN client_account_id INTEGER REFERENCES client_
 ALTER TABLE reports ADD COLUMN creator_agent TEXT;
 ALTER TABLE messages ADD COLUMN author_agent TEXT;
 
--- Who is working on the report now (team side). Others can still read it; changing the status or
--- the adjustment note while someone else holds it asks for an explicit takeover, which is logged.
+-- Who is working on the report now (team side). Others can still read it; through the API, CLI and
+-- MCP, changing the status or the adjustment note while someone else holds it asks for an explicit
+-- takeover, which is logged (the web page shows who holds it and offers a takeover button).
 ALTER TABLE reports ADD COLUMN claimed_by_developer_id INTEGER REFERENCES developers(id) ON DELETE SET NULL;
 ALTER TABLE reports ADD COLUMN claimed_agent TEXT;
 ALTER TABLE reports ADD COLUMN claimed_at TEXT;

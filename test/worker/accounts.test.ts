@@ -331,3 +331,69 @@ describe('passwords people choose', () => {
         expect(await (await browser.get(`/p/${seeded.project.slug}`)).text()).not.toContain('data-account-link');
     });
 });
+
+describe('review follow-ups', () => {
+    it('keeps a publicly prefilled demo account from being taken over', async () => {
+        const vars = { FEEDBACK_LOGIN_PREFILL_ENABLED: 'true' };
+        const seeded = await seedProject();
+        const demo = await seedClientAccount(seeded.project, unique('demo'));
+        await env.DB.prepare('UPDATE projects SET login_prefill_username = ?, login_prefill_password = ? WHERE id = ?').bind(demo.account.username, demo.password, seeded.project.id).run();
+        const browser = new Browser(undefined, vars);
+        expect((await browser.loginAs(seeded.project.slug, demo.account.username, demo.password)).status).toBe(302);
+        const refused = await browser.post(`/p/${seeded.project.slug}/account/verify`, { current_password: demo.password });
+        expect(refused.status).toBe(403);
+        expect(await refused.text()).toContain('示範帳號');
+        expect((await clientRow(demo.account.id)).password_set_by_self).toBe(0);
+    });
+
+    it('answers a lost claim race with 409 instead of an error page', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project);
+        const alex = await seedDeveloper();
+        const bea = await seedDeveloper();
+        const alexBrowser = await login(seeded, alex.developer.username, alex.password);
+        const beaBrowser = await login(seeded, bea.developer.username, bea.password);
+        expect((await alexBrowser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/claim`, { action: 'claim' })).status).toBe(302);
+        // Bea's page still offered "認領"; the claim now belongs to Alex.
+        expect((await beaBrowser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/claim`, { action: 'claim' })).status).toBe(409);
+        expect((await beaBrowser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/claim`, { action: 'release' })).status).toBe(409);
+        expect((await beaBrowser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/claim`, { action: 'takeover' })).status).toBe(302);
+        const row = await env.DB.prepare('SELECT claimed_by_developer_id FROM reports WHERE id = ?').bind(report.id).first();
+        expect(row).toEqual({ claimed_by_developer_id: bea.developer.id });
+    });
+
+    it('frees the claim of a deleted team account so others can claim it', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project);
+        const gone = await seedDeveloper();
+        const admin = await seedDeveloper();
+        const adminToken = await seedToken(admin.developer);
+        expect((await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/claim`, await seedToken(gone.developer), {})).status).toBe(200);
+        expect((await api('DELETE', `/developers/${gone.developer.username}`, adminToken)).status).toBe(200);
+        expect((await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/claim`, adminToken, {})).status).toBe(200);
+        // A claim left without its account (older data) can be claimed too.
+        await env.DB.prepare('UPDATE reports SET claimed_by_developer_id = NULL WHERE id = ?').bind(report.id).run();
+        expect((await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/claim`, adminToken, {})).status).toBe(200);
+    });
+
+    it('does not hand out a token for a CLI login approved before the account was disabled', async () => {
+        const { developer, password } = await seedDeveloper();
+        const admin = await seedDeveloper();
+        const adminToken = await seedToken(admin.developer);
+        const code = await (await api('POST', '/device/code', null, { client_name: 'x' })).json<{ device_code: string; user_code: string }>();
+        const browser = new Browser();
+        await browser.post('/device/login', { username: developer.username, password });
+        await browser.post('/device/approve', { code: code.user_code, decision: 'approve' });
+        expect((await api('POST', `/developers/${developer.username}/disable`, adminToken)).status).toBe(200);
+        const response = await api('POST', '/device/token', null, { device_code: code.device_code });
+        expect(response.status).toBe(400);
+        expect((await response.json<{ error: string }>()).error).toBe('access_denied');
+    });
+
+    it('keeps the unknown-user dummy hash at the same cost as real hashes', async () => {
+        const { DUMMY_PASSWORD_HASH, PASSWORD_ITERATIONS, SELF_SET_PASSWORD_ITERATIONS } = await import('../../src/worker/lib/crypto');
+        const iterations = Number(DUMMY_PASSWORD_HASH.split('$')[1]);
+        expect(iterations).toBe(PASSWORD_ITERATIONS);
+        expect(iterations).toBe(SELF_SET_PASSWORD_ITERATIONS);
+    });
+});

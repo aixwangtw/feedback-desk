@@ -58,11 +58,11 @@ class FeedbackConversationController extends Controller
             ->values()
             ->map(fn (FeedbackReport $report, int $index): array => $this->listItem($feedbackProject, $report, $index + 1, $isOwner))
             ->when(! $isOwner, fn ($items) => $items->reject(fn (array $item): bool => $item['deleted']))
-            ->sort(fn (array $a, array $b): int => [$b['unread'] > 0, $b['sort_at']] <=> [$a['unread'] > 0, $a['sort_at']])
+            ->sort(fn (array $a, array $b): int => $this->sortKey($b) <=> $this->sortKey($a))
             ->values();
 
         return response()->json([
-            'items' => $items->map(fn (array $item): array => collect($item)->except('sort_at')->all())->all(),
+            'items' => $items->all(),
             'unread_total' => $items->sum('unread'),
         ]);
     }
@@ -99,7 +99,27 @@ class FeedbackConversationController extends Controller
     }
 
     /**
-     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, unread: int, adjustment_updated: bool, has_update: bool, messages_count: int, thread_url: string, page_url: string, sort_at: int}
+     * 對話清單排序（resources/js/chat-order.js 用同一套規則）：
+     * 有未讀的最前、其次有留言但已讀的，兩者依最新留言時間新到舊；沒有留言的最後，依建立時間新到舊。
+     * 同時間再依編號新到舊。
+     *
+     * @param  array{unread: int, messages_count: int, latest_at: string|null, created_at: string, number: int}  $item
+     * @return array{0: int, 1: int, 2: int}
+     */
+    private function sortKey(array $item): array
+    {
+        $tier = match (true) {
+            $item['unread'] > 0 => 2,
+            $item['messages_count'] > 0 => 1,
+            default => 0,
+        };
+        $time = $tier > 0 && $item['latest_at'] !== null ? $item['latest_at'] : $item['created_at'];
+
+        return [$tier, Carbon::parse($time)->getTimestamp(), $item['number']];
+    }
+
+    /**
+     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, created_at: string, unread: int, adjustment_updated: bool, has_update: bool, messages_count: int, thread_url: string, page_url: string}
      */
     private function listItem(FeedbackProject $project, FeedbackReport $report, int $number, bool $isOwner): array
     {
@@ -121,13 +141,13 @@ class FeedbackConversationController extends Controller
             'preview_is_mine' => $latestAuthor !== null && ($latestAuthor !== FeedbackAuthorType::Reporter) === $isOwner,
             'latest_at' => $latestAt?->toIso8601String(),
             'latest_label' => $latestAt !== null ? $this->shortTime($latestAt) : null,
+            'created_at' => $report->created_at->toIso8601String(),
             'unread' => $unread,
             'adjustment_updated' => $adjustmentUpdated,
             'has_update' => $unread > 0 || $adjustmentUpdated,
             'messages_count' => (int) $report->feedback_messages_count,
             'thread_url' => route('feedback.conversations.show', [$project, $report]),
             'page_url' => route('feedback.reports.show', [$project, $report]),
-            'sort_at' => ($latestAt ?? $report->created_at)->getTimestamp(),
         ];
     }
 

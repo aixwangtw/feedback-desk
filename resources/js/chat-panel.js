@@ -1,6 +1,8 @@
 // 右下角留言對話面板。清單資料是 JSON，一律用 textContent 放進畫面；
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
+import { orderConversations } from './chat-order';
+
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 30000;
@@ -46,6 +48,13 @@ if (root) {
     };
 
     const isOpen = () => !panel.hidden;
+
+    // 正在看的那張對話：重排時固定在清單原位，不會一點開變已讀就跳走；離開那張或重開面板時才歸位。
+    const openConversationId = () => (state.currentId !== null && !threadView.hidden ? state.currentId : null);
+    const reorder = (items, keepId = openConversationId()) => orderConversations(items, {
+        keepId,
+        previousIds: state.items.map((item) => item.id),
+    });
 
     const fetchJson = async (url) => {
         const response = await fetch(url, {
@@ -145,7 +154,7 @@ if (root) {
         state.lastListFetch = Date.now();
         try {
             const data = await fetchJson(root.dataset.listUrl);
-            state.items = data.items;
+            state.items = reorder(data.items);
             state.loaded = true;
             updateLauncherBadge(data.unread_total);
             if (isOpen()) {
@@ -257,6 +266,8 @@ if (root) {
         placeholder.hidden = true;
         threadView.hidden = false;
         setView('thread');
+        // 點到的那張留在原位，先前開著的那張回到依規則的位置。
+        state.items = reorder(state.items, id);
         renderList();
         loadThread(id, { forceScroll: true });
     };
@@ -269,6 +280,7 @@ if (root) {
             threadView.hidden = true;
             placeholder.hidden = false;
         }
+        state.items = reorder(state.items);
         renderList();
         search.focus({ preventScroll: true });
     };
@@ -280,6 +292,7 @@ if (root) {
         panel.hidden = false;
         launcher.setAttribute('aria-expanded', 'true');
         document.body.classList.add('max-sm:overflow-hidden');
+        state.items = reorder(state.items, null);
         renderList();
         loadList();
     };

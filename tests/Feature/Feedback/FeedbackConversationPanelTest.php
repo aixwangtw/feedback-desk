@@ -50,7 +50,7 @@ class FeedbackConversationPanelTest extends TestCase
         $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
 
         $this->assertSame(
-            ['老師有新留言的單', '最近有回覆的單', '沒有留言的單', '老師刪掉的單', '很久沒動的單', '開發者自己的單'],
+            ['老師有新留言的單', '最近有回覆的單', '很久沒動的單', '沒有留言的單', '老師刪掉的單', '開發者自己的單'],
             array_column($response->json('items'), 'title'),
         );
         $first = $response->json('items.0');
@@ -69,12 +69,66 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertTrue($second['preview_is_mine']);
         $this->assertSame(0, $second['unread']);
 
-        $this->assertNull($response->json('items.2.preview'));
-        $this->assertTrue($response->json('items.3.deleted'));
+        $this->assertNull($response->json('items.3.preview'));
+        $this->assertSame($empty->created_at->toIso8601String(), $response->json('items.3.created_at'));
+        $this->assertTrue($response->json('items.4.deleted'));
         $this->assertSame(2, $response->json('unread_total'));
         $this->assertNotNull($empty);
         $this->assertNotNull($deleted);
         $this->assertNotNull($developerReport);
+    }
+
+    public function test_owner_list_orders_unread_then_read_threads_then_reports_without_messages(): void
+    {
+        $emptyNewest = $this->report('剛建立還沒留言', now()->subMinutes(5));
+        $emptyOlder = $this->report('上週建立還沒留言', now()->subWeek());
+        $readOld = $this->report('很久以前聊過', now()->subMonths(2));
+        $this->message($readOld, FeedbackAuthorType::Reporter, now()->subMonth(), '舊問題');
+        $readOld->update(['owner_last_read_at' => now()->subWeeks(3)]);
+        $readRecent = $this->report('昨天聊過', now()->subMonths(3));
+        $this->message($readRecent, FeedbackAuthorType::Reporter, now()->subDay(), '昨天的問題');
+        $readRecent->update(['owner_last_read_at' => now()->subHours(20)]);
+        $unreadOld = $this->report('上個月的未讀', now()->subMonths(4));
+        $this->message($unreadOld, FeedbackAuthorType::Reporter, now()->subDays(20), '很久前的新留言');
+        $unreadNew = $this->report('剛收到的未讀', now()->subMonths(5));
+        $this->message($unreadNew, FeedbackAuthorType::Reporter, now()->subHour(), '剛剛的新留言');
+
+        $this->actingAsOwner();
+        $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
+
+        $this->assertSame(
+            ['剛收到的未讀', '上個月的未讀', '昨天聊過', '很久以前聊過', '剛建立還沒留言', '上週建立還沒留言'],
+            array_column($response->json('items'), 'title'),
+        );
+
+        // 開啟未讀那張後就變成已讀：移到第二段，依最新留言時間（20 天前）排在昨天與一個月前之間。
+        $this->getJson(route('feedback.conversations.show', [$this->project, $unreadOld]))->assertOk();
+        $this->assertSame(
+            ['剛收到的未讀', '昨天聊過', '上個月的未讀', '很久以前聊過', '剛建立還沒留言', '上週建立還沒留言'],
+            array_column($this->getJson(route('feedback.conversations.index', $this->project))->json('items'), 'title'),
+        );
+        $this->assertNotNull($emptyNewest);
+        $this->assertNotNull($emptyOlder);
+        $this->assertNotNull($unreadNew);
+    }
+
+    public function test_client_list_orders_unread_then_read_threads_then_reports_without_messages(): void
+    {
+        $this->report('剛建立還沒留言', now()->subMinutes(5));
+        $readThread = $this->report('老師自己問過', now()->subMonth());
+        $this->message($readThread, FeedbackAuthorType::Reporter, now()->subDays(10), '老師的問題');
+        $replied = $this->report('開發者剛回覆', now()->subMonths(2));
+        $this->message($replied, FeedbackAuthorType::Owner, now()->subDays(15), '開發者回覆');
+        $this->report('調整說明更新但沒留言', now()->subMonths(3), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(10)]);
+        $this->report('更早建立還沒留言', now()->subWeek());
+
+        $this->actingAsClient();
+        $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
+
+        $this->assertSame(
+            ['開發者剛回覆', '調整說明更新但沒留言', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言'],
+            array_column($response->json('items'), 'title'),
+        );
     }
 
     public function test_client_list_hides_developer_and_deleted_reports_and_counts_team_replies(): void

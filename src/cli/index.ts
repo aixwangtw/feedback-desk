@@ -1,4 +1,4 @@
-import { adjust, message, report, reports, status } from './commands/reports';
+import { adjust, claim, create, handoff, message, release, report, reports, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, token } from './commands/auth';
 import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
@@ -51,12 +51,23 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   reports <project> [--status new] [--creator client] [--include-deleted] [--include-public] [--unread] [--json]
   report <project> <public_id|編號> [--json] [--no-download] [--download-dir 路徑]
                                    附件預設下載到 ~/.cache/feedback-desk（權限 700）
-  adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id]
-  status <project> <public_id|編號> <new|needs_input|completed|待處理|待審核|已完成>
+  create <project> --title 標題 --description 說明 [--image 檔案]...
+                                   開新單（團隊與客戶帳號都可以）
+  adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
+  status <project> <public_id|編號> <new|needs_input|completed|待處理|待審核|已完成> [--force]
   message <project> <public_id|編號> --body 文字 [--image 檔案]...
 
+多人／多個 AI 接手（團隊帳號）
+  claim <project> <public_id|編號> [--force]
+                                   認領：其他人會看到誰在處理；別人認領中要加 --force（記錄為接手）
+  release <project> <public_id|編號> [--force]
+  handoff <project> <public_id|編號> --note 做到哪、下一步 [--release]
+                                   寫交接紀錄；下一個人用 report 會先看到
+  （adjust、status 遇到別人認領中的單會停下，確定要接手才加 --force）
+
 共用選項：--url https://站台（也可用 FEEDBACK_DESK_URL）、--json、--help
-環境變數：FEEDBACK_DESK_TOKEN 直接指定 token（CI、agent 用），只會送到 FEEDBACK_DESK_URL 指定的站。`;
+環境變數：FEEDBACK_DESK_TOKEN 直接指定 token（CI、agent 用），只會送到 FEEDBACK_DESK_URL 指定的站。
+          在 Claude Code、Codex 裡執行時會自動標示是哪個 AI（FEEDBACK_DESK_AGENT 可指定）。`;
 
 type Command = (rt: Runtime, argv: string[]) => Promise<number>;
 
@@ -78,6 +89,10 @@ const COMMANDS: Record<string, Command> = {
     adjust,
     status,
     message,
+    create,
+    claim,
+    release,
+    handoff,
 };
 
 export async function main(argv: string[], rt: Runtime = defaultRuntime()): Promise<number> {

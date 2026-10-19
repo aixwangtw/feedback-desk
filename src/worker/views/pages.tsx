@@ -181,7 +181,7 @@ export interface DeviceRequest {
 
 const DEVICE_WARNING = (
     <div role="alert" class="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900" data-device-warning>
-        如果你剛才沒有在自己的終端機執行 feedback-desk login，請不要授權。授權後，對方可以用你的身分讀取所有專案的回報單、寫調整說明、改狀態與管理帳號。
+        如果你剛才沒有在自己的終端機執行 feedback-desk login，請不要授權。授權後，對方可以用你的身分做你在網站上能做的事：團隊帳號是所有專案的回報單、調整說明、狀態與帳號管理；客戶帳號是你自己專案的看單、開單與留言。
     </div>
 );
 
@@ -206,7 +206,7 @@ export const DevicePage: FC<{
                     <p class="mt-4 text-sm leading-6 text-slate-600" data-device-denied>已拒絕這次授權，終端機那邊會顯示失敗。</p>
                 ) : state === 'login' ? (
                     <>
-                        <p class="mt-2 text-sm leading-6 text-slate-600">請用{labels.owner}個人帳號登入，登入後輸入終端機顯示的授權碼。</p>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">請用你的帳號登入（{labels.owner}個人帳號或{labels.client}帳號都可以），登入後輸入終端機顯示的授權碼。</p>
                         {DEVICE_WARNING}
                         <form method="post" action="/device/login" class="mt-6 grid gap-5">
                             {errorBox}
@@ -316,7 +316,7 @@ export const AccountPage: FC<{
                     <ul class="mt-4 grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700" data-password-rules>
                         <li>建議用密碼管理器（例如 1Password、Bitwarden 或瀏覽器內建的）產生一組新密碼，再貼到這裡。</li>
                         <li>至少 16 個字；不能全是同一個字、不能是連續字元，也不能包含登入帳號。</li>
-                        <li>改好後，其他裝置上的登入都會登出{account.kind === 'developer' ? '，CLI 與 MCP 用的 API token 也會撤銷，要重新執行 login' : ''}。</li>
+                        <li>改好後，其他裝置上的登入都會登出，CLI 與 MCP 用的 API token 也會撤銷，要重新執行 login。</li>
                         <li>自己設定的密碼，其他成員不能重設或改掉。忘記時只有掌握 Cloudflare 帳號的部署者能救回。</li>
                     </ul>
                     <ErrorList errors={passwordErrors} class="mt-5" />

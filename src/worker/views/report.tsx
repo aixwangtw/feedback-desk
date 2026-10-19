@@ -1,5 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { Attachment, Message, Project, Report } from '../lib/models';
+import { isStatus, statusLabel } from '../../shared/status';
+import { withAgent } from '../lib/agents';
 import { MAX_ADJUSTMENT_NOTE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
@@ -57,7 +59,10 @@ const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
 };
 
 /** Message thread as chat bubbles; shared by the report page and the chat panel. */
-export const Activity: FC<ActivityProps> = ({ v, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact }) => (
+export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact }) => {
+    // Strangers who wrote a public report only see the team label, not which AI tool replied.
+    const hideAgents = report.creator_type === 'public' && !viewerIsOwner;
+    return (
     <ol class="grid gap-4" data-chat-messages>
         {messages.length === 0 ? (
             <li class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-chat-empty>還沒有留言，新的處理進度會顯示在這裡。</li>
@@ -70,7 +75,9 @@ export const Activity: FC<ActivityProps> = ({ v, messages, messageAttachments, a
                     <li class={cx('flex', isMine ? 'justify-end' : 'justify-start')} data-chat-message data-author={message.author_type} data-side={isMine ? 'mine' : 'theirs'}>
                         <div class={cx('flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', isMine ? 'items-end' : 'items-start')}>
                             <div class={cx('flex flex-wrap items-baseline gap-x-2 px-1 text-xs', isMine ? 'flex-row-reverse' : null)}>
-                                <span class={`font-semibold ${nameClass}`} data-chat-author>{message.author_name || authorLabel(v, message.author_type)}</span>
+                                <span class={`font-semibold ${nameClass}`} data-chat-author>
+                                    {withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent)}
+                                </span>
                                 <Time v={v} at={message.created_at} relative class="text-slate-500" />
                             </div>
                             <div class={cx('mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', bubbleClass, isMine ? 'rounded-tr-md' : 'rounded-tl-md')}>
@@ -91,7 +98,8 @@ export const Activity: FC<ActivityProps> = ({ v, messages, messageAttachments, a
             })
         )}
     </ol>
-);
+    );
+};
 
 /** What the chat panel shows for one report: the adjustment (collapsed unless new) and the thread. */
 export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; adjustmentWasNew: boolean }> = (props) => {
@@ -133,7 +141,119 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     activityEtag?: string;
     /** Who created the report (account name), shown to project members. */
     creatorLabel?: string;
+    /** Team side only: who is working on it, handoff notes and recent activity. */
+    work?: WorkState;
+    /** Signed in with a personal team account (claims need a name; the shared owner link has none). */
+    canClaim?: boolean;
 }
+
+export interface WorkState {
+    claim: { by: string; since: string; yours: boolean } | null;
+    handoff_notes: Array<{ author: string; created_at: string; note: string }>;
+    recent_activity: Array<{ kind: string; by: string; detail: string | null; at: string }>;
+}
+
+const EVENT_LABELS: Record<string, string> = {
+    created: '開單',
+    message: '留言',
+    adjustment: '寫調整說明',
+    status: '改狀態',
+    claim: '認領',
+    release: '釋放認領',
+    takeover: '接手',
+    handoff: '寫交接紀錄',
+};
+
+function eventDetail(kind: string, detail: string | null): string {
+    if (!detail) {
+        return '';
+    }
+    if (kind === 'status') {
+        const [from, to] = detail.split('>');
+        return `：${isStatus(from) ? statusLabel(from) : from} → ${isStatus(to) ? statusLabel(to) : to}`;
+    }
+    return kind === 'takeover' || kind === 'release' ? `（原本是 ${detail}）` : '';
+}
+
+const SMALL_BUTTON = 'rounded-lg border px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+
+/** Claim box, handoff notes and activity log for the team. */
+export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; work: WorkState; canClaim: boolean }> = ({ v, slug, publicId, work, canClaim }) => {
+    const back = paths.report(slug, publicId);
+    return (
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-work-panel>
+            <h2 class="text-sm font-semibold text-slate-950">誰在處理</h2>
+            {work.claim ? (
+                <p class="mt-2 text-sm text-slate-700" data-claim>
+                    <span class="font-semibold text-slate-900">{work.claim.by}</span> 認領中（<Time v={v} at={work.claim.since} /> 開始）
+                </p>
+            ) : (
+                <p class="mt-2 text-sm text-slate-500" data-claim-none>目前沒有人認領。</p>
+            )}
+            {work.claim && !work.claim.yours ? (
+                <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" data-claim-warning>
+                    已有人認領。改狀態或調整說明前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
+                </p>
+            ) : null}
+            {canClaim ? (
+                <form method="post" action={paths.reportClaim(slug, publicId)} class="mt-3 flex flex-wrap gap-2">
+                    <input type="hidden" name="_back" value={back} />
+                    {!work.claim ? (
+                        <button type="submit" name="action" value="claim" class={`${SMALL_BUTTON} border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100`} data-claim-button>認領</button>
+                    ) : work.claim.yours ? (
+                        <button type="submit" name="action" value="release" class={`${SMALL_BUTTON} border-slate-300 bg-white text-slate-700 hover:bg-slate-50`} data-release-button>釋放</button>
+                    ) : (
+                        <button type="submit" name="action" value="takeover" class={`${SMALL_BUTTON} border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100`} data-takeover-button>接手</button>
+                    )}
+                </form>
+            ) : (
+                <p class="mt-3 text-xs text-slate-500">用個人帳號登入才能認領與寫交接紀錄。</p>
+            )}
+
+            <h3 class="mt-5 text-sm font-semibold text-slate-950">交接紀錄</h3>
+            {work.handoff_notes.length === 0 ? (
+                <p class="mt-2 text-xs text-slate-500">還沒有交接紀錄。工作中斷時寫下做到哪、下一步，下一個人（或 AI）讀單時會先看到。</p>
+            ) : (
+                <ol class="mt-2 grid gap-3" data-handoff-notes>
+                    {work.handoff_notes.map((note) => (
+                        <li class="rounded-lg bg-slate-50 px-3 py-2">
+                            <p class="text-[11px] text-slate-500">
+                                <span class="font-semibold text-slate-700">{note.author}</span> · <Time v={v} at={note.created_at} relative />
+                            </p>
+                            <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-slate-800">{note.note}</p>
+                        </li>
+                    ))}
+                </ol>
+            )}
+            {canClaim ? (
+                <form method="post" action={paths.reportHandoff(slug, publicId)} class="mt-3 grid gap-2" data-handoff-form>
+                    <input type="hidden" name="_back" value={back} />
+                    <label for="handoff-note" class="sr-only">交接紀錄</label>
+                    <textarea id="handoff-note" name="note" required maxlength={5000} rows={3} placeholder="做到哪、下一步、注意事項" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs leading-5 shadow-sm outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></textarea>
+                    <label class="flex items-center gap-2 text-xs text-slate-600">
+                        <input type="checkbox" name="release" value="1" class="rounded border-slate-300 text-teal-700" />
+                        同時釋放我的認領
+                    </label>
+                    <button type="submit" class={`${SMALL_BUTTON} border-slate-300 bg-white text-slate-700 hover:bg-slate-50`}>儲存交接紀錄</button>
+                </form>
+            ) : null}
+
+            {work.recent_activity.length > 0 ? (
+                <details class="mt-5" data-activity-log>
+                    <summary class="cursor-pointer text-sm font-semibold text-slate-950">最近動態</summary>
+                    <ol class="mt-2 grid gap-1.5 text-xs text-slate-600">
+                        {work.recent_activity.map((event) => (
+                            <li>
+                                <Time v={v} at={event.at} relative class="text-slate-400" /> <span class="font-semibold text-slate-800">{event.by}</span> {EVENT_LABELS[event.kind] ?? event.kind}
+                                {eventDetail(event.kind, event.detail)}
+                            </li>
+                        ))}
+                    </ol>
+                </details>
+            ) : null}
+        </section>
+    );
+};
 
 export const ReportPage: FC<ReportPageProps> = (props) => {
     const { v, project, report, isOwner, isPublicReporter, attachmentUrl } = props;
@@ -313,6 +433,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                 </div>
 
                 <aside class="grid gap-4 lg:sticky lg:top-6">
+                    {isOwner && props.work ? <WorkPanel v={v} slug={slug} publicId={report.public_id} work={props.work} canClaim={props.canClaim === true} /> : null}
                     {props.canManage ? (
                         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                             <h2 class="text-sm font-semibold text-slate-950">更新狀態</h2>

@@ -72,7 +72,21 @@ describe('upgrade from one shared client login (migration 0005)', () => {
             ).bind(at, at, at),
         ]);
 
+        await db.batch([
+            db.prepare("INSERT INTO developers (id, name, username, password_hash, created_at, updated_at) VALUES (1, '王', 'wang', 'x', ?, ?)").bind(at, at),
+            db.prepare(
+                "INSERT INTO api_tokens (id, developer_id, name, token_hash, created_at) VALUES (5, 1, 'Codex MCP', 'h1', ?), (6, 1, 'Claude Code MCP', 'h2', ?), (7, 1, 'feedback-desk CLI（pc）', 'h3', ?)",
+            ).bind(at, at, at),
+        ]);
+
         await applyD1Migrations(db, migrations);
+
+        // Existing tokens keep their ids and hashes; mcp install tokens learn which AI tool they are for.
+        expect((await db.prepare('SELECT id, developer_id, client_account_id, token_hash, agent FROM api_tokens ORDER BY id').all()).results).toEqual([
+            { id: 5, developer_id: 1, client_account_id: null, token_hash: 'h1', agent: 'Codex' },
+            { id: 6, developer_id: 1, client_account_id: null, token_hash: 'h2', agent: 'Claude Code' },
+            { id: 7, developer_id: 1, client_account_id: null, token_hash: 'h3', agent: null },
+        ]);
 
         const accounts = (await db.prepare('SELECT * FROM client_accounts').all<ClientAccount>()).results;
         expect(accounts).toHaveLength(1);
@@ -99,7 +113,7 @@ describe('upgrade from one shared client login (migration 0005)', () => {
         expect((await db.prepare('SELECT client_account_id, report_id, last_read_at FROM client_reads').all()).results).toEqual([{ client_account_id: id, report_id: 1, last_read_at: at }]);
         const project = await db.prepare('SELECT client_username, client_password_hash FROM projects WHERE id = 1').first();
         expect(project).toEqual({ client_username: 'teacher', client_password_hash: null });
-        expect((await db.prepare('SELECT password_set_by_self FROM developers').all()).results).toEqual([]);
+        expect((await db.prepare('SELECT password_set_by_self FROM developers').all()).results).toEqual([{ password_set_by_self: 0 }]);
     });
 
     it('keeps a client login made before the upgrade working until that password changes', async () => {

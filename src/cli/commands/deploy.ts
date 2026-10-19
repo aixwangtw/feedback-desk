@@ -293,9 +293,9 @@ async function recoverAccount(rt: Runtime, dir: string, username: string, projec
     return 0;
 }
 
-/** SQL that ends every API credential of a client account (none exist before client tokens are added). */
-function clientRevokeSql(_id: number): string[] {
-    return [];
+/** SQL that ends every API credential of a client account. */
+function clientRevokeSql(id: number): string[] {
+    return [`DELETE FROM api_tokens WHERE client_account_id = ${id}`, `UPDATE device_codes SET status = 'denied' WHERE client_account_id = ${id} AND status = 'approved'`];
 }
 
 /** `account recover <帳號> [--project slug]`: see recoverAccount. */

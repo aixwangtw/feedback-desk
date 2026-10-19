@@ -21,14 +21,15 @@ export interface UploadGrant {
     projectSlug: string;
     reportPublicId: string;
     purpose: 'adjustment' | 'message';
-    developerId: number;
+    /** Account the URL was issued to: d<team account id> or c<client account id>. */
+    actor: string;
     expires: number;
     /** Random value; each URL can be used once (recorded in used_upload_nonces). */
     nonce: string;
 }
 
 function grantMessage(grant: UploadGrant): string {
-    return `upload|${grant.projectSlug}|${grant.reportPublicId}|${grant.purpose}|${grant.developerId}|${grant.expires}|${grant.nonce}`;
+    return `upload|${grant.projectSlug}|${grant.reportPublicId}|${grant.purpose}|${grant.actor}|${grant.expires}|${grant.nonce}`;
 }
 
 /** Pre-authorised PUT URL so an agent can upload an image with curl without holding the API token in its shell. */
@@ -39,7 +40,7 @@ export async function signedUploadUrl(env: Env, origin: string, grant: Omit<Uplo
         p: full.projectSlug,
         r: full.reportPublicId,
         k: full.purpose,
-        d: String(full.developerId),
+        a: full.actor,
         e: String(full.expires),
         n: full.nonce,
         s: signature,
@@ -56,14 +57,14 @@ export async function readUploadGrant(env: Env, params: URLSearchParams, nowMs: 
         projectSlug: params.get('p') ?? '',
         reportPublicId: params.get('r') ?? '',
         purpose,
-        developerId: Number(params.get('d')),
+        actor: params.get('a') ?? '',
         expires: Number(params.get('e')),
         nonce: params.get('n') ?? '',
     };
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(grant.nonce)) {
         return null;
     }
-    if (!Number.isInteger(grant.developerId) || !Number.isInteger(grant.expires) || grant.expires < Math.floor(nowMs / 1000)) {
+    if (!/^[dc][1-9]\d{0,15}$/.test(grant.actor) || !Number.isInteger(grant.expires) || grant.expires < Math.floor(nowMs / 1000)) {
         return null;
     }
     const expected = await hmac(env.APP_SECRET, grantMessage(grant));

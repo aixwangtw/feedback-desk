@@ -1,8 +1,11 @@
 import { Hono, type MiddlewareHandler } from 'hono';
 import { nowIso } from '../../shared/time';
 import { randomString, sha256Hex } from '../lib/crypto';
-import { findProjectBySlug, findReportInProject } from '../lib/db';
-import type { Developer } from '../lib/models';
+import { findClientAccount, findDeveloper, findProjectBySlug, findReportInProject } from '../lib/db';
+import { AGENT_HEADER, normalizeAgent } from '../lib/agents';
+import type { ClientContext } from '../lib/client-service';
+import * as clients from '../lib/client-service';
+import type { ClientAccount, Developer, Project } from '../lib/models';
 import { attempt, clientIp } from '../lib/rate-limit';
 import { signedUploadUrl } from '../lib/signed';
 import * as team from '../lib/team';
@@ -18,45 +21,80 @@ export const DEVICE_CODE_TTL_SECONDS = 600;
 export const DEVICE_POLL_INTERVAL = 5;
 const USER_CODE_ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ';
 
-/** Resolves `Authorization: Bearer fdk_...` to a team account. Shared by the API and MCP. */
-export async function developerForToken(c: AppContext): Promise<{ developer: Developer; tokenId: number } | null> {
+export type TokenOwner = { kind: 'developer'; developer: Developer } | { kind: 'client'; account: ClientAccount; project: Project };
+
+/**
+ * Resolves `Authorization: Bearer fdk_...` to a team or client account, with the AI tool the
+ * request comes from (the token's own tool for `mcp install` tokens, else the CLI's header).
+ * Shared by the API and MCP. Disabled accounts and expired tokens resolve to nothing.
+ */
+export async function tokenOwner(c: AppContext): Promise<{ owner: TokenOwner; tokenId: number; agent: string | null } | null> {
     const header = c.req.header('authorization') ?? '';
     const match = /^Bearer\s+(\S+)$/i.exec(header);
     if (!match) {
         return null;
     }
-    const row = await c.env.DB.prepare(
-        `SELECT t.id AS token_id, t.last_used_at, d.* FROM api_tokens t JOIN developers d ON d.id = t.developer_id
-         WHERE t.token_hash = ? AND d.disabled_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?)`,
+    const token = await c.env.DB.prepare(
+        'SELECT id, developer_id, client_account_id, agent, last_used_at FROM api_tokens WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > ?)',
     )
         .bind(await sha256Hex(match[1]), nowIso(c.get('now')))
-        .first<Developer & { token_id: number; last_used_at: string | null }>();
-    if (!row) {
+        .first<{ id: number; developer_id: number | null; client_account_id: number | null; agent: string | null; last_used_at: string | null }>();
+    if (!token) {
+        return null;
+    }
+    let owner: TokenOwner | null = null;
+    if (token.developer_id !== null) {
+        const developer = await findDeveloper(c.env.DB, token.developer_id);
+        owner = developer && !developer.disabled_at ? { kind: 'developer', developer } : null;
+    } else if (token.client_account_id !== null) {
+        const account = await findClientAccount(c.env.DB, token.client_account_id);
+        const project = account && !account.disabled_at ? await c.env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(account.project_id).first<Project>() : null;
+        owner = account && project ? { kind: 'client', account, project } : null;
+    }
+    if (!owner) {
         return null;
     }
     const now = c.get('now');
     // Record usage at most every ten minutes to keep D1 writes low.
-    if (!row.last_used_at || Date.parse(row.last_used_at) < now - 600_000) {
+    if (!token.last_used_at || Date.parse(token.last_used_at) < now - 600_000) {
         c.executionCtx.waitUntil(
-            c.env.DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').bind(nowIso(now), row.token_id).run().then(() => undefined, () => undefined),
+            c.env.DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').bind(nowIso(now), token.id).run().then(() => undefined, () => undefined),
         );
     }
-    const { token_id: tokenId, last_used_at: _ignored, ...developer } = row;
-    return { developer: developer as Developer, tokenId };
+    return { owner, tokenId: token.id, agent: normalizeAgent(token.agent) ?? normalizeAgent(c.req.header(AGENT_HEADER)) };
 }
 
 export const requireToken: MiddlewareHandler<AppEnv> = async (c, next) => {
-    const result = await developerForToken(c);
+    const result = await tokenOwner(c);
     if (!result) {
         return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401);
     }
-    c.set('apiDeveloper', result.developer);
+    if (result.owner.kind === 'developer') {
+        c.set('apiDeveloper', result.owner.developer);
+    } else {
+        c.set('apiClient', { account: result.owner.account, project: result.owner.project });
+    }
     c.set('apiTokenId', result.tokenId);
+    c.set('apiAgent', result.agent);
     await next();
 };
 
+function isClient(c: AppContext): boolean {
+    return c.get('apiClient') !== undefined;
+}
+
+/** Team-only operations: client tokens get 403 with a plain explanation. */
 function ctx(c: AppContext): team.TeamContext {
-    return { env: c.env, origin: origin(c), developer: c.get('apiDeveloper'), now: c.get('now') };
+    const developer = c.get('apiDeveloper');
+    if (!developer) {
+        throw new team.ServiceError('team_only', '這個操作只有團隊帳號能做；客戶帳號可以看單、開單、留言。', 403);
+    }
+    return { env: c.env, origin: origin(c), developer, now: c.get('now'), agent: c.get('apiAgent') };
+}
+
+function clientCtx(c: AppContext): ClientContext {
+    const client = c.get('apiClient');
+    return { env: c.env, origin: origin(c), account: client.account, project: client.project, now: c.get('now'), agent: c.get('apiAgent') };
 }
 
 async function body<T>(c: AppContext): Promise<T> {
@@ -133,6 +171,7 @@ api.post('/device/token', async (c) => {
         last_polled_at: number | null;
         expires_at: number;
         token_days: number | null;
+        client_account_id: number | null;
     }>();
     const nowSeconds = Math.floor(c.get('now') / 1000);
     if (!row) {
@@ -145,14 +184,23 @@ api.post('/device/token', async (c) => {
         await c.env.DB.prepare('DELETE FROM device_codes WHERE id = ?').bind(row.id).run();
         return c.json({ error: 'access_denied', message: '授權被拒絕。' }, 400);
     }
-    if (row.status === 'approved' && row.developer_id) {
+    if (row.status === 'approved' && (row.developer_id || row.client_account_id)) {
         const consumed = await c.env.DB.prepare("UPDATE device_codes SET status = 'consumed' WHERE id = ? AND status = 'approved'").bind(row.id).run();
         if ((consumed.meta.changes ?? 0) === 0) {
             return c.json({ error: 'invalid_grant', message: '授權碼已使用。' }, 400);
         }
-        const developer = await c.env.DB.prepare('SELECT id, username, name FROM developers WHERE id = ?').bind(row.developer_id).first<{ id: number; username: string; name: string }>();
-        const token = await team.createToken(c.env, row.developer_id, row.client_name, c.get('now'), row.token_days);
-        return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer });
+        if (row.developer_id) {
+            const developer = await c.env.DB.prepare('SELECT id, username, name FROM developers WHERE id = ?').bind(row.developer_id).first<{ id: number; username: string; name: string }>();
+            const token = await team.createToken(c.env, { developerId: row.developer_id }, row.client_name, c.get('now'), row.token_days);
+            return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer, account_type: 'developer' });
+        }
+        const account = await c.env.DB.prepare(
+            'SELECT ca.id, ca.username, ca.name, p.slug AS project FROM client_accounts ca JOIN projects p ON p.id = ca.project_id WHERE ca.id = ?',
+        )
+            .bind(row.client_account_id)
+            .first<{ id: number; username: string; name: string; project: string }>();
+        const token = await team.createToken(c.env, { clientAccountId: row.client_account_id as number }, row.client_name, c.get('now'), row.token_days);
+        return c.json({ access_token: token.token, token_type: 'bearer', token_id: token.id, developer: account, account_type: 'client', project: account?.project ?? null });
     }
     if (row.status !== 'pending') {
         return c.json({ error: 'invalid_grant', message: '授權碼已使用。' }, 400);
@@ -178,10 +226,22 @@ api.use('/tokens/*', requireToken);
 
 api.get('/me', (c) => {
     const developer = c.get('apiDeveloper');
-    return c.json({ developer: { id: developer.id, username: developer.username, name: developer.name }, token_id: c.get('apiTokenId'), version: APP_VERSION });
+    const meta = { token_id: c.get('apiTokenId'), agent: c.get('apiAgent'), version: APP_VERSION };
+    if (developer) {
+        return c.json({ account_type: 'developer', developer: { id: developer.id, username: developer.username, name: developer.name }, ...meta });
+    }
+    const { account, project } = c.get('apiClient');
+    // `developer` keeps older CLIs that print "已登入：名字（帳號）" working for client accounts too.
+    return c.json({ account_type: 'client', developer: { id: account.id, username: account.username, name: account.name }, project: project.slug, ...meta });
 });
 
-api.get('/projects', async (c) => c.json(await team.listProjects(ctx(c))));
+api.get('/projects', async (c) => {
+    if (isClient(c)) {
+        const { project } = c.get('apiClient');
+        return c.json({ projects: [{ slug: project.slug, name: project.name, portal_url: `${origin(c)}${paths.portal(project.slug)}` }] });
+    }
+    return c.json(await team.listProjects(ctx(c)));
+});
 api.post('/projects', async (c) => c.json(await team.createProject(ctx(c), await body(c)), 201));
 api.post('/projects/:slug/client-link', async (c) => c.json(await team.rotateClientLink(ctx(c), c.req.param('slug'))));
 api.post('/projects/:slug/owner-link', async (c) => c.json(await team.rotateOwnerLink(ctx(c), c.req.param('slug'))));
@@ -198,6 +258,9 @@ api.delete('/projects/:slug/clients/:username', async (c) => c.json(await team.d
 api.post('/projects/:slug/public-reporting', async (c) => c.json(await team.setPublicReporting(ctx(c), c.req.param('slug'), await body(c))));
 
 api.get('/projects/:slug/reports', async (c) => {
+    if (isClient(c)) {
+        return c.json(await clients.listOwnReports(clientCtx(c), c.req.param('slug')));
+    }
     const query = new URL(c.req.url).searchParams;
     return c.json(
         await team.listReports(ctx(c), c.req.param('slug'), {
@@ -210,33 +273,57 @@ api.get('/projects/:slug/reports', async (c) => {
     );
 });
 
+api.post('/projects/:slug/reports', async (c) => {
+    const input = await body<{ title?: string; description?: string; upload_ids?: string[] }>(c);
+    if (isClient(c)) {
+        return c.json(await clients.createOwnReport(clientCtx(c), c.req.param('slug'), input), 201);
+    }
+    return c.json(await team.createTeamReport(ctx(c), c.req.param('slug'), { title: input.title ?? '', description: input.description ?? '', upload_ids: input.upload_ids }), 201);
+});
+
 function lookupMode(c: AppContext): 'auto' | 'public_id' | 'id' {
     const by = c.req.query('by');
     return by === 'id' ? 'id' : by === 'public_id' ? 'public_id' : 'auto';
 }
 
-api.get('/projects/:slug/reports/:ref', async (c) => c.json(await team.getReport(ctx(c), c.req.param('slug'), c.req.param('ref'), lookupMode(c))));
+api.get('/projects/:slug/reports/:ref', async (c) => {
+    if (isClient(c)) {
+        return c.json(await clients.getOwnReport(clientCtx(c), c.req.param('slug'), c.req.param('ref')));
+    }
+    return c.json(await team.getReport(ctx(c), c.req.param('slug'), c.req.param('ref'), lookupMode(c)));
+});
 api.post('/projects/:slug/reports/:ref/status', async (c) => {
-    const input = await body<{ status?: string }>(c);
-    return c.json(await team.setReportStatus(ctx(c), c.req.param('slug'), c.req.param('ref'), String(input.status ?? '')));
+    const input = await body<{ status?: string; force?: boolean }>(c);
+    return c.json(await team.setReportStatus(ctx(c), c.req.param('slug'), c.req.param('ref'), String(input.status ?? ''), { force: input.force === true }));
 });
 api.post('/projects/:slug/reports/:ref/adjustment', async (c) => {
-    const input = await body<{ note?: string | null; append?: boolean; upload_ids?: string[] }>(c);
-    return c.json(await team.writeAdjustment(ctx(c), c.req.param('slug'), c.req.param('ref'), { ...input, by_id: c.req.query('by') === 'id' }));
+    const input = await body<{ note?: string | null; append?: boolean; upload_ids?: string[]; force?: boolean }>(c);
+    return c.json(await team.writeAdjustment(ctx(c), c.req.param('slug'), c.req.param('ref'), { ...input, force: input.force === true, by_id: c.req.query('by') === 'id' }));
+});
+api.post('/projects/:slug/reports/:ref/claim', async (c) => {
+    const input = await body<{ force?: boolean }>(c);
+    return c.json(await team.claimReport(ctx(c), c.req.param('slug'), c.req.param('ref'), { force: input.force === true }));
+});
+api.post('/projects/:slug/reports/:ref/release', async (c) => {
+    const input = await body<{ force?: boolean }>(c);
+    return c.json(await team.releaseReport(ctx(c), c.req.param('slug'), c.req.param('ref'), { force: input.force === true }));
+});
+api.post('/projects/:slug/reports/:ref/handoff', async (c) => {
+    const input = await body<{ note?: string; release?: boolean }>(c);
+    return c.json(await team.writeHandoff(ctx(c), c.req.param('slug'), c.req.param('ref'), { note: String(input.note ?? ''), release: input.release === true }), 201);
 });
 api.post('/projects/:slug/reports/:ref/messages', async (c) => {
     const input = await body<{ body?: string; upload_ids?: string[] }>(c);
-    return c.json(await team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: String(input.body ?? ''), upload_ids: input.upload_ids }));
+    const message = { body: String(input.body ?? ''), upload_ids: input.upload_ids };
+    if (isClient(c)) {
+        return c.json(await clients.postOwnMessage(clientCtx(c), c.req.param('slug'), c.req.param('ref'), message));
+    }
+    return c.json(await team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), message));
 });
 
-/** One image per request, streamed straight into R2 (same rules as the web upload). */
-api.put('/projects/:slug/reports/:ref/uploads', async (c) => {
-    const purpose = c.req.query('purpose') === 'message' ? 'message' : 'adjustment';
-    const team_ = ctx(c);
-    const project = await team.projectOrFail(c.env, c.req.param('slug'));
-    const report = await team.resolveReport(c.env, project, c.req.param('ref'), c.req.query('by') === 'id' ? 'id' : 'auto');
+async function storeUpload(c: AppContext, target: { projectId: number; reportId: number | null; purpose: 'report' | 'message' | 'adjustment' }): Promise<Response> {
     try {
-        const upload = await storeImageStream(c.env, c.req.raw, { projectId: project.id, reportId: report.id, purpose, maxBytes: MAX_IMAGE_BYTES, nowIso: nowIso(team_.now) });
+        const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, nowIso: nowIso(c.get('now')) });
         return c.json({ id: upload.id, name: upload.original_name, size: upload.size, mime_type: upload.mime_type }, 201);
     } catch (error) {
         if (error instanceof UploadError) {
@@ -244,14 +331,42 @@ api.put('/projects/:slug/reports/:ref/uploads', async (c) => {
         }
         throw error;
     }
+}
+
+/** An image for a new report (one per request, streamed into R2); its id goes into POST /reports. */
+api.put('/projects/:slug/uploads', async (c) => {
+    const project = isClient(c) ? await clients.ownProject(clientCtx(c), c.req.param('slug')) : (ctx(c), await team.projectOrFail(c.env, c.req.param('slug')));
+    return storeUpload(c, { projectId: project.id, reportId: null, purpose: 'report' });
+});
+
+/** One image per request, streamed straight into R2 (same rules as the web upload). Clients: messages only. */
+api.put('/projects/:slug/reports/:ref/uploads', async (c) => {
+    if (isClient(c)) {
+        const client = clientCtx(c);
+        const project = await clients.ownProject(client, c.req.param('slug'));
+        const report = await clients.resolveOwnReport(client, project, c.req.param('ref'));
+        return storeUpload(c, { projectId: project.id, reportId: report.id, purpose: 'message' });
+    }
+    const purpose = c.req.query('purpose') === 'message' ? 'message' : 'adjustment';
+    ctx(c);
+    const project = await team.projectOrFail(c.env, c.req.param('slug'));
+    const report = await team.resolveReport(c.env, project, c.req.param('ref'), c.req.query('by') === 'id' ? 'id' : 'auto');
+    return storeUpload(c, { projectId: project.id, reportId: report.id, purpose });
 });
 
 api.post('/projects/:slug/reports/:ref/upload-url', async (c) => {
+    const input = await body<{ purpose?: string }>(c);
+    if (isClient(c)) {
+        const client = clientCtx(c);
+        const project = await clients.ownProject(client, c.req.param('slug'));
+        const report = await clients.resolveOwnReport(client, project, c.req.param('ref'));
+        return c.json(await signedUploadUrl(c.env, origin(c), { projectSlug: project.slug, reportPublicId: report.public_id, purpose: 'message', actor: `c${client.account.id}` }, c.get('now')));
+    }
+    const team_ = ctx(c);
     const project = await team.projectOrFail(c.env, c.req.param('slug'));
     const report = await team.resolveReport(c.env, project, c.req.param('ref'));
-    const input = await body<{ purpose?: string }>(c);
     const purpose = input.purpose === 'message' ? 'message' : 'adjustment';
-    return c.json(await signedUploadUrl(c.env, origin(c), { projectSlug: project.slug, reportPublicId: report.public_id, purpose, developerId: c.get('apiDeveloper').id }, c.get('now')));
+    return c.json(await signedUploadUrl(c.env, origin(c), { projectSlug: project.slug, reportPublicId: report.public_id, purpose, actor: `d${team_.developer.id}` }, c.get('now')));
 });
 
 api.get('/developers', async (c) => c.json(await team.listTeam(ctx(c))));
@@ -265,13 +380,17 @@ api.post('/developers/:username/disable', async (c) => c.json(await team.setDeve
 api.post('/developers/:username/enable', async (c) => c.json(await team.setDeveloperDisabled(ctx(c), c.req.param('username'), false)));
 api.delete('/developers/:username', async (c) => c.json(await team.deleteDeveloper(ctx(c), c.req.param('username'))));
 
-api.get('/tokens', async (c) => c.json(await team.listTokens(ctx(c), c.get('apiTokenId'))));
+function tokenHolder(c: AppContext): team.TokenHolder {
+    return isClient(c) ? { clientAccountId: c.get('apiClient').account.id } : { developerId: c.get('apiDeveloper').id };
+}
+
+api.get('/tokens', async (c) => c.json(await team.listTokens(c.env, tokenHolder(c), c.get('apiTokenId'))));
 api.post('/tokens', async (c) => {
-    const input = await body<{ name?: string; expires_in_days?: number | null }>(c);
+    const input = await body<{ name?: string; expires_in_days?: number | null; agent?: string }>(c);
     const days = input.expires_in_days === undefined || input.expires_in_days === null ? null : Number(input.expires_in_days);
-    return c.json(await team.createToken(c.env, c.get('apiDeveloper').id, String(input.name ?? 'cli'), c.get('now'), days), 201);
+    return c.json(await team.createToken(c.env, tokenHolder(c), String(input.name ?? 'cli'), c.get('now'), days, normalizeAgent(input.agent)), 201);
 });
-api.delete('/tokens/:id', async (c) => c.json(await team.revokeToken(ctx(c), Number(c.req.param('id')))));
+api.delete('/tokens/:id', async (c) => c.json(await team.revokeToken(c.env, tokenHolder(c), Number(c.req.param('id')))));
 
 export async function reportExists(c: AppContext, slug: string, publicId: string): Promise<{ projectId: number; reportId: number } | null> {
     const project = await findProjectBySlug(c.env.DB, slug);

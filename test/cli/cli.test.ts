@@ -348,6 +348,37 @@ describe('login', () => {
     });
 });
 
+describe('handoff commands', () => {
+    it('claims, takes over with --force, writes handoff notes and opens reports with images', async () => {
+        const fake = signedIn(({ url }) => {
+            if (url.endsWith('/claim')) return jsonResponse({ title: '單', claimed_by: '王小明（Codex）', took_over_from: '陳美華（Claude Code）（2026/10/19 10:00 開始）' });
+            if (url.endsWith('/handoff')) return jsonResponse({ title: '單', released: true }, 201);
+            if (url.endsWith('/uploads')) return jsonResponse({ id: 'up-1', name: 'a.png', size: 12 }, 201);
+            if (url.endsWith('/reports')) return jsonResponse({ public_id: 'uuid-9', title: '新單', url: 'https://desk.example.com/p/demo/reports/uuid-9', images_added: 1 }, 201);
+            return jsonResponse({}, 404);
+        }, { CODEX_THREAD_ID: 't-1', CLAUDECODE: '1' });
+        expect(await main(['claim', 'demo', 'uuid-1', '--force'], fake.rt)).toBe(0);
+        expect(fake.calls[0].body).toEqual({ force: true });
+        expect(fake.calls[0].headers['x-feedback-desk-agent']).toBe('Codex');
+        expect(fake.text()).toContain('已接手');
+        expect(await main(['handoff', 'demo', 'uuid-1'], fake.rt)).toBe(1);
+        expect(await main(['handoff', 'demo', 'uuid-1', '--note', '做到一半', '--release'], fake.rt)).toBe(0);
+        expect(fake.calls[1].body).toEqual({ note: '做到一半', release: true });
+        const image = join(fake.cwd, 'a.png');
+        writeFileSync(image, PNG);
+        expect(await main(['create', 'demo', '--title', '新單', '--description', '說明', '--image', image], fake.rt)).toBe(0);
+        expect(fake.calls[2].url).toBe('https://desk.example.com/api/v1/projects/demo/uploads');
+        expect(fake.calls[3].body).toEqual({ title: '新單', description: '說明', upload_ids: ['up-1'] });
+
+        const claude = signedIn(() => jsonResponse({ title: '單', released: false }), { CLAUDECODE: '1' });
+        expect(await main(['release', 'demo', 'uuid-1'], claude.rt)).toBe(0);
+        expect(claude.calls[0].headers['x-feedback-desk-agent']).toBe('Claude Code');
+        const plain = signedIn(() => jsonResponse({ title: '單', released: false }));
+        await main(['release', 'demo', 'uuid-1'], plain.rt);
+        expect(plain.calls[0].headers['x-feedback-desk-agent']).toBeUndefined();
+    });
+});
+
 describe('report commands', () => {
     const listed = {
         include_public: false,

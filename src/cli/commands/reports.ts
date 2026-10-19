@@ -58,6 +58,9 @@ interface ReportDetail {
     adjustment_note: string | null;
     adjustment_attachments: AttachmentInfo[];
     messages: Array<{ author_type: string; author: string; created_at: string; body: string; attachments: AttachmentInfo[] }>;
+    /** Team side only. */
+    claim?: { by: string; since: string; yours: boolean } | null;
+    handoff_notes?: Array<{ author: string; created_at: string; note: string }>;
 }
 
 /** "2026-10-14 10:30" in UTC+8 by default (FEEDBACK_DESK_UTC_OFFSET to change), without Intl. */
@@ -89,7 +92,7 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
     if (bool(args, 'include-public')) query.set('include_public', '1');
     if (bool(args, 'unread')) query.set('unread', '1');
     const api = apiFor(rt, str(args, 'url'));
-    const result = await api.get<{ reports: ListedReport[]; include_public: boolean }>(`/projects/${encodePath(slug)}/reports?${query.toString()}`);
+    const result = await api.get<{ reports: ListedReport[]; include_public: boolean; account_type?: string }>(`/projects/${encodePath(slug)}/reports?${query.toString()}`);
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result.reports, null, 2));
         return 0;
@@ -113,10 +116,14 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
                 ]),
             ),
         );
+        if (result.account_type === 'client') {
+            rt.out('（客戶帳號）編號是客戶頁面的清單編號；「未讀」是你還沒看過的團隊回覆。');
+            return 0;
+        }
         rt.out('編號為開發團隊頁面的清單編號；客戶頁面只算客戶建立的單，編號可能不同（--json 有 client_number）。');
         rt.out('「未讀」是團隊還沒在網頁上看過的客戶留言數；用 CLI 讀單不會標為已讀。--unread 只列有未讀留言的單。');
     }
-    if (!result.include_public) {
+    if (!result.include_public && result.account_type !== 'client') {
         rt.out('預設不列首頁公開回報（陌生人寫的單）；要看請加 --include-public 或 --creator=public。');
     }
     return 0;
@@ -184,6 +191,17 @@ export async function report(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(twoColumn('更新時間', time(rt, detail.updated_at)));
     rt.out(twoColumn('網址', detail.url));
     if (detail.page_url) rt.out(twoColumn('頁面網址', escapeInline(detail.page_url)));
+    if (detail.claim !== undefined) {
+        rt.out(twoColumn('認領', detail.claim ? `${escapeInline(detail.claim.by)}，${time(rt, detail.claim.since)} 開始${detail.claim.yours ? '（你）' : ''}` : '（沒有人認領）'));
+    }
+    if (detail.handoff_notes && detail.handoff_notes.length > 0) {
+        rt.out('');
+        rt.out('## 交接紀錄（最新在前）');
+        for (const note of detail.handoff_notes) {
+            rt.out(`- ${escapeInline(note.author)}　${time(rt, note.created_at)}`);
+            rt.out(`  ${e(note.note).replaceAll('\n', '\n  ')}`);
+        }
+    }
     rt.out('');
     rt.out('## 說明');
     rt.out(e(detail.description));
@@ -241,7 +259,7 @@ export function readImages(paths: string[]): Array<{ path: string; name: string;
 }
 
 export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { 'by-id': { type: 'boolean' }, note: { type: 'string' }, append: { type: 'boolean' }, image: { type: 'string', multiple: true } });
+    const args = parse(argv, { 'by-id': { type: 'boolean' }, note: { type: 'string' }, append: { type: 'boolean' }, image: { type: 'string', multiple: true }, force: { type: 'boolean' } });
     const slug = requirePositional(args, 0, '<project>');
     const ref = requirePositional(args, 1, '<report public_id>');
     const byId = bool(args, 'by-id');
@@ -273,6 +291,7 @@ export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
         ...(note !== undefined ? { note } : {}),
         append,
         upload_ids: uploadIds,
+        ...(bool(args, 'force') ? { force: true } : {}),
     });
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result, null, 2));
@@ -287,7 +306,7 @@ export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
 }
 
 export async function status(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, {});
+    const args = parse(argv, { force: { type: 'boolean' } });
     const slug = requirePositional(args, 0, '<project>');
     const ref = requirePositional(args, 1, '<report>');
     const input = requirePositional(args, 2, '<status>');
@@ -297,7 +316,7 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
     const api = apiFor(rt, str(args, 'url'));
     const result = await api.post<{ title: string; previous: { status: string; label: string }; current: { status: string; label: string } }>(
         `/projects/${encodePath(slug)}/reports/${encodePath(ref)}/status`,
-        { status: input },
+        { status: input, ...(bool(args, 'force') ? { force: true } : {}) },
     );
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result, null, 2));
@@ -330,5 +349,80 @@ export async function message(rt: Runtime, argv: string[]): Promise<number> {
         return 0;
     }
     rt.out(`已留言：${escapeInline(result.title)}（署名 ${escapeInline(result.author)}，附圖 ${result.images_added} 張）`);
+    return 0;
+}
+
+/** Claim / release a report, so others (people and AI tools) see who is working on it. */
+export async function claim(rt: Runtime, argv: string[], release = false): Promise<number> {
+    const args = parse(argv, { force: { type: 'boolean' } });
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report>');
+    const api = apiFor(rt, str(args, 'url'));
+    const result = await api.post<{ title: string; claimed_by?: string; took_over_from?: string | null; released?: boolean }>(
+        `/projects/${encodePath(slug)}/reports/${encodePath(ref)}/${release ? 'release' : 'claim'}`,
+        { force: bool(args, 'force') },
+    );
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    if (release) {
+        rt.out(result.released ? `已釋放：${escapeInline(result.title)}` : `這張單本來就沒有人認領：${escapeInline(result.title)}`);
+    } else {
+        rt.out(`已認領：${escapeInline(result.title)}（${escapeInline(result.claimed_by ?? '')}）`);
+        if (result.took_over_from) rt.out(`已接手，原本是 ${escapeInline(result.took_over_from)}（已記錄）。`);
+    }
+    return 0;
+}
+
+export function release(rt: Runtime, argv: string[]): Promise<number> {
+    return claim(rt, argv, true);
+}
+
+/** Progress note for whoever continues the work. */
+export async function handoff(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, { note: { type: 'string' }, release: { type: 'boolean' } });
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report>');
+    const note = str(args, 'note');
+    if (!note || note.trim() === '') {
+        throw new CliError('請用 --note 寫下做到哪、下一步。');
+    }
+    const api = apiFor(rt, str(args, 'url'));
+    const result = await api.post<{ title: string; released: boolean }>(`/projects/${encodePath(slug)}/reports/${encodePath(ref)}/handoff`, { note, release: bool(args, 'release') });
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已寫交接紀錄：${escapeInline(result.title)}${result.released ? '，並釋放認領' : ''}`);
+    return 0;
+}
+
+/** New report (team or client account), with images. */
+export async function create(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, { title: { type: 'string' }, description: { type: 'string' }, image: { type: 'string', multiple: true } });
+    const slug = requirePositional(args, 0, '<project>');
+    const title = str(args, 'title');
+    const description = str(args, 'description');
+    if (!title || title.trim() === '' || !description || description.trim() === '') {
+        throw new CliError('請用 --title 與 --description 寫下問題。');
+    }
+    const images = readImages(list(args, 'image'));
+    if (images.length > 5) {
+        throw new CliError('一張單最多附 5 張圖。');
+    }
+    const api = apiFor(rt, str(args, 'url'));
+    const uploadIds: string[] = [];
+    for (const image of images) {
+        uploadIds.push((await api.upload(`/projects/${encodePath(slug)}/uploads`, image.bytes, image.name, image.mime)).id);
+    }
+    const result = await api.post<{ public_id: string; title: string; url: string; images_added: number }>(`/projects/${encodePath(slug)}/reports`, { title, description, upload_ids: uploadIds });
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已開單：${escapeInline(result.title)}（附圖 ${result.images_added} 張）`);
+    rt.out(twoColumn('public_id', result.public_id));
+    rt.out(result.url);
     return 0;
 }

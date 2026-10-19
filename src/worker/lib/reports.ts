@@ -15,10 +15,21 @@ export const MAX_MESSAGE = 10_000;
 export const MAX_ADJUSTMENT_NOTE = 20_000;
 export const MAX_REPORTER_NAME = 50;
 
+/** Kinds of entries in report_events (migration 0006). */
+export type EventKind = 'created' | 'message' | 'adjustment' | 'status' | 'claim' | 'release' | 'takeover' | 'handoff';
+
+/** One activity-log row; `report` is the id, or the public_id of a report inserted in the same batch. */
+export function eventStatement(db: D1Database, report: { id: number } | { publicId: string }, kind: EventKind, author: Author, at: string, detail: string | null = null): D1PreparedStatement {
+    const target = 'id' in report ? '?' : '(SELECT id FROM reports WHERE public_id = ?)';
+    return db
+        .prepare(`INSERT INTO report_events (report_id, kind, developer_id, client_account_id, actor_name, agent, detail, created_at) VALUES (${target}, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind('id' in report ? report.id : report.publicId, kind, author.developerId, author.clientAccountId, author.name ?? '', author.agent ?? null, detail, at);
+}
+
 export async function createReport(
     env: Env,
     project: Project,
-    data: { title: string; description: string; reporter_name?: string | null; uploads: Upload[] },
+    data: { title: string; description: string; reporter_name?: string | null; uploads: Upload[]; author?: Author },
     creator: Creator,
     now = Date.now(),
 ): Promise<{ report: Report; reporterToken: string }> {
@@ -29,8 +40,8 @@ export async function createReport(
     const results = await db.batch([
         db
             .prepare(
-                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, creator_client_account_id, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
+                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
             )
             .bind(
                 project.id,
@@ -40,6 +51,7 @@ export async function createReport(
                 creator.creator_type,
                 creator.creator_developer_id,
                 creator.creator_client_account_id ?? null,
+                data.author?.agent ?? null,
                 data.title,
                 data.description,
                 at,
@@ -55,6 +67,7 @@ export async function createReport(
             nowIso: at,
             author: { developerId: creator.creator_developer_id, clientAccountId: creator.creator_client_account_id ?? null },
         }),
+        ...(data.author ? [eventStatement(db, { publicId }, 'created', data.author, at)] : []),
         // A client account's own new report starts read for that account.
         ...(creator.creator_client_account_id
             ? [
@@ -124,11 +137,12 @@ export async function deleteReport(env: Env, report: Report): Promise<void> {
 }
 
 /** Status change shared by the web pages, the API and MCP; completion time and activity time follow the same rule. */
-export async function changeStatus(env: Env, report: Report, status: ReportStatus, now = Date.now()): Promise<void> {
+export async function changeStatus(env: Env, report: Report, status: ReportStatus, now = Date.now(), author?: Author): Promise<void> {
     const at = nowIso(now);
-    await env.DB.prepare('UPDATE reports SET status = ?, completed_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?')
-        .bind(status, status === 'completed' ? at : null, at, at, report.id)
-        .run();
+    await env.DB.batch([
+        env.DB.prepare('UPDATE reports SET status = ?, completed_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(status, status === 'completed' ? at : null, at, at, report.id),
+        ...(author && report.status !== status ? [eventStatement(env.DB, report, 'status', author, at, `${report.status}>${status}`)] : []),
+    ]);
 }
 
 export async function setClientDeleted(env: Env, report: Report, deleted: boolean, now = Date.now()): Promise<void> {
@@ -148,9 +162,9 @@ export async function addMessage(
     const at = nowIso(now);
     const message = await db
         .prepare(
-            'INSERT INTO messages (report_id, author_type, author_name, author_client_account_id, author_developer_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            'INSERT INTO messages (report_id, author_type, author_name, author_client_account_id, author_developer_id, author_agent, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
         )
-        .bind(report.id, data.author_type, data.author_name, data.author?.clientAccountId ?? null, data.author?.developerId ?? null, data.body, at, at)
+        .bind(report.id, data.author_type, data.author_name, data.author?.clientAccountId ?? null, data.author?.developerId ?? null, data.author?.agent ?? null, data.body, at, at)
         .first<{ id: number }>();
     if (!message) {
         throw new Error('message insert returned no id');
@@ -160,6 +174,7 @@ export async function addMessage(
         await db.batch([
             ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at, author: data.author }),
             db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id),
+            ...(data.author ? [eventStatement(db, report, 'message', data.author, at)] : []),
         ]);
     } catch (error) {
         await db.prepare('DELETE FROM messages WHERE id = ?').bind(message.id).run();
@@ -206,6 +221,9 @@ export async function updateAdjustment(
     ];
     statements.push(...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)));
     statements.push(...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'adjustment', nowIso: at, author: data.author }));
+    if (data.author && changed) {
+        statements.push(eventStatement(db, report, 'adjustment', data.author, at));
+    }
     await db.batch(statements);
     await deleteObjects(env, removed);
 }

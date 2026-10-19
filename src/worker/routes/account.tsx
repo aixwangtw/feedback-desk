@@ -226,8 +226,10 @@ account.post('/p/:slug/account/password', async (c) => {
     } else {
         const id = holder.client.id;
         const applied = 'EXISTS (SELECT 1 FROM client_accounts WHERE id = ? AND password_hash = ?)';
-        const [updated] = await db.batch([
+        const [updated, tokens] = await db.batch([
             db.prepare('UPDATE client_accounts SET password_hash = ?, password_set_by_self = 1, updated_at = ? WHERE id = ? AND password_hash = ?').bind(newHash, at, id, oldHash),
+            db.prepare(`DELETE FROM api_tokens WHERE client_account_id = ? AND ${applied}`).bind(id, id, newHash),
+            db.prepare(`UPDATE device_codes SET status = 'denied' WHERE client_account_id = ? AND status = 'approved' AND ${applied}`).bind(id, id, newHash),
             // A chosen password is never stored for the login page prefill.
             db
                 .prepare(`UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL WHERE id = ? AND login_prefill_username = ? AND ${applied}`)
@@ -237,7 +239,8 @@ account.post('/p/:slug/account/password', async (c) => {
             return stale();
         }
         await access.grantClientAccount(project, (await findClientAccount(db, id)) as ClientAccount);
-        message = '已更新密碼。其他裝置上用這個帳號的登入都已登出。';
+        const revoked = tokens.meta.changes ?? 0;
+        message = `已更新密碼。其他裝置上用這個帳號的登入都已登出${revoked > 0 ? `，${revoked} 個 CLI／MCP 用的 API token 也已撤銷，請重新執行 login` : ''}。`;
     }
     access.jar.forget(REAUTH_COOKIE);
     access.setFlash({ success: message });

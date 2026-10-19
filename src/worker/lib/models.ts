@@ -58,6 +58,12 @@ export interface Report {
     creator_developer_id: number | null;
     /** The client account that created it; null for the client entry link and public reports. */
     creator_client_account_id: number | null;
+    /** AI tool that created it (migration 0006). */
+    creator_agent: string | null;
+    /** Team account working on it now, with the AI tool and start time (migration 0006). */
+    claimed_by_developer_id: number | null;
+    claimed_agent: string | null;
+    claimed_at: string | null;
     title: string;
     description: string;
     adjustment_note: string | null;
@@ -84,6 +90,8 @@ export interface Message {
     author_name: string | null;
     author_client_account_id: number | null;
     author_developer_id: number | null;
+    /** AI tool that wrote it through MCP or the CLI (migration 0006); null for people on the web. */
+    author_agent: string | null;
     body: string;
     created_at: string;
     updated_at: string;

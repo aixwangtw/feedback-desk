@@ -20,6 +20,8 @@ interface TokenResponse {
     access_token?: string;
     token_id?: number;
     developer?: { id: number; username: string; name: string };
+    account_type?: 'developer' | 'client';
+    project?: string | null;
     error?: string;
     message?: string;
     interval?: number;
@@ -59,7 +61,7 @@ export async function login(rt: Runtime, argv: string[]): Promise<number> {
     const clientName = str(args, 'name') ?? `feedback-desk CLI（${hostname()}）`;
     const { data: code } = await client.request<DeviceCode>('POST', '/device/code', { client_name: clientName, expires_in_days: expires }, { auth: false });
     rt.out(`請在瀏覽器開啟：${code.verification_uri}`);
-    rt.out(`用團隊帳號登入後，輸入這個授權碼：${code.user_code}`);
+    rt.out(`用你的帳號（團隊或客戶帳號）登入後，輸入這個授權碼：${code.user_code}`);
     rt.out('頁面會顯示申請時間與來源，確認是你剛才的申請再按「授權」。');
     if (!bool(args, 'no-browser')) {
         const opened = await rt.openBrowser(code.verification_uri);
@@ -77,7 +79,7 @@ export async function login(rt: Runtime, argv: string[]): Promise<number> {
             config.sites[url] = { token: data.access_token, token_id: data.token_id ?? 0, developer: data.developer, saved_at: new Date(rt.now()).toISOString() };
             config.default_site = url;
             writeConfig(rt, config);
-            rt.out(`已登入 ${url}：${data.developer.name}（${data.developer.username}）`);
+            rt.out(`已登入 ${url}：${data.developer.name}（${data.developer.username}${data.account_type === 'client' ? `，專案 ${data.project ?? ''} 的客戶帳號` : ''}）`);
             rt.out(`token 存在 ${join(configDir(rt), 'config.json')}（只有你的帳號能讀）。`);
             return 0;
         }
@@ -288,7 +290,7 @@ export async function mcp(rt: Runtime, argv: string[]): Promise<number> {
             rt.out(`Claude Code：找不到 claude 指令，略過。安裝 Claude Code 後再執行 ${CLI_COMMAND} mcp install --claude。`);
         } else {
             await revokePrevious(rt, api, 'claude');
-            const created = await api.post<{ token: string; id: number }>('/tokens', { name: 'Claude Code MCP' });
+            const created = await api.post<{ token: string; id: number }>('/tokens', { name: 'Claude Code MCP', agent: 'Claude Code' });
             const helper = writeHelper(rt, 'claude', created.token);
             await rt.run('claude', ['mcp', 'remove', MCP_NAME, '--scope', scope]);
             const config = JSON.stringify({ type: 'http', url: endpoint, headersHelper: helper });
@@ -311,7 +313,7 @@ export async function mcp(rt: Runtime, argv: string[]): Promise<number> {
             const path = codexConfigPath(rt);
             const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
             await revokePrevious(rt, api, 'codex');
-            const created = await api.post<{ token: string; id: number }>('/tokens', { name: 'Codex MCP' });
+            const created = await api.post<{ token: string; id: number }>('/tokens', { name: 'Codex MCP', agent: 'Codex' });
             const helper = writeHelper(rt, 'codex', created.token);
             let next: string;
             try {

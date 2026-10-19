@@ -1,5 +1,24 @@
 import { CLI_COMMAND, CliError, type Runtime } from './runtime';
 
+/**
+ * Which AI tool is running this CLI, sent so the site can show "名字（Codex）". FEEDBACK_DESK_AGENT
+ * wins; otherwise Codex marks its shells with CODEX_THREAD_ID / CODEX_SESSION_ID and Claude Code
+ * with CLAUDECODE=1. Codex is checked first because a Codex started from Claude Code inherits
+ * CLAUDECODE. The server only accepts the known names.
+ */
+export function detectAgent(env: Record<string, string | undefined>): string | null {
+    if (env.FEEDBACK_DESK_AGENT) {
+        return env.FEEDBACK_DESK_AGENT;
+    }
+    if (env.CODEX_THREAD_ID || env.CODEX_SESSION_ID) {
+        return 'Codex';
+    }
+    if (env.CLAUDECODE === '1') {
+        return 'Claude Code';
+    }
+    return null;
+}
+
 export class ApiError extends CliError {
     constructor(
         message: string,
@@ -21,6 +40,10 @@ export class ApiClient {
         const headers: Record<string, string> = { Accept: 'application/json', ...extra };
         if (this.token) {
             headers.Authorization = `Bearer ${this.token}`;
+        }
+        const agent = detectAgent(this.rt.env);
+        if (agent) {
+            headers['X-Feedback-Desk-Agent'] = agent;
         }
         return headers;
     }

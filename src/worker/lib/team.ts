@@ -4,7 +4,7 @@
  */
 import { CREATOR_FILTER_PATTERN, describedStatusOptions, statusFromInput, statusLabel, type ReportStatus } from '../../shared/status';
 import { charLength, slugify } from '../../shared/text';
-import { nowIso } from '../../shared/time';
+import { formatAbsolute, nowIso } from '../../shared/time';
 import { config, type Env } from '../env';
 import { hashPassword, randomString, sha256Hex } from './crypto';
 import {
@@ -24,11 +24,15 @@ import type { Attachment, ClientAccount, Developer, Project, Report } from './mo
 import {
     addMessage,
     changeStatus,
+    createReport,
     creatorLabel,
+    eventStatement,
     findInProject,
     latestMessageSql,
     MAX_ADJUSTMENT_NOTE,
+    MAX_DESCRIPTION,
     MAX_MESSAGE,
+    MAX_TITLE,
     mergeNote,
     messageAuthorName,
     sequenceNumber,
@@ -36,6 +40,8 @@ import {
     updateAdjustment,
 } from './reports';
 import { signedAttachmentUrl } from './signed';
+import type { Author } from './access';
+import { withAgent } from './agents';
 import { findClaimableUploads } from './uploads';
 import { paths } from '../routes/paths';
 
@@ -54,6 +60,13 @@ export interface TeamContext {
     origin: string;
     developer: Developer;
     now: number;
+    /** AI tool making the request ('Claude Code', 'Codex'), from the token or the CLI; null otherwise. */
+    agent?: string | null;
+}
+
+/** The team account (and AI tool) for the account columns and the activity log. */
+export function teamAuthor(ctx: TeamContext): Author {
+    return { developerId: ctx.developer.id, clientAccountId: null, name: ctx.developer.name, agent: ctx.agent ?? null };
 }
 
 const GENERATED_PASSWORD_LENGTH = 24;
@@ -167,13 +180,14 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
                 ${latestMessageSql('r')} AS latest_message_at
             FROM reports r WHERE project_id = ?
         )
-        SELECT n.*, d.name AS developer_name, ca.name AS client_account_name FROM numbered n
+        SELECT n.*, d.name AS developer_name, ca.name AS client_account_name, cd.name AS claimed_name FROM numbered n
         LEFT JOIN developers d ON d.id = n.creator_developer_id
-        LEFT JOIN client_accounts ca ON ca.id = n.creator_client_account_id ${where}
+        LEFT JOIN client_accounts ca ON ca.id = n.creator_client_account_id
+        LEFT JOIN developers cd ON cd.id = n.claimed_by_developer_id ${where}
         ORDER BY created_at DESC, id DESC`,
     )
         .bind(project.id, ...bindings)
-        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; unread_messages_count: number; latest_message_at: string | null; developer_name: string | null; client_account_name: string | null }>();
+        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; unread_messages_count: number; latest_message_at: string | null; developer_name: string | null; client_account_name: string | null; claimed_name: string | null }>();
     return {
         project: project.slug,
         include_public: includePublic,
@@ -185,7 +199,8 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             status: report.status,
             status_label: statusLabel(report.status),
             creator_type: report.creator_type,
-            creator: creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name),
+            creator: withAgent(creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name), report.creator_agent),
+            claimed_by: report.claimed_at && report.claimed_name ? withAgent(report.claimed_name, report.claimed_agent) : null,
             source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
             title: report.title,
             messages_count: report.messages_count,
@@ -229,9 +244,10 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         status: report.status,
         status_label: statusLabel(report.status),
         creator_type: report.creator_type,
-        creator: creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null),
+        creator: withAgent(creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null), report.creator_agent),
         source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
         deleted_by_client: report.client_deleted_at !== null,
+        ...(await workState(ctx, report)),
         created_at: report.created_at,
         updated_at: report.updated_at,
         latest_activity_at: report.latest_activity_at,
@@ -244,7 +260,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         messages: await Promise.all(
             messages.map(async (message) => ({
                 author_type: message.author_type,
-                author: message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client),
+                author: withAgent(message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client), message.author_agent),
                 created_at: message.created_at,
                 body: message.body,
                 attachments: await attachmentData(ctx, attachments.filter((a) => a.message_id === message.id)),
@@ -253,27 +269,219 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
     };
 }
 
-export async function setReportStatus(ctx: TeamContext, slug: string, identifier: string, statusInput: string) {
+export async function setReportStatus(ctx: TeamContext, slug: string, identifier: string, statusInput: string, options: { force?: boolean } = {}) {
     const project = await projectOrFail(ctx.env, slug);
     const status = statusFromInput(statusInput);
     if (!status) {
         throw new ServiceError('invalid_status', `不認得的狀態。可用值：${describedStatusOptions()}`, 422);
     }
     const report = await resolveReport(ctx.env, project, identifier);
-    await changeStatus(ctx.env, report, status, ctx.now);
+    const takenOver = await guardClaim(ctx, report, options.force === true);
+    await changeStatus(ctx.env, report, status, ctx.now, teamAuthor(ctx));
     return {
         public_id: report.public_id,
         title: report.title,
         previous: { status: report.status, label: statusLabel(report.status) },
         current: { status, label: statusLabel(status) },
+        took_over_from: takenOver,
     };
+}
+
+// ------------------------------------------------------------------ claims and handoff notes
+
+const MAX_HANDOFF_NOTE = 5_000;
+const HANDOFF_NOTES_SHOWN = 5;
+const EVENTS_SHOWN = 20;
+
+interface ClaimHolder {
+    developer_id: number;
+    name: string;
+    agent: string | null;
+    since: string;
+}
+
+/** Enough to read the work state of a report: who asks (to mark "yours"), nothing else. */
+export interface WorkViewer {
+    env: Env;
+    developer: Pick<Developer, 'id'> | null;
+    agent?: string | null;
+}
+
+async function claimHolder(ctx: WorkViewer, report: Report): Promise<ClaimHolder | null> {
+    if (report.claimed_by_developer_id === null || report.claimed_at === null) {
+        return null;
+    }
+    const developer = await findDeveloper(ctx.env.DB, report.claimed_by_developer_id);
+    return { developer_id: report.claimed_by_developer_id, name: developer?.name ?? '（已刪除的帳號）', agent: report.claimed_agent, since: report.claimed_at };
+}
+
+function isMine(ctx: WorkViewer, holder: ClaimHolder): boolean {
+    return ctx.developer !== null && holder.developer_id === ctx.developer.id && (holder.agent ?? null) === (ctx.agent ?? null);
+}
+
+function describeHolder(ctx: WorkViewer, holder: ClaimHolder): string {
+    return `${withAgent(holder.name, holder.agent)}（${formatAbsolute(holder.since, config(ctx.env).utcOffsetMinutes)} 開始）`;
+}
+
+/**
+ * Someone else holds the report: without `force` the change is refused with who holds it; with
+ * `force` this account takes the claim over and the takeover is logged. Returns the previous holder.
+ */
+async function guardClaim(ctx: TeamContext, report: Report, force: boolean): Promise<string | null> {
+    const holder = await claimHolder(ctx, report);
+    if (!holder || isMine(ctx, holder)) {
+        return null;
+    }
+    const description = describeHolder(ctx, holder);
+    if (!force) {
+        throw new ServiceError(
+            'claimed_by_other',
+            `這張單由 ${description} 認領處理中。先用 get_report 看最新交接紀錄；確定要接手，請加 force（CLI：--force），系統會記錄你接手。`,
+            409,
+        );
+    }
+    const at = nowIso(ctx.now);
+    await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ?').bind(ctx.developer.id, ctx.agent ?? null, at, report.id),
+        eventStatement(ctx.env.DB, report, 'takeover', teamAuthor(ctx), at, withAgent(holder.name, holder.agent)),
+    ]);
+    return description;
+}
+
+/** Claim, newest handoff notes and recent activity; team side only. */
+export async function workState(ctx: WorkViewer, report: Report) {
+    const holder = await claimHolder(ctx, report);
+    const [notes, events] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare(
+            `SELECT h.body, h.agent, h.created_at, COALESCE(d.name, h.author_name) AS author FROM handoff_notes h LEFT JOIN developers d ON d.id = h.developer_id
+             WHERE h.report_id = ? ORDER BY h.id DESC LIMIT ${HANDOFF_NOTES_SHOWN}`,
+        ).bind(report.id),
+        ctx.env.DB.prepare(
+            `SELECT e.kind, e.agent, e.detail, e.created_at, COALESCE(d.name, ca.name, e.actor_name) AS actor FROM report_events e
+             LEFT JOIN developers d ON d.id = e.developer_id LEFT JOIN client_accounts ca ON ca.id = e.client_account_id
+             WHERE e.report_id = ? ORDER BY e.id DESC LIMIT ${EVENTS_SHOWN}`,
+        ).bind(report.id),
+    ]);
+    return {
+        claim: holder ? { by: withAgent(holder.name, holder.agent), since: holder.since, yours: isMine(ctx, holder) } : null,
+        handoff_notes: (notes.results as Array<{ body: string; agent: string | null; created_at: string; author: string }>).map((note) => ({
+            author: withAgent(note.author, note.agent),
+            created_at: note.created_at,
+            note: note.body,
+        })),
+        recent_activity: (events.results as Array<{ kind: string; agent: string | null; detail: string | null; created_at: string; actor: string }>).map((event) => ({
+            kind: event.kind,
+            by: withAgent(event.actor, event.agent),
+            detail: event.detail,
+            at: event.created_at,
+        })),
+    };
+}
+
+/** Takes the report: others see who is working on it. Someone else's claim needs `force` (logged as takeover). */
+export async function claimReport(ctx: TeamContext, slug: string, identifier: string, options: { force?: boolean } = {}) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier);
+    const holder = await claimHolder(ctx, report);
+    let takenOver: string | null = null;
+    if (holder && !isMine(ctx, holder)) {
+        takenOver = await guardClaim(ctx, report, options.force === true);
+    } else {
+        const at = nowIso(ctx.now);
+        await ctx.env.DB.batch([
+            ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = ?, claimed_agent = ?, claimed_at = ? WHERE id = ?').bind(ctx.developer.id, ctx.agent ?? null, holder?.since ?? at, report.id),
+            ...(holder ? [] : [eventStatement(ctx.env.DB, report, 'claim', teamAuthor(ctx), at)]),
+        ]);
+    }
+    return { public_id: report.public_id, title: report.title, claimed_by: withAgent(ctx.developer.name, ctx.agent ?? null), took_over_from: takenOver };
+}
+
+/** Lets go of the report. Releasing someone else's claim needs `force` and is logged. */
+export async function releaseReport(ctx: TeamContext, slug: string, identifier: string, options: { force?: boolean } = {}) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier);
+    const holder = await claimHolder(ctx, report);
+    if (!holder) {
+        return { public_id: report.public_id, title: report.title, released: false };
+    }
+    if (!isMine(ctx, holder) && options.force !== true) {
+        throw new ServiceError('claimed_by_other', `這張單由 ${describeHolder(ctx, holder)} 認領，不是你。確定要替他釋放請加 force（會記錄）。`, 409);
+    }
+    const at = nowIso(ctx.now);
+    await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = NULL, claimed_agent = NULL, claimed_at = NULL WHERE id = ?').bind(report.id),
+        eventStatement(ctx.env.DB, report, 'release', teamAuthor(ctx), at, isMine(ctx, holder) ? null : withAgent(holder.name, holder.agent)),
+    ]);
+    return { public_id: report.public_id, title: report.title, released: true };
+}
+
+/** Progress note for whoever continues: what is done, what comes next. Optionally releases the claim. */
+export async function writeHandoff(ctx: TeamContext, slug: string, identifier: string, input: { note: string; release?: boolean }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier);
+    const note = (input.note ?? '').trim();
+    if (note === '') {
+        throw new ServiceError('note_required', '交接紀錄不可為空白：寫下做到哪、下一步是什麼。', 422);
+    }
+    if (charLength(note) > MAX_HANDOFF_NOTE) {
+        throw new ServiceError('note_too_long', `交接紀錄不能超過 ${MAX_HANDOFF_NOTE} 字。`, 422);
+    }
+    const at = nowIso(ctx.now);
+    const holder = await claimHolder(ctx, report);
+    const release = input.release === true && holder !== null && isMine(ctx, holder);
+    await ctx.env.DB.batch([
+        ctx.env.DB.prepare('INSERT INTO handoff_notes (report_id, developer_id, author_name, agent, body, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(
+            report.id,
+            ctx.developer.id,
+            ctx.developer.name,
+            ctx.agent ?? null,
+            note,
+            at,
+        ),
+        eventStatement(ctx.env.DB, report, 'handoff', teamAuthor(ctx), at),
+        ...(release
+            ? [
+                  ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = NULL, claimed_agent = NULL, claimed_at = NULL WHERE id = ?').bind(report.id),
+                  eventStatement(ctx.env.DB, report, 'release', teamAuthor(ctx), at),
+              ]
+            : []),
+    ]);
+    return { public_id: report.public_id, title: report.title, saved: true, released: release };
+}
+
+/** A report created by a team account (through the API, CLI or MCP). */
+export async function createTeamReport(ctx: TeamContext, slug: string, input: { title: string; description: string; upload_ids?: string[] }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const { title, description, uploadIds } = validateNewReport(input);
+    const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'report', reportId: null });
+    if (uploads === null) {
+        throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這個專案，請重新上傳。', 422);
+    }
+    const { report } = await createReport(ctx.env, project, { title, description, uploads, author: teamAuthor(ctx) }, { creator_type: 'developer', creator_developer_id: ctx.developer.id }, ctx.now);
+    return { public_id: report.public_id, title: report.title, url: absolute(ctx, paths.report(project.slug, report.public_id)), images_added: uploads.length };
+}
+
+export function validateNewReport(input: { title?: string; description?: string; upload_ids?: string[] }): { title: string; description: string; uploadIds: string[] } {
+    const title = (input.title ?? '').trim();
+    const description = (input.description ?? '').trim();
+    if (title === '' || charLength(title) > MAX_TITLE) {
+        throw new ServiceError('invalid_title', `標題不可為空白，且不可超過 ${MAX_TITLE} 字。`, 422);
+    }
+    if (description === '' || charLength(description) > MAX_DESCRIPTION) {
+        throw new ServiceError('invalid_description', `說明不可為空白，且不可超過 ${MAX_DESCRIPTION} 字。`, 422);
+    }
+    const uploadIds = input.upload_ids ?? [];
+    if (uploadIds.length > 5) {
+        throw new ServiceError('too_many_images', '一張單最多附 5 張圖。', 422);
+    }
+    return { title, description, uploadIds };
 }
 
 export async function writeAdjustment(
     ctx: TeamContext,
     slug: string,
     identifier: string,
-    input: { note?: string | null; append?: boolean; upload_ids?: string[]; by_id?: boolean },
+    input: { note?: string | null; append?: boolean; upload_ids?: string[]; by_id?: boolean; force?: boolean },
 ) {
     const project = await projectOrFail(ctx.env, slug);
     const report = await resolveReport(ctx.env, project, identifier, input.by_id ? 'id' : 'public_id');
@@ -298,10 +506,11 @@ export async function writeAdjustment(
     if (uploads === null) {
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
     }
+    const takenOver = await guardClaim(ctx, report, input.force === true);
     await updateAdjustment(
         ctx.env,
         report,
-        { note: hasNote ? (input.note as string) : undefined, append: input.append ?? false, uploads, removeAttachmentIds: [], author: { developerId: ctx.developer.id, clientAccountId: null } },
+        { note: hasNote ? (input.note as string) : undefined, append: input.append ?? false, uploads, removeAttachmentIds: [], author: teamAuthor(ctx) },
         ctx.now,
     );
     const count = await ctx.env.DB.prepare("SELECT COUNT(*) AS total FROM attachments WHERE report_id = ? AND kind = 'adjustment'").bind(report.id).first<{ total: number }>();
@@ -312,6 +521,7 @@ export async function writeAdjustment(
         images_added: uploads.length,
         images_total: count?.total ?? 0,
         url: `${absolute(ctx, paths.report(project.slug, report.public_id))}#adjustment`,
+        took_over_from: takenOver,
     };
 }
 
@@ -334,8 +544,8 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
     }
     const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
-    await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: { developerId: ctx.developer.id, clientAccountId: null } }, ctx.now);
-    return { public_id: report.public_id, title: report.title, author, images_added: uploads.length };
+    await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: teamAuthor(ctx) }, ctx.now);
+    return { public_id: report.public_id, title: report.title, author: report.creator_type === 'public' ? author : withAgent(author, ctx.agent), images_added: uploads.length };
 }
 
 // ------------------------------------------------------------------ projects
@@ -522,6 +732,7 @@ export async function resetClient(ctx: TeamContext, slug: string, username: stri
     const [updated] = await ctx.env.DB.batch([
         ctx.env.DB.prepare('UPDATE client_accounts SET password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(hash, nowIso(ctx.now), account.id),
         ...prefillStatements(ctx, project, account, prefill ? password : null),
+        ...revokeClientCredentials(ctx.env.DB, account.id),
     ]);
     if ((updated.meta.changes ?? 0) === 0) {
         throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
@@ -529,12 +740,15 @@ export async function resetClient(ctx: TeamContext, slug: string, username: stri
     return clientPasswordResult(ctx, project, { ...account, password_hash: hash }, password, prefill);
 }
 
-/** Disabled client accounts cannot sign in; their logins stop working at once. */
+/** Disabled client accounts cannot sign in; their logins stop working and their API tokens are deleted. */
 export async function setClientDisabled(ctx: TeamContext, slug: string, username: string, disabled: boolean) {
     const project = await projectOrFail(ctx.env, slug);
     const account = await clientAccountOrFail(ctx, project, username);
     const at = nowIso(ctx.now);
-    await ctx.env.DB.prepare('UPDATE client_accounts SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? at : null, at, account.id).run();
+    await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE client_accounts SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? at : null, at, account.id),
+        ...(disabled ? revokeClientCredentials(ctx.env.DB, account.id) : []),
+    ]);
     return { project: project.slug, account: clientAccountSummary({ ...account, disabled_at: disabled ? at : null }) };
 }
 
@@ -703,29 +917,48 @@ export async function deleteDeveloper(ctx: TeamContext, username: string) {
 
 export const MAX_TOKEN_DAYS = 3650;
 
-export async function createToken(env: Env, developerId: number, name: string, now: number, expiresInDays: number | null = null) {
+/** Whose token: a team account or a client account. */
+export type TokenHolder = { developerId: number } | { clientAccountId: number };
+
+function holderColumn(holder: TokenHolder): { column: 'developer_id' | 'client_account_id'; id: number } {
+    return 'developerId' in holder ? { column: 'developer_id', id: holder.developerId } : { column: 'client_account_id', id: holder.clientAccountId };
+}
+
+/** `agent` marks tokens made by `mcp install` for one AI tool, so its actions show "名字（Codex）". */
+export async function createToken(env: Env, holder: TokenHolder | number, name: string, now: number, expiresInDays: number | null = null, agent: string | null = null) {
     if (expiresInDays !== null && (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > MAX_TOKEN_DAYS)) {
         throw new ServiceError('invalid_expiry', `有效天數必須是 1 到 ${MAX_TOKEN_DAYS} 的整數。`, 422);
     }
+    const { column, id } = holderColumn(typeof holder === 'number' ? { developerId: holder } : holder);
     const token = `fdk_${randomString(40)}`;
     const expiresAt = expiresInDays === null ? null : nowIso(now + expiresInDays * 86_400_000);
-    const row = await env.DB.prepare('INSERT INTO api_tokens (developer_id, name, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, name, expires_at, created_at')
-        .bind(developerId, name.trim() === '' ? 'cli' : name.trim().slice(0, 100), await sha256Hex(token), expiresAt, nowIso(now))
-        .first<{ id: number; name: string; expires_at: string | null; created_at: string }>();
-    return { token, id: row?.id ?? 0, name: row?.name ?? name, expires_at: row?.expires_at ?? null, created_at: row?.created_at ?? nowIso(now) };
+    const row = await env.DB.prepare(`INSERT INTO api_tokens (${column}, name, agent, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, name, agent, expires_at, created_at`)
+        .bind(id, name.trim() === '' ? 'cli' : name.trim().slice(0, 100), agent, await sha256Hex(token), expiresAt, nowIso(now))
+        .first<{ id: number; name: string; agent: string | null; expires_at: string | null; created_at: string }>();
+    return { token, id: row?.id ?? 0, name: row?.name ?? name, agent: row?.agent ?? null, expires_at: row?.expires_at ?? null, created_at: row?.created_at ?? nowIso(now) };
 }
 
-export async function listTokens(ctx: TeamContext, currentTokenId: number) {
-    const { results } = await ctx.env.DB.prepare('SELECT id, name, last_used_at, expires_at, created_at FROM api_tokens WHERE developer_id = ? ORDER BY id')
-        .bind(ctx.developer.id)
-        .all<{ id: number; name: string; last_used_at: string | null; expires_at: string | null; created_at: string }>();
+export async function listTokens(env: Env, holder: TokenHolder, currentTokenId: number) {
+    const { column, id } = holderColumn(holder);
+    const { results } = await env.DB.prepare(`SELECT id, name, agent, last_used_at, expires_at, created_at FROM api_tokens WHERE ${column} = ? ORDER BY id`)
+        .bind(id)
+        .all<{ id: number; name: string; agent: string | null; last_used_at: string | null; expires_at: string | null; created_at: string }>();
     return { tokens: results.map((token) => ({ ...token, current: token.id === currentTokenId })) };
 }
 
-export async function revokeToken(ctx: TeamContext, tokenId: number) {
-    const result = await ctx.env.DB.prepare('DELETE FROM api_tokens WHERE id = ? AND developer_id = ?').bind(tokenId, ctx.developer.id).run();
+export async function revokeToken(env: Env, holder: TokenHolder, tokenId: number) {
+    const { column, id } = holderColumn(holder);
+    const result = await env.DB.prepare(`DELETE FROM api_tokens WHERE id = ? AND ${column} = ?`).bind(tokenId, id).run();
     if ((result.meta.changes ?? 0) === 0) {
         throw new ServiceError('token_not_found', '找不到這個 token（只能撤銷自己的 token）。', 404);
     }
     return { revoked: tokenId };
+}
+
+/** Statements that end every API credential of a client account. */
+export function revokeClientCredentials(db: D1Database, clientAccountId: number): D1PreparedStatement[] {
+    return [
+        db.prepare('DELETE FROM api_tokens WHERE client_account_id = ?').bind(clientAccountId),
+        db.prepare("UPDATE device_codes SET status = 'denied' WHERE client_account_id = ? AND status = 'approved'").bind(clientAccountId),
+    ];
 }

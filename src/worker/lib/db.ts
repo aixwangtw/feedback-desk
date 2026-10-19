@@ -62,7 +62,7 @@ export async function attachmentsForReport(db: D1Database, reportId: number): Pr
 export async function messagesForReport(db: D1Database, reportId: number): Promise<Message[]> {
     const { results } = await db
         .prepare(
-            `SELECT m.id, m.report_id, m.author_type, m.author_client_account_id, m.author_developer_id, m.body, m.created_at, m.updated_at,
+            `SELECT m.id, m.report_id, m.author_type, m.author_client_account_id, m.author_developer_id, m.author_agent, m.body, m.created_at, m.updated_at,
                 CASE WHEN r.creator_type = 'public' THEN m.author_name ELSE COALESCE(ca.name, d.name, m.author_name) END AS author_name
              FROM messages m
              JOIN reports r ON r.id = m.report_id

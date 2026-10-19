@@ -36,8 +36,8 @@ interface AuthCookie {
     p: Record<string, { o?: GrantEntry; c?: GrantEntry }>;
     /** Reporter grants: [report id, expiry]. */
     r: Array<[number, number]>;
-    /** Team login for pages outside a project (CLI authorization). */
-    t?: { i: number; f: string; e: number };
+    /** Sign-in for the CLI authorization page (outside any project): a team account, or a client account when k is 'c'. */
+    t?: { i: number; f: string; e: number; k?: 'c' };
     /** Page to return to after logging in. */
     i?: string;
 }
@@ -58,11 +58,17 @@ export interface Creator {
     creator_client_account_id?: number | null;
 }
 
-/** Who is writing, for the account columns on messages and attachments. */
+/** Who is writing, for the account columns on reports, messages, attachments and the activity log. */
 export interface Author {
     developerId: number | null;
     clientAccountId: number | null;
+    /** Name at the time, for the activity log (pages show the account's current name). */
+    name?: string;
+    /** AI tool doing it through MCP or the CLI ('Claude Code', 'Codex'); null for people on the web. */
+    agent?: string | null;
 }
+
+export type DeviceAccount = { kind: 'developer'; developer: Developer } | { kind: 'client'; account: ClientAccount };
 
 interface ValidGrant {
     entry: GrantEntry;
@@ -186,8 +192,13 @@ export class Access {
     }
 
     /** Client account login; also used to stay signed in after the holder changes the password. */
-    grantClientAccount(project: Project, account: ClientAccount): Promise<void> {
-        return this.grant(project, 'client', 'password', null, account);
+    async grantClientAccount(project: Project, account: ClientAccount): Promise<void> {
+        await this.grant(project, 'client', 'password', null, account);
+        const cookie = await this.auth();
+        if (cookie.t && cookie.t.k === 'c' && cookie.t.i === account.id) {
+            cookie.t.f = await hmac(this.env.APP_SECRET, `team|c|${account.id}|${account.password_hash}`);
+            this.saveAuth(cookie);
+        }
     }
 
     async grantReporter(report: Pick<Report, 'id'>): Promise<void> {
@@ -305,10 +316,13 @@ export class Access {
 
     /** The accounts recorded on what this browser writes in the project. */
     async author(project: Project): Promise<Author> {
+        const labels = config(this.env).labels;
         if (await this.isOwner(project)) {
-            return { developerId: (await this.currentDeveloper(project))?.id ?? null, clientAccountId: null };
+            const developer = await this.currentDeveloper(project);
+            return { developerId: developer?.id ?? null, clientAccountId: null, name: developer?.name ?? labels.owner, agent: null };
         }
-        return { developerId: null, clientAccountId: (await this.currentClientAccount(project))?.id ?? null };
+        const account = await this.currentClientAccount(project);
+        return { developerId: null, clientAccountId: account?.id ?? null, name: account?.name ?? labels.client, agent: null };
     }
 
     /**
@@ -324,7 +338,7 @@ export class Access {
                 entry.f = await this.grantFingerprint(projectId, 'owner', 'developer', `${developer.id}|${developer.password_hash}`);
             }
         }
-        if (cookie.t && cookie.t.i === developer.id) {
+        if (cookie.t && cookie.t.i === developer.id && cookie.t.k !== 'c') {
             cookie.t.f = await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`);
         }
         this.developerCache.set(developer.id, Promise.resolve(developer));
@@ -447,29 +461,38 @@ export class Access {
         this.jar.write(FLASH_COOKIE, flash, 300);
     }
 
-    /** Team sign-in that is not tied to a project, used by the CLI authorization page. */
-    async teamDeveloper(): Promise<Developer | null> {
+    /** Who signed in on the CLI authorization page: a team account or a client account. */
+    async deviceAccount(): Promise<DeviceAccount | null> {
         const cookie = await this.auth();
         const entry = cookie.t;
-        if (!entry || entry.e < this.nowSeconds) {
+        if (!entry || entry.e < this.nowSeconds || typeof entry.i !== 'number' || typeof entry.f !== 'string') {
             return null;
+        }
+        if (entry.k === 'c') {
+            const account = await this.clientAccount(entry.i);
+            if (!account || account.disabled_at) {
+                return null;
+            }
+            const expected = await hmac(this.env.APP_SECRET, `team|c|${account.id}|${account.password_hash}`);
+            return timingSafeEqualString(expected, entry.f) ? { kind: 'client', account } : null;
         }
         const developer = await this.developer(entry.i);
         if (!developer || developer.disabled_at) {
             return null;
         }
         const expected = await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`);
-        return timingSafeEqualString(expected, entry.f) ? developer : null;
+        return timingSafeEqualString(expected, entry.f) ? { kind: 'developer', developer } : null;
     }
 
-    async grantTeam(developer: Developer): Promise<void> {
+    async grantDevice(holder: DeviceAccount): Promise<void> {
         const cookie = await this.auth();
-        cookie.t = {
-            i: developer.id,
-            f: await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`),
-            e: this.nowSeconds + DEVICE_LOGIN_SECONDS,
-        };
-        this.developerCache.set(developer.id, Promise.resolve(developer));
+        if (holder.kind === 'developer') {
+            cookie.t = { i: holder.developer.id, f: await hmac(this.env.APP_SECRET, `team|${holder.developer.id}|${holder.developer.password_hash}`), e: this.nowSeconds + DEVICE_LOGIN_SECONDS };
+            this.developerCache.set(holder.developer.id, Promise.resolve(holder.developer));
+        } else {
+            cookie.t = { k: 'c', i: holder.account.id, f: await hmac(this.env.APP_SECRET, `team|c|${holder.account.id}|${holder.account.password_hash}`), e: this.nowSeconds + DEVICE_LOGIN_SECONDS };
+            this.accountCache.set(holder.account.id, Promise.resolve(holder.account));
+        }
         this.saveAuth(cookie);
     }
 

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { nowIso } from '../../shared/time';
-import { findDeveloper } from '../lib/db';
+import { findClientAccount, findDeveloper } from '../lib/db';
 import type { Attachment } from '../lib/models';
 import { consumeUploadNonce, readUploadGrant, verifyAttachmentSignature } from '../lib/signed';
 import { MAX_IMAGE_BYTES, storeImageStream, UploadError } from '../lib/uploads';
@@ -16,8 +16,20 @@ files.put('/files/upload', async (c) => {
     if (!grant) {
         return c.json({ error: 'invalid_signature', message: '上傳網址無效或已過期。' }, 403);
     }
-    const [target, developer] = await Promise.all([reportExists(c, grant.projectSlug, grant.reportPublicId), findDeveloper(c.env.DB, grant.developerId)]);
-    if (!target || !developer || developer.disabled_at) {
+    const target = await reportExists(c, grant.projectSlug, grant.reportPublicId);
+    const id = Number(grant.actor.slice(1));
+    let allowed = false;
+    if (target && grant.actor.startsWith('d')) {
+        const developer = await findDeveloper(c.env.DB, id);
+        allowed = developer !== null && !developer.disabled_at;
+    } else if (target && grant.actor.startsWith('c')) {
+        // Client accounts: their own project, reports they can see, message images only.
+        const account = await findClientAccount(c.env.DB, id);
+        const report = account ? await c.env.DB.prepare('SELECT creator_type, client_deleted_at FROM reports WHERE id = ?').bind(target.reportId).first<{ creator_type: string; client_deleted_at: string | null }>() : null;
+        allowed =
+            account !== null && !account.disabled_at && account.project_id === target.projectId && grant.purpose === 'message' && report?.creator_type === 'client' && report.client_deleted_at === null;
+    }
+    if (!target || !allowed) {
         return c.json({ error: 'not_found', message: '找不到回饋單。' }, 404);
     }
     if (!(await consumeUploadNonce(c.env, grant))) {

@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { isSafeLocalPath, type Access } from '../lib/access';
-import type { Developer } from '../lib/models';
+import type { ClientAccount, Developer, Project } from '../lib/models';
 import type { Env } from '../env';
 import { config } from '../env';
 import type { ViewContext } from '../views/components';
@@ -10,8 +10,13 @@ export type AppEnv = {
     Variables: {
         access: Access;
         now: number;
+        /** Team account behind the API token; unset for client tokens. */
         apiDeveloper: Developer;
+        /** Client account and its project behind the API token; unset for team tokens. */
+        apiClient: { account: ClientAccount; project: Project };
         apiTokenId: number;
+        /** AI tool from the token or the CLI header ('Claude Code', 'Codex'). */
+        apiAgent: string | null;
     };
 };
 

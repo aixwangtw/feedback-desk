@@ -3,7 +3,7 @@ import type { Env } from './env';
 import { Access } from './lib/access';
 import { pruneExpired } from './lib/rate-limit';
 import { pruneStaleUploads } from './lib/uploads';
-import { api, developerForToken } from './routes/api';
+import { api, tokenOwner } from './routes/api';
 import { HttpError, viewContext, type AppEnv } from './routes/context';
 import { device } from './routes/device';
 import { files } from './routes/files';
@@ -85,17 +85,20 @@ app.notFound((c) => {
 });
 
 app.all('/mcp', async (c) => {
-    const result = await developerForToken(c);
+    const result = await tokenOwner(c);
     if (!result) {
         return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
     }
     const { handleMcp } = await import('./mcp');
-    return handleMcp(c.req.raw, c.env, c.executionCtx as ExecutionContext, {
-        env: c.env,
-        origin: new URL(c.req.url).origin,
-        developer: result.developer,
-        now: c.get('now'),
-    });
+    const base = { env: c.env, origin: new URL(c.req.url).origin, now: c.get('now'), agent: result.agent };
+    return handleMcp(
+        c.req.raw,
+        c.env,
+        c.executionCtx as ExecutionContext,
+        result.owner.kind === 'developer'
+            ? { kind: 'developer', team: { ...base, developer: result.owner.developer } }
+            : { kind: 'client', client: { ...base, account: result.owner.account, project: result.owner.project } },
+    );
 });
 
 app.route('/api/v1', api);

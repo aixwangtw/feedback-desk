@@ -57,6 +57,8 @@ import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
 import { verifyTurnstile } from '../lib/turnstile';
+import { withAgent } from '../lib/agents';
+import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
 
 export const web = new Hono<AppEnv>();
 
@@ -109,7 +111,7 @@ async function reportCreatorLabel(c: AppContext, project: Project, report: Repor
         report.creator_type === 'developer' && report.creator_developer_id ? findDeveloper(c.env.DB, report.creator_developer_id) : Promise.resolve(null),
         report.creator_type === 'client' && report.creator_client_account_id ? findClientAccount(c.env.DB, report.creator_client_account_id) : Promise.resolve(null),
     ]);
-    return creatorLabel(c.env, report, project, developer?.name ?? null, account?.name ?? null);
+    return withAgent(creatorLabel(c.env, report, project, developer?.name ?? null, account?.name ?? null), report.creator_agent);
 }
 
 function attachmentUrlFor(project: Project, report: Report) {
@@ -483,7 +485,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${clientOnly}
         )
         SELECT * FROM (
-            SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, title, adjustment_note, status, client_deleted_at,
+            SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, adjustment_note, status, client_deleted_at,
                 latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
                 ${viewerUnreadSql('numbered', isOwner, viewer)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count,
                 ${creatorClientNameSql('numbered')} AS creator_client_name
@@ -533,7 +535,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         return {
             report,
             number: report.seq,
-            creatorLabel: creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name),
+            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent),
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
             unread: report.unread_count,
@@ -647,8 +649,9 @@ web.post('/p/:slug/reports', async (c) => {
         return renderPortal(c, project, { bag: 'default', errors: [...new Set(errors)], issues: issues.map(({ title, description }) => ({ title, description })) }, 422);
     }
     const creator = await access.creatorFor(project);
+    const author = await access.author(project);
     for (let i = 0; i < issues.length; i++) {
-        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, uploads: claimed[i] ?? [] }, creator, c.get('now'));
+        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, uploads: claimed[i] ?? [], author }, creator, c.get('now'));
         await access.grantReporter(report);
     }
     access.setFlash({ success: `已新增 ${issues.length} 個問題。` });
@@ -789,6 +792,8 @@ async function renderReport(
     const sequence = isOwner || !isPublic ? await sequenceNumber(c.env.DB, report, !isOwner) : null;
     const hasErrors = (extra.adjustmentErrors?.length ?? 0) > 0 || (extra.messageErrors?.length ?? 0) > 0;
     const flash = hasErrors ? {} : await access.flash();
+    const developer = isOwner ? await access.currentDeveloper(project) : null;
+    const work = isOwner ? await workState({ env: c.env, developer, agent: null }, report) : undefined;
     return c.html(
         <ReportPage
             v={viewContext(c)}
@@ -807,6 +812,8 @@ async function renderReport(
             privateReportUrl={flash.private_report_url}
             activityEtag={activityEtag(report, viewerKey(isOwner, await access.clientViewer(project)), c.get('now'))}
             creatorLabel={await reportCreatorLabel(c, project, report)}
+            work={work}
+            canClaim={developer !== null}
             {...extra}
         />,
         status,
@@ -917,7 +924,7 @@ web.get('/p/:slug/conversations', async (c) => {
                     ${viewerUnreadSql('numbered', isOwner, viewer)} AS unread_count,
                     ${messagesCountSql('numbered')} AS messages_count,
                     ${isOwner ? '0' : adjustmentNewForClientSql('numbered', viewer)} AS adjustment_updated,
-                    creator_type, creator_developer_id, reporter_name, ${creatorClientNameSql('numbered')} AS creator_client_name,
+                    creator_type, creator_developer_id, creator_agent, reporter_name, ${creatorClientNameSql('numbered')} AS creator_client_name,
                     (SELECT d.name FROM developers d WHERE d.id = numbered.creator_developer_id) AS creator_developer_name,
                     ${latest(`substr(lm2.body, 1, ${PREVIEW_SOURCE_CHARS})`)} AS latest_body,
                     ${latest('lm2.author_type')} AS latest_author
@@ -926,7 +933,7 @@ web.get('/p/:slug/conversations', async (c) => {
             ORDER BY ${conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })}`,
         )
         .bind(project.id)
-        .all<Pick<Report, 'public_id' | 'title' | 'status' | 'client_deleted_at' | 'created_at' | 'creator_type' | 'reporter_name'> & {
+        .all<Pick<Report, 'public_id' | 'title' | 'status' | 'client_deleted_at' | 'created_at' | 'creator_type' | 'reporter_name' | 'creator_agent'> & {
             creator_client_name: string | null;
             creator_developer_name: string | null;
             seq: number;
@@ -956,7 +963,7 @@ web.get('/p/:slug/conversations', async (c) => {
             adjustment_updated: adjustmentUpdated,
             has_update: row.unread_count > 0 || adjustmentUpdated,
             messages_count: row.messages_count,
-            creator: creatorLabel(c.env, row, project, row.creator_developer_name, row.creator_client_name),
+            creator: withAgent(creatorLabel(c.env, row, project, row.creator_developer_name, row.creator_client_name), row.creator_agent),
             thread_url: paths.conversation(project.slug, row.public_id),
             page_url: paths.report(project.slug, row.public_id),
         };
@@ -1213,7 +1220,7 @@ web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/status', async (c) => {
         }
         return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
     }
-    await changeStatus(c.env, report, status, c.get('now'));
+    await changeStatus(c.env, report, status, c.get('now'), await access.author(project));
     const message = `狀態已更新為「${statusLabel(status)}」。`;
     if (wantsJson(c)) {
         const isOwner = await access.isOwner(project);
@@ -1307,6 +1314,60 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
         return c.json({ message: '訊息已送出。' }, 201);
     }
     access.setFlash({ success: '訊息已送出。' });
+    return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
+});
+
+/** Team context for claim and handoff actions on the web: personal team accounts only. */
+async function webTeamContext(c: AppContext, project: Project): Promise<TeamContext | null> {
+    const developer = await c.get('access').currentDeveloper(project);
+    return developer && !developer.disabled_at ? { env: c.env, origin: origin(c), developer, now: c.get('now'), agent: null } : null;
+}
+
+web.post('/p/:slug/reports/:publicId/claim', async (c) => {
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.isOwner(project))) {
+        return deny(c, project);
+    }
+    const team = await webTeamContext(c, project);
+    if (!team) {
+        abort(403, '用個人帳號登入才能認領。');
+    }
+    const form = await readForm(c);
+    const action = field(form, 'action');
+    if (action === 'release') {
+        await releaseReport(team, project.slug, report.public_id);
+        access.setFlash({ success: '已釋放認領。' });
+    } else {
+        const result = await claimReport(team, project.slug, report.public_id, { force: action === 'takeover' });
+        access.setFlash({ success: result.took_over_from ? `已接手（原本是 ${result.took_over_from}）。` : '已認領，其他人會看到你正在處理。' });
+    }
+    return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
+});
+
+web.post('/p/:slug/reports/:publicId/handoff', async (c) => {
+    await throttle(c, 'handoff', 30);
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.isOwner(project))) {
+        return deny(c, project);
+    }
+    const team = await webTeamContext(c, project);
+    if (!team) {
+        abort(403, '用個人帳號登入才能寫交接紀錄。');
+    }
+    const form = await readForm(c);
+    try {
+        const result = await writeHandoff(team, project.slug, report.public_id, { note: form.get('note') ?? '', release: form.get('release') === '1' });
+        access.setFlash({ success: result.released ? '已儲存交接紀錄並釋放認領。' : '已儲存交接紀錄。' });
+    } catch (error) {
+        if (error instanceof ServiceError) {
+            abort(422, error.message);
+        }
+        throw error;
+    }
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });
 

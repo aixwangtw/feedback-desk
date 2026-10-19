@@ -6,9 +6,11 @@
  * reference components in rows-reference.tsx (a test compares the two).
  */
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
+import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { Attachment } from '../lib/models';
 import { paths } from '../routes/paths';
+import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
 import type { ViewContext } from './components';
 import type { PortalRow } from './portal';
 
@@ -47,20 +49,20 @@ function dialogsSrc(ctx: RowContext, publicId: string): string {
     return `${paths.reportDialogs(ctx.slug, publicId)}?back=${encodeURIComponent(ctx.backPath)}`;
 }
 
-/** "新留言 N" and "留言 N" for the team, "有新回覆" for the client; empty when there is nothing to show. */
-export function messageBadgesHtml(isOwner: boolean, row: Pick<PortalRow, 'unreadMessages' | 'messagesCount' | 'hasNewReply'>): string {
-    let badges = '';
-    if (isOwner) {
-        if (row.unreadMessages > 0) {
-            badges += `<span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white" data-unread-messages="${row.unreadMessages}">新留言 ${row.unreadMessages}</span>`;
-        }
-        if (row.messagesCount > 0) {
-            badges += `<span class="text-[11px] text-slate-400" data-messages-count="${row.messagesCount}">留言 ${row.messagesCount}</span>`;
-        }
-    } else if (row.hasNewReply) {
-        badges += '<span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white" data-new-reply="true">有新回覆</span>';
+/** Icon variant of ChatButton (components.tsx); empty without messages and unread items. */
+export function chatButtonHtml(isOwner: boolean, publicId: string, title: string, row: Pick<PortalRow, 'unread' | 'messagesCount'>, extra = ''): string {
+    const total = row.messagesCount;
+    const unread = row.unread;
+    if (total <= 0 && unread <= 0) {
+        return '';
     }
-    return badges === '' ? '' : `<span class="mt-1 flex flex-wrap items-center gap-1.5" data-message-badges="true">${badges}</span>`;
+    const labels = chatButtonLabels(title, total, unread);
+    let html = `<button type="button" class="${CHAT_BUTTON_BASE} ${CHAT_BUTTON_ICON}${extra === '' ? '' : ` ${extra}`}" data-chat-open="${esc(publicId)}" data-message-count="${total}" aria-label="${esc(labels.ariaLabel)}" title="${esc(labels.title)}">`;
+    html += `<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CHAT_ICON_PATHS}</svg>`;
+    if (unread > 0) {
+        html += `<span class="${CHAT_UNREAD_BADGE}" data-unread-badge=""${isOwner ? '' : ' data-new-reply-badge=""'}>${badgeText(unread)}</span>`;
+    }
+    return `${html}</button>`;
 }
 
 const TRASH = '<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5M14 11v5"></path></svg>';
@@ -76,7 +78,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle${deleted ? ' bg-slate-50 text-slate-500' : ''}" data-report-row="${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
     html += `<td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span></td>`;
-    html += `<td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle"><button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button>${messageBadgesHtml(isOwner, row)}`;
+    html += `<td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle"><div class="flex items-start gap-2"><button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button>${chatButtonHtml(isOwner, report.public_id, report.title, row, '-my-1')}</div>`;
     if (isOwner && deleted) {
         html += `<span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted="true"><span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">${esc(v.cfg.labels.client)}已刪除</span>${time(v, report.client_deleted_at as string)}</span>`;
     }
@@ -133,8 +135,8 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}" title="拖拉卡片可改變狀態">`;
     html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span>${isOwner ? `<span class="ml-1.5 font-semibold text-slate-400" data-report-creator="true">· ${esc(row.creatorLabel)}</span>` : ''}</p>`;
-    html += `<button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button>${messageBadgesHtml(isOwner, row)}</div>`;
-    html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true"><button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
+    html += `<button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button></div>`;
+    html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${chatButtonHtml(isOwner, report.public_id, report.title, row)}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「${title}」" title="還原" data-card-action="true" data-restore-report="true"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button></form>`;
     }

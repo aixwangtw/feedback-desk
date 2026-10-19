@@ -4,17 +4,19 @@ import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
 import { attachmentsForReport, findDeveloper, findDeveloperByUsername, findProjectBySlug, findReportInProject, likeContains, listDevelopers, messagesForReport, placeholders } from '../lib/db';
-import { isPublicReport, type Attachment, type Developer, type Project, type Report } from '../lib/models';
+import { isPublicReport, type Attachment, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
     addMessage,
+    adjustmentNewForClientSql,
     changeStatus,
+    chatCounts,
     clientLabel,
     countRemovable,
     createReport,
     creatorLabel,
     deleteReport,
-    hasNewReplySql,
+    conversationOrderSql,
     hasUnreadMessagesSql,
     latestMessageSql,
     markRead,
@@ -24,12 +26,13 @@ import {
     MAX_REPORTER_NAME,
     MAX_TITLE,
     messageAuthorName,
+    messagesCountSql,
     sequenceNumber,
     setClientDeleted,
     statusCounts,
     updateAdjustment,
-    unreadMessagesSql,
     updateReport,
+    viewerUnreadSql,
 } from '../lib/reports';
 import {
     findClaimableUploads,
@@ -42,10 +45,11 @@ import {
     storeImageStream,
     UploadError,
 } from '../lib/uploads';
-import { nowIso } from '../../shared/time';
+import { formatAbsolute, nowIso } from '../../shared/time';
+import { messagePreview, shortTime } from '../../shared/conversation';
 import { HomePage, HONEYPOT_FIELD, LoginPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, type PortalFormState, type PortalRow } from '../views/portal';
-import { Activity, ReportPage } from '../views/report';
+import { Activity, ConversationFragment, ReportPage } from '../views/report';
 import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
@@ -54,7 +58,8 @@ import { verifyTurnstile } from '../lib/turnstile';
 export const web = new Hono<AppEnv>();
 
 const PER_PAGE = 50;
-const SORTS = ['title', 'status', 'created_at', 'latest_activity_at', 'latest_message_at'] as const;
+/** Column sorts; anything else (including the old latest_message_at links) is the default 'conversation' order. */
+const SORTS = ['title', 'status', 'created_at', 'latest_activity_at'] as const;
 
 async function projectOr404(c: AppContext): Promise<Project> {
     const project = await findProjectBySlug(c.env.DB, c.req.param('slug') ?? '');
@@ -376,7 +381,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const isOwner = await access.isOwner(project);
     const db = c.env.DB;
     const sortInput = c.req.query('sort') ?? '';
-    const sort = (SORTS as readonly string[]).includes(sortInput) ? sortInput : 'created_at';
+    // Default: the chat panel's order (unread first, then by the newest message).
+    const sort = (SORTS as readonly string[]).includes(sortInput) ? sortInput : 'conversation';
     const direction: 'asc' | 'desc' = c.req.query('direction') === 'asc' ? 'asc' : 'desc';
     const statusInput = c.req.query('status') ?? '';
     const selectedStatus: ReportStatus | null = isStatus(statusInput) ? statusInput : null;
@@ -439,14 +445,20 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     }
     const clientOnly = isOwner ? '' : "AND creator_type = 'client'";
     const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+    const orderBy =
+        sort === 'conversation'
+            ? conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })
+            : `${sort} ${direction}, id ${direction}`;
     const listSql = `WITH numbered AS (
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${clientOnly}
         )
-        SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, title, adjustment_note, status, client_deleted_at,
-            latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
-            ${isOwner ? `${unreadMessagesSql('numbered')} AS unread_messages_count, (SELECT COUNT(*) FROM messages cm WHERE cm.report_id = numbered.id) AS messages_count, 0 AS has_new_reply` : `0 AS unread_messages_count, 0 AS messages_count, ${hasNewReplySql('numbered')} AS has_new_reply`}
-        FROM numbered ${where}
-        ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`;
+        SELECT * FROM (
+            SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, title, adjustment_note, status, client_deleted_at,
+                latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
+                ${viewerUnreadSql('numbered', isOwner)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count
+            FROM numbered ${where}
+        ) listed
+        ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
     const totalSql = isOwner
         ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ?'
         : "SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND creator_type = 'client' AND client_deleted_at IS NULL";
@@ -457,7 +469,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         db.prepare(`SELECT status, COUNT(*) AS aggregate FROM reports WHERE project_id = ? ${countConditions} GROUP BY status`).bind(project.id),
         isOwner ? db.prepare(`SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND ${hasUnreadMessagesSql('reports')}`).bind(project.id) : db.prepare('SELECT 0 AS total'),
     ]);
-    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_messages_count: number; messages_count: number; has_new_reply: number }>;
+    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_count: number; messages_count: number }>;
     let filteredTotal = reports[0]?.filtered_total ?? 0;
     if (reports.length === 0 && page > 1) {
         const row = await db
@@ -493,9 +505,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             creatorLabel: isOwner ? creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null) : '',
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
-            unreadMessages: isOwner ? report.unread_messages_count : 0,
-            messagesCount: isOwner ? report.messages_count : 0,
-            hasNewReply: !isOwner && report.has_new_reply === 1,
+            unread: report.unread_count,
+            messagesCount: report.messages_count,
         };
     });
     const flash = form ? {} : await access.flash();
@@ -693,8 +704,25 @@ web.put('/p/:slug/uploads', async (c) => {
     }
 });
 
-export function activityEtag(report: Pick<Report, 'latest_activity_at' | 'updated_at' | 'status'>): string {
-    return `W/"${report.latest_activity_at}|${report.updated_at}|${report.status}"`;
+/**
+ * Changes as often as the relative times ("3分鐘前") of a thread whose newest activity is at
+ * `latestIso` can change: every minute within the first hour, every hour within the first day,
+ * then daily. Part of the ETags of polled threads, so 304 answers do not freeze those times.
+ */
+export function relativeTimeBucket(latestIso: string, nowMs: number): string {
+    const age = nowMs - Date.parse(latestIso);
+    if (age < 3_600_000) {
+        return `m${Math.floor(nowMs / 60_000)}`;
+    }
+    if (age < 86_400_000) {
+        return `h${Math.floor(nowMs / 3_600_000)}`;
+    }
+    return `d${Math.floor(nowMs / 86_400_000)}`;
+}
+
+/** The thread shows the viewer's own side on the right, so the side is part of the tag. */
+export function activityEtag(report: Pick<Report, 'latest_activity_at' | 'updated_at' | 'status'>, side: 'owner' | 'client', nowMs: number): string {
+    return `W/"${side}|${report.latest_activity_at}|${report.updated_at}|${report.status}|${relativeTimeBucket(report.latest_activity_at, nowMs)}"`;
 }
 
 async function reportByPublicIdOr404(c: AppContext, project: Project, publicId: string): Promise<Report> {
@@ -745,7 +773,7 @@ async function renderReport(
             attachmentUrl={attachmentUrlFor(project, report)}
             success={flash.success}
             privateReportUrl={flash.private_report_url}
-            activityEtag={activityEtag(report)}
+            activityEtag={activityEtag(report, isOwner ? 'owner' : 'client', c.get('now'))}
             {...extra}
         />,
         status,
@@ -790,7 +818,8 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
     }
     // Every change shown here (messages, status) moves latest_activity_at or updated_at, so the pair
     // identifies the content; an unchanged report answers 304 without loading messages.
-    const etag = activityEtag(report);
+    const isOwner = await access.isOwner(project);
+    const etag = activityEtag(report, isOwner ? 'owner' : 'client', c.get('now'));
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
     if (c.req.header('if-none-match') === etag) {
         return c.body(null, 304, cacheHeaders);
@@ -803,10 +832,162 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
         }
     }
     // A 304 means nothing new since the last fetch, which already marked the report read.
-    await markRead(c.env, report, (await access.isOwner(project)) ? 'owner' : 'client', c.get('now'));
+    await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'));
     c.header('ETag', etag);
     c.header('Cache-Control', 'private, no-cache');
-    return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} />);
+    return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} viewerIsOwner={isOwner} />);
+});
+
+// ---------------------------------------------------------------- chat panel
+
+/** Longest message text read for a list preview; the preview itself is cut to 60 columns. */
+const PREVIEW_SOURCE_CHARS = 300;
+
+/**
+ * Conversations of the project for the bottom-right chat panel, in the shared default order. Only
+ * project members (team and client) get it; single-report and public reporters do not. Listing
+ * never marks anything read.
+ *
+ * The panel polls this. The project's chat version of this side (moved by database triggers on every
+ * change to its reports and messages, loaded with the project anyway) plus today's date for the time labels
+ * answer 304 without reading the reports, which keeps D1 reads low on the free plan.
+ */
+web.get('/p/:slug/conversations', async (c) => {
+    const project = await projectOr404(c);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    const isOwner = await access.isOwner(project);
+    const db = c.env.DB;
+    const now = c.get('now');
+    const cfg = config(c.env);
+    const scope = isOwner ? '' : "AND creator_type = 'client'";
+    const today = formatAbsolute(nowIso(now), cfg.utcOffsetMinutes).slice(0, 10);
+    const etag = `W/"conv|${isOwner ? 'o' : 'c'}|${isOwner ? project.chat_version_owner : project.chat_version_client}|${today}"`;
+    const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+    if (c.req.header('if-none-match') === etag) {
+        return c.body(null, 304, cacheHeaders);
+    }
+
+    const latest = (column: string) => `(SELECT ${column} FROM messages lm2 WHERE lm2.report_id = numbered.id ORDER BY lm2.created_at DESC, lm2.id DESC LIMIT 1)`;
+    const { results } = await db
+        .prepare(
+            `WITH numbered AS (
+                SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${scope}
+            )
+            SELECT * FROM (
+                SELECT public_id, title, status, client_deleted_at, created_at, seq,
+                    ${latestMessageSql('numbered')} AS latest_message_at,
+                    ${viewerUnreadSql('numbered', isOwner)} AS unread_count,
+                    ${messagesCountSql('numbered')} AS messages_count,
+                    ${isOwner ? '0' : adjustmentNewForClientSql('numbered')} AS adjustment_updated,
+                    ${latest(`substr(lm2.body, 1, ${PREVIEW_SOURCE_CHARS})`)} AS latest_body,
+                    ${latest('lm2.author_type')} AS latest_author
+                FROM numbered ${isOwner ? '' : 'WHERE client_deleted_at IS NULL'}
+            ) listed
+            ORDER BY ${conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })}`,
+        )
+        .bind(project.id)
+        .all<Pick<Report, 'public_id' | 'title' | 'status' | 'client_deleted_at' | 'created_at'> & {
+            seq: number;
+            latest_message_at: string | null;
+            unread_count: number;
+            messages_count: number;
+            adjustment_updated: number;
+            latest_body: string | null;
+            latest_author: Message['author_type'] | null;
+        }>();
+    let unreadTotal = 0;
+    const items = results.map((row) => {
+        const adjustmentUpdated = row.adjustment_updated === 1;
+        unreadTotal += row.unread_count;
+        return {
+            id: row.public_id,
+            number: row.seq,
+            title: row.title,
+            status: statusLabel(row.status),
+            deleted: row.client_deleted_at !== null,
+            preview: row.latest_body !== null ? messagePreview(row.latest_body) : null,
+            preview_is_mine: row.latest_author !== null && (row.latest_author !== 'reporter') === isOwner,
+            latest_at: row.latest_message_at,
+            latest_label: row.latest_message_at !== null ? shortTime(row.latest_message_at, now, cfg.utcOffsetMinutes) : null,
+            created_at: row.created_at,
+            unread: row.unread_count,
+            adjustment_updated: adjustmentUpdated,
+            has_update: row.unread_count > 0 || adjustmentUpdated,
+            messages_count: row.messages_count,
+            thread_url: paths.conversation(project.slug, row.public_id),
+            page_url: paths.report(project.slug, row.public_id),
+        };
+    });
+    return c.json({ items, unread_total: unreadTotal }, 200, cacheHeaders);
+});
+
+/**
+ * One conversation for the chat panel: the adjustment and the messages as server-rendered (escaped)
+ * HTML. Opening it, and each refresh while it is open, marks it read for the viewer's side. An
+ * unchanged report answers 304 without loading messages (that earlier answer already marked it read).
+ */
+web.get('/p/:slug/conversations/:publicId', async (c) => {
+    const project = await projectOr404(c);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    const report = await reportOr404(c, project);
+    if (!(await access.reportVisible(project, report))) {
+        abort(404);
+    }
+    const isOwner = await access.isOwner(project);
+    const db = c.env.DB;
+    const adjustmentWasNew =
+        !isOwner && report.adjustment_updated_at !== null && (report.client_last_read_at === null || report.adjustment_updated_at > report.client_last_read_at);
+    // The list number is left out on purpose (it needs a count over the project); it only shifts when
+    // reports are added or removed, and the next full answer picks it up.
+    const etag = `W/"thread|${activityEtag(report, isOwner ? 'owner' : 'client', c.get('now')).slice(3, -1)}|${adjustmentWasNew ? 1 : 0}"`;
+    const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+    if (c.req.header('if-none-match') === etag) {
+        return c.body(null, 304, cacheHeaders);
+    }
+    const isPublicReporter = isPublicReport(report) && !isOwner;
+    const [attachments, messages, number] = await Promise.all([attachmentsForReport(db, report.id), messagesForReport(db, report.id), sequenceNumber(db, report, !isOwner)]);
+    const messageAttachments = new Map<number, Attachment[]>();
+    for (const attachment of attachments) {
+        if (attachment.message_id !== null) {
+            messageAttachments.set(attachment.message_id, [...(messageAttachments.get(attachment.message_id) ?? []), attachment]);
+        }
+    }
+    const html = await (
+        <ConversationFragment
+            v={viewContext(c)}
+            report={report}
+            messages={messages}
+            messageAttachments={messageAttachments}
+            adjustmentAttachments={attachments.filter((attachment) => attachment.kind === 'adjustment')}
+            adjustmentWasNew={adjustmentWasNew}
+            attachmentUrl={attachmentUrlFor(project, report)}
+            viewerIsOwner={isOwner}
+        />
+    ).toString();
+    await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'));
+    return c.json(
+        {
+            id: report.public_id,
+            number,
+            title: report.title,
+            status: statusLabel(report.status),
+            deleted: report.client_deleted_at !== null,
+            page_url: paths.report(project.slug, report.public_id),
+            post_url: paths.reportMessages(project.slug, report.public_id),
+            upload_url: `${paths.uploads(project.slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`,
+            max_files: isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : MAX_SCREENSHOTS,
+            max_bytes: isPublicReporter ? PUBLIC_MAX_IMAGE_BYTES : MAX_IMAGE_BYTES,
+            html,
+        },
+        200,
+        cacheHeaders,
+    );
 });
 
 /** Detail, edit and delete dialogs of one report, loaded by the portal page when first opened. */
@@ -821,10 +1002,11 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
         abort(404);
     }
     const isOwner = await access.isOwner(project);
-    const [attachments, number, developer] = await Promise.all([
+    const [attachments, number, developer, counts] = await Promise.all([
         c.env.DB.prepare('SELECT * FROM attachments WHERE report_id = ? AND message_id IS NULL ORDER BY id').bind(report.id).all<Attachment>(),
         sequenceNumber(c.env.DB, report, !isOwner),
         isOwner && report.creator_developer_id ? findDeveloper(c.env.DB, report.creator_developer_id) : Promise.resolve(null),
+        chatCounts(c.env.DB, report, isOwner),
     ]);
     const back = c.req.query('back') ?? '';
     const row: PortalRow = {
@@ -833,9 +1015,8 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
         creatorLabel: isOwner ? creatorLabel(c.env, report, project, developer?.name ?? null) : '',
         attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
         adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
-        unreadMessages: 0,
-        messagesCount: 0,
-        hasNewReply: false,
+        unread: counts.unread,
+        messagesCount: counts.messagesCount,
     };
     return c.html(
         <ReportDialogs
@@ -1060,6 +1241,9 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
         }
     }
     if (errors.length > 0 || uploads === null) {
+        if (wantsJson(c)) {
+            return c.json({ message: errors[0], errors: { body: errors } }, 422);
+        }
         return renderReport(c, project, report, { messageErrors: errors, messageOld: body }, 422);
     }
     const developer = await access.currentDeveloper(project);
@@ -1071,6 +1255,9 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
     );
     // Writing a message means the writer has seen the report, including messages before it.
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'));
+    if (wantsJson(c)) {
+        return c.json({ message: '訊息已送出。' }, 201);
+    }
     access.setFlash({ success: '訊息已送出。' });
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });

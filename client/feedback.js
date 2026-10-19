@@ -1,4 +1,5 @@
 import Sortable from 'sortablejs';
+import './chat-panel.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
 // Long portal pages send their rows as JSON; build them before anything below binds to the rows.
@@ -532,7 +533,7 @@ document.querySelectorAll('[data-kanban-list]').forEach((list) => {
         sort: false,
         animation: 160,
         draggable: '[data-kanban-card]',
-        filter: 'a, form, input, select, textarea, [data-card-action]',
+        filter: 'a, form, input, select, textarea, [data-card-action], [data-chat-open]',
         preventOnFilter: false,
         chosenClass: 'kanban-card-chosen',
         ghostClass: 'kanban-card-ghost',

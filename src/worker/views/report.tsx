@@ -1,10 +1,9 @@
 import type { FC } from 'hono/jsx';
-import { charSlice } from '../../shared/text';
 import type { Attachment, Message, Project, Report } from '../lib/models';
 import { MAX_ADJUSTMENT_NOTE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
+import { cx, ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
 import { RichText } from './rich-text';
 
 /** Read-only adjustment block shared by the client and the team. */
@@ -13,9 +12,10 @@ export const AdjustmentBlock: FC<{
     adjustmentAttachments: Attachment[];
     attachmentUrl: (attachment: Attachment) => string;
     compact?: boolean;
-}> = ({ report, adjustmentAttachments, attachmentUrl, compact }) => (
+    showHeading?: boolean;
+}> = ({ report, adjustmentAttachments, attachmentUrl, compact, showHeading = true }) => (
     <div data-adjustment>
-        <h2 class={`${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-950`}>調整說明</h2>
+        {showHeading ? <h2 class={`${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-950`}>調整說明</h2> : null}
         {report.adjustment_note ? (
             <div class="mt-2" data-adjustment-note><RichText text={report.adjustment_note} compact={compact} /></div>
         ) : adjustmentAttachments.length === 0 ? (
@@ -40,55 +40,82 @@ export interface ActivityProps {
     messages: Message[];
     messageAttachments: Map<number, Attachment[]>;
     attachmentUrl: (attachment: Attachment) => string;
+    /** The viewer's own side (team or client/reporter) is shown on the right. */
+    viewerIsOwner: boolean;
+    /** Smaller thumbnails, for the chat panel. */
+    compact?: boolean;
 }
 
 function authorLabel(v: ViewContext, type: Message['author_type']): string {
     return type === 'owner' ? v.cfg.labels.owner : type === 'agent' ? 'Vibe coding' : v.cfg.labels.client;
 }
 
-export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttachments, attachmentUrl }) => (
-    <>
-        <div class="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <h2 class="text-base font-semibold text-slate-950">處理紀錄</h2>
-            <StatusBadge status={report.status} />
-        </div>
+const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
+    agent: ['bg-violet-50 ring-violet-200', 'text-violet-800'],
+    owner: ['bg-teal-50 ring-teal-200', 'text-teal-800'],
+    reporter: ['bg-amber-50 ring-amber-200', 'text-amber-800'],
+};
 
-        <div class="mt-5 grid gap-5">
-            {messages.length === 0 ? (
-                <div class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">已收到回報，新的處理進度會顯示在這裡。</div>
-            ) : (
-                messages.map((message) => {
-                    const avatar = message.author_type === 'agent' ? 'bg-violet-100 text-violet-700' : message.author_type === 'owner' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600';
-                    const attachments = messageAttachments.get(message.id) ?? [];
-                    return (
-                        <article class="flex gap-3">
-                            <div class={`grid size-9 shrink-0 place-items-center rounded-full ${avatar} text-xs font-bold`}>{charSlice(authorLabel(v, message.author_type), 1)}</div>
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                                    <p class="text-sm font-semibold text-slate-900">{message.author_name || authorLabel(v, message.author_type)}</p>
-                                    <Time v={v} at={message.created_at} relative class="text-xs text-slate-500" />
-                                </div>
-                                <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{message.body}</p>
+/** Message thread as chat bubbles; shared by the report page and the chat panel. */
+export const Activity: FC<ActivityProps> = ({ v, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact }) => (
+    <ol class="grid gap-4" data-chat-messages>
+        {messages.length === 0 ? (
+            <li class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-chat-empty>還沒有留言，新的處理進度會顯示在這裡。</li>
+        ) : (
+            messages.map((message) => {
+                const isMine = viewerIsOwner === (message.author_type !== 'reporter');
+                const [bubbleClass, nameClass] = BUBBLE_CLASSES[message.author_type] ?? BUBBLE_CLASSES.reporter;
+                const attachments = messageAttachments.get(message.id) ?? [];
+                return (
+                    <li class={cx('flex', isMine ? 'justify-end' : 'justify-start')} data-chat-message data-author={message.author_type} data-side={isMine ? 'mine' : 'theirs'}>
+                        <div class={cx('flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', isMine ? 'items-end' : 'items-start')}>
+                            <div class={cx('flex flex-wrap items-baseline gap-x-2 px-1 text-xs', isMine ? 'flex-row-reverse' : null)}>
+                                <span class={`font-semibold ${nameClass}`} data-chat-author>{message.author_name || authorLabel(v, message.author_type)}</span>
+                                <Time v={v} at={message.created_at} relative class="text-slate-500" />
+                            </div>
+                            <div class={cx('mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', bubbleClass, isMine ? 'rounded-tr-md' : 'rounded-tl-md')}>
+                                <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{message.body}</p>
                                 {attachments.length > 0 ? (
-                                    <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                    <div class="mt-2 flex flex-wrap gap-2">
                                         {attachments.map((attachment) => (
-                                            <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt={attachment.original_name}>
-                                                <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="aspect-video w-full object-cover" loading="lazy" />
-                                                <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">放大預覽</span>
+                                            <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`block ${compact ? 'size-20' : 'size-24 sm:size-28'} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
+                                                <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="size-full object-cover" loading="lazy" />
                                             </a>
                                         ))}
                                     </div>
                                 ) : null}
                             </div>
-                        </article>
-                    );
-                })
-            )}
-        </div>
-    </>
+                        </div>
+                    </li>
+                );
+            })
+        )}
+    </ol>
 );
 
-export interface ReportPageProps extends ActivityProps {
+/** What the chat panel shows for one report: the adjustment (collapsed unless new) and the thread. */
+export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; adjustmentWasNew: boolean }> = (props) => {
+    const { report, adjustmentAttachments, adjustmentWasNew } = props;
+    const hasAdjustment = (report.adjustment_note ?? '') !== '' || adjustmentAttachments.length > 0;
+    return (
+        <>
+            {hasAdjustment ? (
+                <details class="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 px-3.5 py-2.5 text-sm" open={adjustmentWasNew} data-chat-adjustment>
+                    <summary class="cursor-pointer font-semibold text-teal-900">
+                        調整說明
+                        {adjustmentWasNew ? <span class="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">有更新</span> : null}
+                    </summary>
+                    <div class="mt-2">
+                        <AdjustmentBlock report={report} adjustmentAttachments={adjustmentAttachments} attachmentUrl={props.attachmentUrl} compact showHeading={false} />
+                    </div>
+                </details>
+            ) : null}
+            <Activity {...props} compact />
+        </>
+    );
+};
+
+export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | 'compact'> {
     project: Project;
     sequenceNumber: number | null;
     isPublicReporter: boolean;
@@ -123,6 +150,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
             project={isPublicReporter ? null : project}
             showLogout={props.canManage}
             success={props.success}
+            chatPanel={props.canManage ? { slug, viewer: isOwner ? 'owner' : 'client' } : undefined}
             headerAction={
                 <a href={isPublicReporter ? paths.home() : paths.portal(slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{isPublicReporter ? '回首頁' : '返回問題清單'}</a>
             }
@@ -223,43 +251,58 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </section>
                     ) : null}
 
-                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
-                        <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} />
-                    </section>
+                    <section id="conversation" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
+                        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
+                            <div class="min-w-0">
+                                {isOwner || readOnly ? (
+                                    <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                                ) : (
+                                    <>
+                                        <h2 class="text-lg font-bold text-slate-950">留言給{labels.owner}</h2>
+                                        <p class="mt-1 text-sm leading-6 text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
+                                    </>
+                                )}
+                            </div>
+                            <div class="flex items-center gap-2">
+                                {props.canManage ? (
+                                    <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open={report.public_id}>在對話面板開啟</button>
+                                ) : null}
+                                <StatusBadge status={report.status} />
+                            </div>
+                        </div>
 
-                    {readOnly ? (
-                        <section class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:p-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</section>
-                    ) : (
-                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-message-form>
-                            {isOwner ? (
-                                <h2 class="text-base font-semibold text-slate-950">留言</h2>
-                            ) : (
-                                <>
-                                    <h2 class="text-base font-semibold text-slate-950">留言給{labels.owner}</h2>
-                                    <p class="mt-1 text-sm text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
-                                </>
-                            )}
-                            <form method="post" action={paths.reportMessages(slug, report.public_id)} class="mt-4 grid gap-4" data-upload-form>
+                        <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
+                            <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} />
+                        </div>
+
+                        {readOnly ? (
+                            <p class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</p>
+                        ) : (
+                            <div id="message-form" class="border-t border-slate-100 px-5 py-4 sm:px-7" data-message-section data-message-form>
+                                <form method="post" action={paths.reportMessages(slug, report.public_id)} class="grid gap-3" data-upload-form>
 <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
-                                <div>
-                                    <label for="body" class="sr-only">訊息內容</label>
-                                    <textarea id="body" name="body" required maxlength={10000} rows={4} placeholder={`補充操作步驟、回答${labels.owner}問題，或提供新的發現…`} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{props.messageOld ?? ''}</textarea>
-                                    {messageErrors.map((error) => (
-                                        <p class="mt-2 text-xs text-rose-700">{error}</p>
-                                    ))}
-                                </div>
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    {isPublicReporter ? <span class="text-xs text-slate-500">截圖最多 {PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB。</span> : null}
-                                    <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                        加入截圖
-                                        <input id="message-screenshots" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} />
-                                    </label>
-                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
-                                </div>
-                                <div id="message-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
-                            </form>
-                        </section>
-                    )}
+                                    <div>
+                                        <label for="body" class="sr-only">訊息內容</label>
+                                        <textarea id="body" name="body" required maxlength={10000} rows={3} placeholder={`補充操作步驟、回答${labels.owner}問題，或提供新的發現…`} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{props.messageOld ?? ''}</textarea>
+                                        {messageErrors.map((error) => (
+                                            <p class="mt-2 text-xs text-rose-700">{error}</p>
+                                        ))}
+                                    </div>
+                                    <div id="message-preview" class="grid grid-cols-3 gap-3 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                        <div class="flex flex-wrap items-center gap-3">
+                                            <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                                加入截圖
+                                                <input id="message-screenshots" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} />
+                                            </label>
+                                            <span class="text-xs text-slate-500">{isPublicReporter ? `截圖最多 ${PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB。` : '截圖最多 5 張，每張 10 MB。'}</span>
+                                        </div>
+                                        <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                    </section>
                 </div>
 
                 <aside class="grid gap-4 lg:sticky lg:top-6">

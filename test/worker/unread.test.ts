@@ -19,6 +19,20 @@ async function portal(browser: Browser, seeded: SeededProject, query = ''): Prom
     return response.text();
 }
 
+/** Red unread number on the chat button of the report (null without a number, undefined without a button). */
+function badgeOf(html: string, report: Pick<Report, 'public_id'>): string | null | undefined {
+    const button = new RegExp(`<button[^>]*data-chat-open="${report.public_id}"[^>]*data-message-count="(\\d+)"[^>]*>([\\s\\S]*?)</button>`).exec(html);
+    if (!button) {
+        return undefined;
+    }
+    return /data-unread-badge=""[^>]*>([^<]+)</.exec(button[2])?.[1] ?? null;
+}
+
+function messageCountOf(html: string, report: Pick<Report, 'public_id'>): number | undefined {
+    const match = new RegExp(`data-chat-open="${report.public_id}"[^>]*data-message-count="(\\d+)"`).exec(html);
+    return match ? Number(match[1]) : undefined;
+}
+
 async function clientPosts(client: Browser, seeded: SeededProject, report: Report, body: string): Promise<void> {
     expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body })).status).toBe(302);
 }
@@ -35,16 +49,19 @@ describe('unread client messages on the team side', () => {
 
         const owner = await new Browser().asOwner(seeded);
         let html = await portal(owner, seeded);
-        expect(html).toContain('data-unread-messages="2"');
-        expect(html).toContain('新留言 2');
-        expect(html).toContain('留言 2');
-        expect(html).toContain('有 1 張單有未讀留言');
+        expect(badgeOf(html, report)).toBe('2');
+        expect(messageCountOf(html, report)).toBe(2);
+        expect(html).toContain('aria-label="開啟「登入頁跑版」的留言對話（共 2 則留言，2 則未讀）"');
+        expect(html).toContain('有 <span data-unread-report-count="true">1</span> 張單有未讀留言');
         expect(html).toContain('只看未讀留言');
-        expect(html).not.toContain(`data-unread-messages="0"`);
+        // A report without messages has no chat button on the list.
+        expect(badgeOf(html, other)).toBeUndefined();
 
-        // The preview dialog on the list does not mark the report read.
-        expect((await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(200);
-        expect(await portal(owner, seeded)).toContain('新留言 2');
+        // The preview dialog on the list does not mark the report read, and offers "開啟對話" with the count.
+        const dialog = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialog).toContain('開啟對話');
+        expect(badgeOf(dialog, report)).toBe('2');
+        expect(badgeOf(await portal(owner, seeded), report)).toBe('2');
 
         const before = await reload('reports', report);
         await tick();
@@ -55,9 +72,10 @@ describe('unread client messages on the team side', () => {
         expect(after.updated_at).toBe(before.updated_at);
 
         html = await portal(owner, seeded);
-        expect(html).not.toMatch(/新留言 \d/);
-        expect(html).not.toContain('未讀留言');
-        expect(html).toContain('留言 2');
+        expect(badgeOf(html, report)).toBeNull();
+        expect(messageCountOf(html, report)).toBe(2);
+        expect(html).toContain('目前沒有未讀留言');
+        expect(html).not.toContain('只看未讀留言');
         expect(other.owner_last_read_at).toBeNull();
     });
 
@@ -73,16 +91,16 @@ describe('unread client messages on the team side', () => {
         expect((await teammate.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '我來看看' })).status).toBe(302);
         await insertMessage(report, 'agent', new Date(Date.now() + 1000).toISOString());
         const html = await portal(me, seeded);
-        expect(html).not.toMatch(/新留言 \d/);
-        expect(html).toContain('留言 2');
+        expect(badgeOf(html, report)).toBeNull();
+        expect(messageCountOf(html, report)).toBe(2);
 
         // A team member writing a message has seen the report, so earlier client messages are read too.
         const client = await new Browser().asClient(seeded);
         await clientPosts(client, seeded, report, '還是不行');
-        expect(await portal(me, seeded)).toContain('新留言 1');
+        expect(badgeOf(await portal(me, seeded), report)).toBe('1');
         await tick();
         expect((await me.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '已修正' })).status).toBe(302);
-        expect(await portal(me, seeded)).not.toMatch(/新留言 \d/);
+        expect(badgeOf(await portal(me, seeded), report)).toBeNull();
     });
 
     it('marks the report read when the team polls new activity', async () => {
@@ -93,14 +111,14 @@ describe('unread client messages on the team side', () => {
         await tick();
         const client = await new Browser().asClient(seeded);
         await clientPosts(client, seeded, report, '新的問題');
-        expect(await portal(owner, seeded)).toContain('新留言 1');
+        expect(badgeOf(await portal(owner, seeded), report)).toBe('1');
         await tick();
         const poll = await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/activity`, { 'if-none-match': 'W/"stale"' });
         expect(poll.status).toBe(200);
-        expect(await portal(owner, seeded)).not.toMatch(/新留言 \d/);
+        expect(badgeOf(await portal(owner, seeded), report)).toBeNull();
     });
 
-    it('filters to unread reports, keeps the other filters and sorts by the latest message', async () => {
+    it('filters to unread reports and keeps the other filters', async () => {
         const seeded = await seedProject();
         const { report: quiet } = await seedReport(seeded.project, { title: '安靜的單' });
         const { report: older } = await seedReport(seeded.project, { title: '較早留言' });
@@ -113,7 +131,8 @@ describe('unread client messages on the team side', () => {
         const owner = await new Browser().asOwner(seeded);
 
         let html = await portal(owner, seeded, '?unread=1&q=留言&view=board');
-        expect(html).toContain('有 2 張單有未讀留言');
+        expect(html).toContain('有 <span data-unread-report-count="true">2</span> 張單有未讀留言');
+        expect(html).toContain('data-unread-only="1"');
         expect(html).toContain('較早留言');
         expect(html).toContain('後來的留言');
         expect(html).not.toContain('完全沒留言');
@@ -122,10 +141,11 @@ describe('unread client messages on the team side', () => {
         expect(html).toContain('<input type="hidden" name="unread" value="1"/>');
         // Other links keep the unread filter, "顯示全部" drops only it.
         expect(html).toMatch(/href="[^"]*view=list[^"]*unread=1[^"]*"/);
-        expect(html).toMatch(/href="\/p\/[^"?]+\?view=board&amp;q=%E7%95%99%E8%A8%80&amp;sort=created_at&amp;direction=desc"[^>]*data-unread-show-all/);
+        expect(html).toMatch(/href="\/p\/[^"?]+\?view=board&amp;q=%E7%95%99%E8%A8%80"[^>]*data-unread-filter="show-all"/);
 
+        // The old "sort by latest message" links now open the default order (unread first).
         html = await portal(owner, seeded, '?sort=latest_message_at&direction=desc');
-        const order = ['安靜的單', '後來的留言', '較早留言', '完全沒留言'].map((title) => html.indexOf(`>${title}</button>`));
+        const order = ['後來的留言', '較早留言', '安靜的單', '完全沒留言'].map((title) => html.indexOf(`>${title}</button>`));
         expect(order.every((position) => position > 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
         expect(none.id).toBeGreaterThan(0);
@@ -139,22 +159,23 @@ describe('new replies on the client side', () => {
         const { report } = await seedReport(seeded.project, { title: '匯出失敗' });
         expect(report.client_last_read_at).not.toBeNull();
         expect(report.owner_last_read_at).toBeNull();
-        expect(await portal(client, seeded)).not.toContain('有新回覆');
+        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
 
         await tick();
         const owner = await new Browser().asOwner(seeded);
         expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '請再試一次' })).status).toBe(302);
         let html = await portal(client, seeded);
-        expect(html).toContain('data-new-reply="true"');
-        expect(html).toContain('有新回覆');
+        expect(badgeOf(html, report)).toBe('1');
+        expect(html).toMatch(/data-unread-badge="" data-new-reply-badge="">1</);
+        expect(html).not.toContain('有新回覆');
 
         // The board shows it too.
-        expect(await portal(client, seeded, '?view=board')).toContain('有新回覆');
+        expect(badgeOf(await portal(client, seeded, '?view=board'), report)).toBe('1');
 
         await tick();
         expect((await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).status).toBe(200);
         html = await portal(client, seeded);
-        expect(html).not.toContain('有新回覆');
+        expect(badgeOf(html, report)).toBeNull();
     });
 
     it('treats a real adjustment change as a new reply, not saving the same text again', async () => {
@@ -167,16 +188,17 @@ describe('new replies on the client side', () => {
         const adjusted = await reload('reports', report);
         expect(adjusted.adjustment_updated_at).not.toBeNull();
         expect(adjusted.owner_last_read_at).not.toBeNull();
-        expect(await portal(client, seeded)).toContain('有新回覆');
+        // An adjustment change counts as one unread item, even without messages.
+        expect(badgeOf(await portal(client, seeded), report)).toBe('1');
 
         await tick();
         await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`);
-        expect(await portal(client, seeded)).not.toContain('有新回覆');
+        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
 
         await tick();
         await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已改好按鈕顏色' });
         expect((await reload('reports', report)).adjustment_updated_at).toBe(adjusted.adjustment_updated_at);
-        expect(await portal(client, seeded)).not.toContain('有新回覆');
+        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
 
         // Through the API (CLI / MCP) too.
         const { developer } = await seedDeveloper();
@@ -185,7 +207,7 @@ describe('new replies on the client side', () => {
         const response = await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/adjustment`, token, { note: '補充：也調整了字級', append: true });
         expect(response.status).toBe(200);
         expect((await reload('reports', report)).adjustment_updated_at).not.toBe(adjusted.adjustment_updated_at);
-        expect(await portal(client, seeded)).toContain('有新回覆');
+        expect(badgeOf(await portal(client, seeded), report)).toBe('1');
     });
 
     it('never shows team-side unread data to the client', async () => {
@@ -198,22 +220,21 @@ describe('new replies on the client side', () => {
         }
         await clientPosts(client, seeded, reports[0], '老師的留言');
         const owner = await new Browser().asOwner(seeded);
-        expect(await portal(owner, seeded)).toContain('"unreadMessages":1');
+        expect(await portal(owner, seeded)).toContain('"unread":1,');
 
         for (const query of ['', '?unread=1', '?view=board', '?sort=latest_message_at']) {
             const html = await portal(client, seeded, query);
-            expect(html).not.toMatch(/新留言 \d/);
             expect(html).not.toContain('未讀留言');
             expect(html).not.toContain('owner_last_read_at');
-            expect(html).not.toContain('data-unread-messages');
+            expect(html).not.toContain('data-unread-badge');
             expect(html).not.toContain('data-unread-summary');
-            expect(html).not.toContain('"unreadMessages":1');
-            expect(html).not.toContain('"messagesCount":1');
+            // The client sees how many messages there are, but not the team's unread state.
+            expect(html).not.toContain('"unread":1');
+            expect(html).toContain('"messagesCount":1');
             expect(html).toContain('單 21');
         }
         const page = await (await client.get(`/p/${seeded.project.slug}/reports/${reports[0].public_id}`)).text();
-        expect(page).not.toMatch(/新留言 \d/);
-        expect(page).not.toContain('data-unread-messages');
+        expect(page).not.toContain('data-unread-badge');
     });
 
     it('invites the client to write to the team on the report page and in the preview', async () => {
@@ -229,6 +250,8 @@ describe('new replies on the client side', () => {
         expect(clientPage).toContain('看完有問題，可直接在下方留言');
         expect(clientPage).toMatch(/<textarea id="body"/);
         expect(clientPage).not.toMatch(/<details[^>]*>\s*<summary[^>]*>[^<]*留言/);
+        expect(clientPage).toContain('在對話面板開啟');
+        expect(clientPage).toContain('data-chat-root');
 
         const ownerPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
         expect(ownerPage).toContain('<h2 class="text-base font-semibold text-slate-950">留言</h2>');
@@ -237,7 +260,7 @@ describe('new replies on the client side', () => {
         expect(ownerPage).not.toContain('看完有問題，可直接在下方留言');
 
         const clientDialog = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
-        expect(clientDialog).toContain('有問題或補充，可以點「查看留言紀錄」直接留言給開發團隊。');
+        expect(clientDialog).toContain('有問題或補充，可以點「開啟對話」直接留言給開發團隊。');
         const ownerDialog = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
         expect(ownerDialog).not.toContain('直接留言給');
     });
@@ -371,8 +394,8 @@ describe('migration 0003 back-fill', () => {
 
         const owner = await new Browser().asOwner(seeded);
         const html = await portal(owner, seeded);
-        expect(html).toContain('新留言 1');
-        expect(html).toContain('新留言 2');
-        expect(html).toContain('有 2 張單有未讀留言');
+        expect(badgeOf(html, lastWord)).toBe('1');
+        expect(badgeOf(html, noTeam)).toBe('2');
+        expect(html).toContain('有 <span data-unread-report-count="true">2</span> 張單有未讀留言');
     });
 });

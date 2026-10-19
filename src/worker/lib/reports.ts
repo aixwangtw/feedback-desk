@@ -212,11 +212,50 @@ export function hasUnreadMessagesSql(table: string): string {
         AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
 }
 
-/** SQL condition: a team reply or an adjustment change the client has not seen yet. */
-export function hasNewReplySql(table: string): string {
-    return `(EXISTS (SELECT 1 FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
-            AND (${table}.client_last_read_at IS NULL OR rm.created_at > ${table}.client_last_read_at))
-        OR (${table}.adjustment_updated_at IS NOT NULL AND (${table}.client_last_read_at IS NULL OR ${table}.adjustment_updated_at > ${table}.client_last_read_at)))`;
+/** SQL for the number of team (and AI) messages the client has not seen. */
+export function clientUnreadRepliesSql(table: string): string {
+    return `(SELECT COUNT(*) FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
+        AND (${table}.client_last_read_at IS NULL OR rm.created_at > ${table}.client_last_read_at))`;
+}
+
+/** SQL: 1 when the adjustment note or images changed after the client last opened the report. */
+export function adjustmentNewForClientSql(table: string): string {
+    return `(CASE WHEN ${table}.adjustment_updated_at IS NOT NULL AND (${table}.client_last_read_at IS NULL OR ${table}.adjustment_updated_at > ${table}.client_last_read_at) THEN 1 ELSE 0 END)`;
+}
+
+/**
+ * SQL for the unread count on the chat buttons and in the chat panel: client messages for the team;
+ * team messages for the client, plus 1 when the adjustment changed.
+ */
+export function viewerUnreadSql(table: string, isOwner: boolean): string {
+    return isOwner ? unreadMessagesSql(table) : `(${clientUnreadRepliesSql(table)} + ${adjustmentNewForClientSql(table)})`;
+}
+
+/** SQL for the number of messages on the report. */
+export function messagesCountSql(table: string): string {
+    return `(SELECT COUNT(*) FROM messages cm WHERE cm.report_id = ${table}.id)`;
+}
+
+/**
+ * ORDER BY terms of the default order shared by the chat panel, the portal list and the board
+ * (src/shared/conversation.ts compareConversations is the same rule): unread first, then reports
+ * with messages, both by the newest message; reports without messages last by creation time; ties
+ * by the newer number. Times compare in whole seconds like the Laravel version. Arguments are
+ * column names of the surrounding query.
+ */
+export function conversationOrderSql(columns: { unread: string; messagesCount: string; latestMessageAt: string; createdAt: string; number: string }): string {
+    const tier = `(CASE WHEN ${columns.unread} > 0 THEN 2 WHEN ${columns.messagesCount} > 0 THEN 1 ELSE 0 END)`;
+    const time = `substr(CASE WHEN ${tier} > 0 AND ${columns.latestMessageAt} IS NOT NULL THEN ${columns.latestMessageAt} ELSE ${columns.createdAt} END, 1, 19)`;
+    return `${tier} DESC, ${time} DESC, ${columns.number} ASC`;
+}
+
+/** Unread count (for this viewer side) and message count of one report, for its chat button. */
+export async function chatCounts(db: D1Database, report: Pick<Report, 'id'>, isOwner: boolean): Promise<{ unread: number; messagesCount: number }> {
+    const row = await db
+        .prepare(`SELECT ${viewerUnreadSql('r', isOwner)} AS unread, ${messagesCountSql('r')} AS messages_count FROM reports r WHERE r.id = ?`)
+        .bind(report.id)
+        .first<{ unread: number; messages_count: number }>();
+    return { unread: row?.unread ?? 0, messagesCount: row?.messages_count ?? 0 };
 }
 
 /** SQL for the time of the newest message on the report (NULL without messages). */

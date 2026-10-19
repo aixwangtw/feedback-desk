@@ -1,10 +1,12 @@
 import { raw } from 'hono/html';
 import type { Child, FC } from 'hono/jsx';
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
+import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
+import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_BUTTON_LABELLED, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
 
 /** Values every view needs: configuration and the current time. */
 export interface ViewContext {
@@ -30,6 +32,26 @@ const BADGE_CLASSES: Record<ReportStatus, string> = {
     new: 'bg-slate-100 text-slate-700 ring-slate-200',
     needs_input: 'bg-amber-50 text-amber-800 ring-amber-200',
     completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+};
+
+/**
+ * "留言" button on list rows, board cards and the detail dialog: shown when the report has messages
+ * or unread items (always with a label). The red round number is the unread count for this viewer
+ * (team: client messages; client: team messages plus 1 for a changed adjustment). Clicking it opens
+ * the report's conversation in the chat panel. rows.ts has the string version of the icon variant.
+ */
+export const ChatButton: FC<{ publicId: string; title: string; total: number; unread: number; isOwner: boolean; label?: string; class?: string }> = ({ publicId, title, total, unread, isOwner, label, class: extra }) => {
+    if (total <= 0 && unread <= 0 && !label) {
+        return null;
+    }
+    const labels = chatButtonLabels(title, total, unread);
+    return (
+        <button type="button" class={cx(CHAT_BUTTON_BASE, label ? CHAT_BUTTON_LABELLED : CHAT_BUTTON_ICON, extra)} data-chat-open={publicId} data-message-count={String(total)} aria-label={labels.ariaLabel} title={labels.title}>
+            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{raw(CHAT_ICON_PATHS)}</svg>
+            {label ? <span>{label}</span> : null}
+            {unread > 0 ? <span class={CHAT_UNREAD_BADGE} data-unread-badge="" data-new-reply-badge={isOwner ? undefined : ''}>{badgeText(unread)}</span> : null}
+        </button>
+    );
 };
 
 export const StatusBadge: FC<{ status: ReportStatus }> = ({ status }) => (
@@ -83,10 +105,12 @@ export interface LayoutProps {
     maxWidth?: string;
     headerAction?: Child;
     success?: string;
+    /** Signed-in project members get the bottom-right chat panel. */
+    chatPanel?: { slug: string; viewer: 'owner' | 'client' };
     children?: Child;
 }
 
-export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidth = 'max-w-5xl', headerAction, success, children }) => (
+export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
     <>
     {raw('<!DOCTYPE html>')}
     <html lang="zh-Hant">
@@ -120,7 +144,7 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidt
                 </div>
             </header>
 
-            <main class={`relative mx-auto w-full ${maxWidth} px-4 py-8 sm:px-6 sm:py-12 lg:px-8`}>
+            <main class={cx('relative mx-auto w-full px-4 py-8 sm:px-6 sm:py-12 lg:px-8', maxWidth, chatPanel ? 'pb-28 sm:pb-28' : null)}>
                 {success ? (
                     <div role="status" class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
                         {success}
@@ -129,6 +153,8 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidt
 
                 {children}
             </main>
+
+            {chatPanel ? <ChatPanel v={v} slug={chatPanel.slug} viewer={chatPanel.viewer} /> : null}
 
             <ImageLightbox />
         </body>
@@ -222,3 +248,67 @@ export const Pagination: FC<{ page: number; lastPage: number; total: number; per
         </nav>
     );
 };
+
+/**
+ * Bottom-right chat panel. The list and the conversations come from endpoints that need a project
+ * sign-in; the script puts list texts in with textContent and conversations as server-escaped HTML.
+ */
+export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'client' }> = ({ v, slug, viewer }) => (
+    <div data-chat-root data-list-url={paths.conversations(slug)} data-thread-url-template={paths.conversation(slug, '__REPORT__')} data-viewer={viewer}>
+        <button type="button" class="fixed bottom-5 right-5 z-40 grid size-14 place-items-center rounded-full bg-teal-700 text-white shadow-lg shadow-teal-900/20 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-teal-600/40 sm:bottom-6 sm:right-6" aria-controls="chat-panel" aria-expanded="false" data-chat-launcher>
+            <svg class="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{raw(CHAT_ICON_PATHS)}</svg>
+            <span class="sr-only">開啟留言對話</span>
+            <span class="absolute -right-1 -top-1 min-w-6 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-xs font-bold leading-4 text-white ring-2 ring-white" data-chat-launcher-badge hidden></span>
+        </button>
+
+        <section id="chat-panel" class="fixed inset-0 z-50 flex flex-col overflow-hidden bg-white sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[min(42rem,calc(100dvh-8rem))] sm:w-[min(56rem,calc(100vw-3rem))] sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="chat-panel-title" data-chat-panel data-view="list" hidden>
+            <header class="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-teal-700 px-4 py-3 text-white">
+                <h2 id="chat-panel-title" class="text-sm font-bold">留言對話</h2>
+                <button type="button" class="grid size-9 place-items-center rounded-lg text-xl transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white" aria-label="關閉留言對話" data-chat-close>×</button>
+            </header>
+
+            <div class="flex min-h-0 flex-1">
+                <div class="flex min-h-0 w-full flex-col border-slate-200 sm:w-72 sm:shrink-0 sm:border-r" data-chat-list-pane>
+                    <div class="shrink-0 border-b border-slate-100 p-3">
+                        <label for="chat-search" class="sr-only">搜尋標題</label>
+                        <input id="chat-search" type="search" placeholder="搜尋標題或編號" autocomplete="off" class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-search />
+                    </div>
+                    <ul class="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto" aria-label="回饋單對話清單" data-chat-list></ul>
+                    <p class="p-6 text-center text-sm text-slate-500" data-chat-list-status>載入中…</p>
+                </div>
+
+                <div class="flex min-h-0 min-w-0 flex-1 flex-col max-sm:hidden" data-chat-thread-pane>
+                    <div class="flex flex-1 items-center justify-center p-6 text-center text-sm text-slate-500" data-chat-placeholder>從左側選一張回饋單查看留言。</div>
+
+                    <div class="flex min-h-0 flex-1 flex-col" data-chat-thread-view hidden>
+                        <div class="flex shrink-0 items-start gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
+                            <button type="button" class="inline-flex min-h-9 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 sm:hidden" data-chat-back>‹ 返回清單</button>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{v.cfg.labels.client}已刪除</span></p>
+                                <h3 class="truncate text-sm font-bold text-slate-950" data-chat-thread-title></h3>
+                            </div>
+                            <a href="#" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-page-link>開啟完整頁</a>
+                        </div>
+
+                        <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-3 py-4 sm:px-4" aria-live="polite" data-chat-thread></div>
+
+                        <form class="shrink-0 border-t border-slate-200 bg-white p-3" data-chat-form novalidate>
+                            <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error hidden></p>
+                            <div id="chat-preview" class="mb-2 grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                            <label for="chat-body" class="sr-only">回覆內容</label>
+                            <textarea id="chat-body" name="body" rows={2} maxlength={10000} placeholder="輸入回覆…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-body-input></textarea>
+                            <div class="mt-2 flex items-center justify-between gap-2">
+                                <label for="chat-screenshots" class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                    附圖
+                                    <input id="chat-screenshots" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="chat-preview" data-chat-files />
+                                </label>
+                                <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">最多 5 張，每張 10 MB</span>
+                                <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-chat-send>送出</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+);

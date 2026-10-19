@@ -2,8 +2,9 @@ import type { FC } from 'hono/jsx';
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
 import { paths } from '../routes/paths';
-import { cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
+import { ChatButton, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock } from './report';
+import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
@@ -15,12 +16,13 @@ export interface PortalRow {
     creatorLabel: string;
     attachments: Attachment[];
     adjustmentAttachments: Attachment[];
-    /** Team side only: client messages the team has not read yet (always 0 for the client). */
-    unreadMessages: number;
-    /** Team side only: all messages on the report (always 0 for the client). */
+    /**
+     * Unread items for the viewer side: client messages for the team; team messages plus 1 for a
+     * changed adjustment for the client. The red number on the chat button.
+     */
+    unread: number;
+    /** All messages on the report. */
     messagesCount: number;
-    /** Client side only: a team reply or adjustment change the client has not seen. */
-    hasNewReply: boolean;
 }
 
 export interface PortalFormState {
@@ -89,8 +91,9 @@ export const PortalPage: FC<PortalProps> = (props) => {
         deleted: isOwner ? deletedFilter : null,
         creator: isOwner ? creator : null,
         unread: unreadOnly ? 1 : null,
-        sort,
-        direction,
+        // The default order leaves sort and direction out of the links.
+        sort: sort === 'conversation' ? null : sort,
+        direction: sort === 'conversation' ? null : direction,
         page: props.page > 1 ? props.page : null,
     };
     const portalUrl = (overrides: Record<string, string | number | null> = {}, forget: string[] = []): string => {
@@ -125,12 +128,12 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 
     return (
-        <Layout v={v} title={`問題清單｜${project.name}`} project={project} showLogout maxWidth="max-w-[96rem]" success={props.success}>
+        <Layout v={v} title={`問題清單｜${project.name}`} project={project} showLogout maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
                     <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-                    <p class="mt-2 text-sm leading-6 text-slate-600">{viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設照建立日期排序，最新的在最前面。' : '狀態可直接在表格中切換，點欄名即可排序；預設照建立日期排序，最新的在最前面。'}</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">{viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。'}</p>
                     <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>待處理</span><span>已收到{labels.client}的回報，等{labels.owner}處理。</span></li>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>待審核</span><span>{labels.owner}已改好並寫了調整說明，請{labels.client}確認。</span></li>
@@ -159,16 +162,18 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     </nav>
                 </div>
 
-                {isOwner && (props.unreadReportCount > 0 || unreadOnly) ? (
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rose-100 bg-rose-50 px-4 py-2.5 text-sm text-rose-900" data-unread-summary>
-                        <p class="font-semibold">{props.unreadReportCount > 0 ? `有 ${props.unreadReportCount} 張單有未讀留言` : '目前沒有未讀留言'}</p>
+                {isOwner ? (
+                    <div
+                        class={cx('flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-sm', props.unreadReportCount > 0 ? UNREAD_SUMMARY_TONES.alert : UNREAD_SUMMARY_TONES.calm)}
+                        data-unread-summary
+                        data-unread-only={unreadOnly ? '1' : '0'}
+                        data-unread-only-url={portalUrl({ unread: 1 }, ['page'])}
+                    >
+                        <p class="font-semibold" data-unread-summary-text>{props.unreadReportCount > 0 ? <>有 <span data-unread-report-count>{props.unreadReportCount}</span> 張單有未讀留言</> : '目前沒有未讀留言'}</p>
                         {unreadOnly ? (
-                            <a href={portalUrl({}, ['unread', 'page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-unread-show-all>顯示全部</a>
-                        ) : (
-                            <a href={portalUrl({ unread: 1 }, ['page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-unread-only>只看未讀留言</a>
-                        )}
-                        {sort !== 'latest_message_at' ? (
-                            <a href={portalUrl({ sort: 'latest_message_at', direction: 'desc' }, ['page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-sort-latest-message>依最新留言排序</a>
+                            <a href={portalUrl({}, ['unread', 'page'])} class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-unread-filter="show-all">顯示全部</a>
+                        ) : props.unreadReportCount > 0 ? (
+                            <a href={portalUrl({ unread: 1 }, ['page'])} class={UNREAD_FILTER_CLASS} data-unread-filter="unread-only">只看未讀留言</a>
                         ) : null}
                     </div>
                 ) : null}
@@ -213,19 +218,24 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     ) : null}
                     <label class={cx('grid min-w-0 gap-1 text-xs font-semibold text-slate-600', viewMode === 'list' ? 'md:hidden' : 'md:flex md:items-center md:gap-2')}>排序欄位
                         <select name="sort" data-auto-submit class={FILTER_SELECT}>
+                            <option value="conversation" selected={sort === 'conversation'}>預設（新留言優先）</option>
                             <option value="latest_activity_at" selected={sort === 'latest_activity_at'}>最後更新</option>
                             <option value="created_at" selected={sort === 'created_at'}>建立時間</option>
-                            <option value="latest_message_at" selected={sort === 'latest_message_at'}>最新留言時間</option>
                             <option value="title" selected={sort === 'title'}>問題</option>
                             <option value="status" selected={sort === 'status'}>狀態</option>
                         </select>
                     </label>
-                    <label class={cx('grid min-w-0 gap-1 text-xs font-semibold text-slate-600', viewMode === 'list' ? 'md:hidden' : 'md:flex md:items-center md:gap-2')}>順序
-                        <select name="direction" data-auto-submit class={FILTER_SELECT}>
-                            <option value="desc" selected={direction === 'desc'}>新到舊／降冪</option>
-                            <option value="asc" selected={direction === 'asc'}>舊到新／升冪</option>
-                        </select>
-                    </label>
+                    {sort !== 'conversation' ? (
+                        <label class={cx('grid min-w-0 gap-1 text-xs font-semibold text-slate-600', viewMode === 'list' ? 'md:hidden' : 'md:flex md:items-center md:gap-2')}>順序
+                            <select name="direction" data-auto-submit class={FILTER_SELECT}>
+                                <option value="desc" selected={direction === 'desc'}>新到舊／降冪</option>
+                                <option value="asc" selected={direction === 'asc'}>舊到新／升冪</option>
+                            </select>
+                        </label>
+                    ) : null}
+                    {viewMode === 'list' && sort !== 'conversation' ? (
+                        <a href={portalUrl({}, ['sort', 'direction', 'page'])} class="col-span-2 hidden rounded text-xs font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 md:inline" data-sort-reset>恢復預設排序（新留言優先）</a>
+                    ) : null}
                 </form>
 
                 {viewMode === 'list' ? (
@@ -333,8 +343,9 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                         </div>
                     ) : null}
                     <p class="text-xs text-slate-500">建立：<Time v={v} at={report.created_at} />　最後更新：<Time v={v} at={report.latest_activity_at} /></p>
-                    {isOwner ? null : <p class="text-sm text-slate-600" data-message-hint>有問題或補充，可以點「查看留言紀錄」直接留言給{v.cfg.labels.owner}。</p>}
-                    <div class="flex justify-end border-t border-slate-100 pt-4">
+                    {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{v.cfg.labels.owner}。</p>}
+                    <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                        <ChatButton publicId={report.public_id} title={report.title} total={row.messagesCount} unread={row.unread} isOwner={isOwner} label="開啟對話" />
                         <a href={paths.report(slug, report.public_id)} class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
                     </div>
                 </div>

@@ -12,6 +12,9 @@ export interface Project {
     login_prefill_username: string | null;
     login_prefill_password: string | null;
     public_reporting_enabled: number;
+    /** Move on every change shown in the chat panel list of each side (database triggers, migration 0004). */
+    chat_version_owner: number;
+    chat_version_client: number;
     created_at: string;
     updated_at: string;
 }

@@ -82,8 +82,8 @@
         </div>
 
         @if ($isOwner)
-            <div @class(['flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-sm', 'border-rose-200 bg-rose-50 text-rose-900' => $unreadReportCount > 0, 'border-slate-200 bg-white text-slate-600' => $unreadReportCount === 0]) data-unread-summary>
-                <p class="font-semibold">@if ($unreadReportCount > 0)有 <span data-unread-report-count>{{ $unreadReportCount }}</span> 張單有未讀留言@else目前沒有未讀留言@endif</p>
+            <div @class(['flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-sm', 'border-rose-200 bg-rose-50 text-rose-900' => $unreadReportCount > 0, 'border-slate-200 bg-white text-slate-600' => $unreadReportCount === 0]) data-unread-summary data-unread-only="{{ $unreadOnly ? '1' : '0' }}" data-unread-only-url="{{ $portalUrl(['unread' => 1], ['page']) }}">
+                <p class="font-semibold" data-unread-summary-text>@if ($unreadReportCount > 0)有 <span data-unread-report-count>{{ $unreadReportCount }}</span> 張單有未讀留言@else目前沒有未讀留言@endif</p>
                 @if ($unreadOnly)
                     <a href="{{ $portalUrl([], ['unread', 'page']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-unread-filter>顯示全部</a>
                 @elseif ($unreadReportCount > 0)

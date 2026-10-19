@@ -68,6 +68,28 @@ class FeedbackUnreadMessagesTest extends TestCase
             ->assertDontSee('沒有新留言');
     }
 
+    public function test_unread_summary_carries_what_the_chat_panel_needs_to_keep_it_in_sync(): void
+    {
+        $report = $this->reportReadAt(now()->subHour(), now()->subHour());
+        $this->message($report, FeedbackAuthorType::Reporter, now()->subMinutes(5));
+        $this->actingAsOwner();
+
+        $html = $this->get(route('feedback.portal', $this->project))
+            ->assertOk()
+            ->assertSee('data-unread-only="0"', false)
+            ->assertSee('data-unread-summary-text', false)
+            ->assertSee('data-message-count="1"', false)
+            ->getContent();
+
+        // 面板看完最後一張後提示會拿掉篩選；之後又有未讀時，前端用這個網址補回「只看未讀留言」。
+        $this->assertMatchesRegularExpression('/data-unread-only-url="[^"]*unread=1[^"]*"/', $html);
+        $this->assertDoesNotMatchRegularExpression('/data-unread-only-url="[^"]*page=/', $html);
+
+        $this->get(route('feedback.portal', [$this->project, 'unread' => 1]))
+            ->assertOk()
+            ->assertSee('data-unread-only="1"', false);
+    }
+
     public function test_reports_without_any_owner_visit_count_every_client_message_as_unread(): void
     {
         $report = FeedbackReport::factory()->for($this->project)->create(['owner_last_read_at' => null]);

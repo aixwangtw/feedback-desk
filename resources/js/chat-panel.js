@@ -2,6 +2,7 @@
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
 import { orderConversations } from './chat-order';
+import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
@@ -9,6 +10,13 @@ const LIST_POLL_CLOSED_MS = 30000;
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// 與 portal.blade.php、message-badges.blade.php 相同的樣式。
+const SUMMARY_TONES = {
+    alert: ['border-rose-200', 'bg-rose-50', 'text-rose-900'],
+    calm: ['border-slate-200', 'bg-white', 'text-slate-600'],
+};
+const UNREAD_FILTER_CLASS = 'rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2';
+const ITEM_BADGE_CLASS = 'absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white';
 
 const root = document.querySelector('[data-chat-root]');
 
@@ -92,6 +100,82 @@ if (root) {
         updateLauncherBadge(state.items.reduce((sum, item) => sum + item.unread, 0));
     };
 
+    const isOwnerViewer = root.dataset.viewer === 'owner';
+
+    // 同頁清單／看板上各單留言按鈕的紅色數字。
+    const syncPageBadges = (unread) => {
+        // 只動 message-badges 元件產生的留言按鈕（有 data-message-count），回饋單頁的「在對話面板開啟」不加數字。
+        document.querySelectorAll('[data-chat-open][data-message-count]').forEach((button) => {
+            const count = unread.get(button.dataset.chatOpen);
+            if (count === undefined) {
+                return;
+            }
+            let badge = button.querySelector('[data-unread-badge]');
+            if (count <= 0) {
+                badge?.remove();
+            } else {
+                if (!badge) {
+                    badge = el('span', ITEM_BADGE_CLASS);
+                    badge.dataset.unreadBadge = '';
+                    if (!isOwnerViewer) {
+                        badge.dataset.newReplyBadge = '';
+                    }
+                    button.append(badge);
+                }
+                badge.textContent = badgeText(count);
+            }
+            const label = button.getAttribute('aria-label');
+            if (label !== null) {
+                button.setAttribute('aria-label', withUnreadInLabel(label, count));
+            }
+            const title = button.getAttribute('title');
+            if (title !== null) {
+                button.setAttribute('title', withUnreadInTitle(title, count));
+            }
+        });
+    };
+
+    // 開發者端清單上方「有 N 張單有未讀留言」提示與「只看未讀留言」篩選。
+    const syncUnreadSummary = (count) => {
+        const summary = document.querySelector('[data-unread-summary]');
+        const text = summary?.querySelector('[data-unread-summary-text]');
+        if (!summary || !text) {
+            return;
+        }
+        const view = unreadSummary(count, { unreadOnly: summary.dataset.unreadOnly === '1' });
+        summary.classList.remove(...SUMMARY_TONES.alert, ...SUMMARY_TONES.calm);
+        summary.classList.add(...SUMMARY_TONES[view.tone]);
+
+        if (view.count > 0) {
+            const number = el('span', null, view.count);
+            number.dataset.unreadReportCount = '';
+            text.replaceChildren('有 ', number, ' 張單有未讀留言');
+        } else {
+            text.replaceChildren('目前沒有未讀留言');
+        }
+
+        const filter = summary.querySelector('[data-unread-filter]');
+        if (view.filter === 'unread-only' && !filter) {
+            const link = el('a', UNREAD_FILTER_CLASS, '只看未讀留言');
+            link.href = summary.dataset.unreadOnlyUrl;
+            link.dataset.unreadFilter = '';
+            text.after(link);
+        } else if (view.filter === null) {
+            filter?.remove();
+        }
+    };
+
+    // 面板讀過或清單刷新後，用面板已有的未讀資料同步整頁，不另外向伺服器要資料。
+    const syncPage = () => {
+        if (!state.loaded) {
+            return;
+        }
+        syncPageBadges(unreadById(state.items));
+        if (isOwnerViewer) {
+            syncUnreadSummary(countUnreadReports(state.items));
+        }
+    };
+
     const renderList = () => {
         const keyword = search.value.trim().toLowerCase();
         const items = keyword === ''
@@ -154,9 +238,20 @@ if (root) {
         state.lastListFetch = Date.now();
         try {
             const data = await fetchJson(root.dataset.listUrl);
+            const openId = isOpen() ? openConversationId() : null;
             state.items = reorder(data.items);
             state.loaded = true;
-            updateLauncherBadge(data.unread_total);
+            // 正在看的那張每次刷新都會標為已讀；清單若比它早一步取回，仍當作已讀。
+            const openItem = state.items.find((item) => item.id === openId);
+            if (openItem && openItem.unread > 0) {
+                openItem.unread = 0;
+                openItem.adjustment_updated = false;
+                openItem.has_update = false;
+                recountBadge();
+            } else {
+                updateLauncherBadge(data.unread_total);
+            }
+            syncPage();
             if (isOpen()) {
                 renderList();
             }
@@ -214,7 +309,7 @@ if (root) {
         }
 
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
-        // 同頁清單／看板上這張單的紅色未讀數字一併拿掉。
+        // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
         document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
 
         const item = state.items.find((candidate) => candidate.id === data.id);
@@ -225,6 +320,7 @@ if (root) {
             recountBadge();
             renderList();
         }
+        syncPage();
     };
 
     const threadUrl = (id) => state.items.find((item) => item.id === id)?.thread_url

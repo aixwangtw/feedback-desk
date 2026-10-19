@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Feedback;
 
 use App\Http\Controllers\Controller;
+use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Support\FeedbackAccess;
@@ -67,7 +68,7 @@ class FeedbackLoginController extends Controller
         $limits = $this->rateLimits($request);
         $this->ensureNotRateLimited($limits);
 
-        [$role, $developer] = $this->authenticate($feedbackProject, $credentials['username'], $credentials['password']);
+        [$role, $account] = $this->authenticate($feedbackProject, $credentials['username'], $credentials['password']);
 
         if ($role === null) {
             foreach ($limits as $limit) {
@@ -81,12 +82,12 @@ class FeedbackLoginController extends Controller
 
         $request->session()->regenerate();
 
-        if ($developer !== null) {
-            $access->grantDeveloper($feedbackProject, $developer);
-        } elseif ($role === FeedbackAccess::ROLE_OWNER) {
-            $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+        if ($account instanceof FeedbackDeveloper) {
+            $access->grantDeveloper($feedbackProject, $account);
+        } elseif ($account instanceof FeedbackClientAccount) {
+            $access->grantClientAccount($feedbackProject, $account);
         } else {
-            $access->grantClient($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+            $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
         }
 
         return redirect()->intended(route('feedback.portal', $feedbackProject));
@@ -138,34 +139,33 @@ class FeedbackLoginController extends Controller
     }
 
     /**
-     * 共用 owner 帳號優先比對，其次是開發者個人帳號（登入後同為 owner 身分），最後是該專案自己的老師帳號。
-     * 老師帳號只認專案本身的設定，不退回全域設定。
+     * 共用 owner 帳號優先比對，其次是開發者個人帳號（登入後同為 owner 身分），最後是這個專案的客戶帳號
+     * （每位客戶一個，只對自己的專案有效）。停用的客戶帳號跟不存在的帳號一樣處理，花的時間與錯誤訊息都相同。
      *
-     * @return array{0: FeedbackAccess::ROLE_*|null, 1: FeedbackDeveloper|null}
+     * @return array{0: FeedbackAccess::ROLE_*|null, 1: FeedbackDeveloper|FeedbackClientAccount|null}
      */
     private function authenticate(FeedbackProject $project, string $username, string $password): array
     {
-        $developer = null;
+        $account = null;
         $role = null;
+        $hash = null;
 
         $sharedOwnerUsername = (string) config('feedback.accounts.owner.username');
 
         if ($sharedOwnerUsername !== '' && hash_equals($sharedOwnerUsername, $username)) {
             $role = FeedbackAccess::ROLE_OWNER;
             $hash = config('feedback.accounts.owner.password_hash');
-        } elseif ($developer = FeedbackDeveloper::where('username', $username)->first()) {
+        } elseif ($account = FeedbackDeveloper::where('username', $username)->first()) {
             $role = FeedbackAccess::ROLE_OWNER;
-            $hash = $developer->password_hash;
-        } elseif (filled($project->client_username) && hash_equals($project->client_username, $username)) {
+            $hash = $account->password_hash;
+        } elseif ($account = $project->clientAccounts()->where('username', $username)->whereNull('disabled_at')->first()) {
             $role = FeedbackAccess::ROLE_CLIENT;
-            $hash = $project->client_password_hash;
-        } else {
-            $hash = null;
+            $hash = $account->password_hash;
         }
 
         $hasUsableHash = is_string($hash) && $hash !== '';
         $matches = Hash::check($password, $hasUsableHash ? $hash : self::DUMMY_HASH);
 
-        return $hasUsableHash && $matches ? [$role, $developer] : [null, null];
+        return $hasUsableHash && $matches ? [$role, $account] : [null, null];
     }
 }

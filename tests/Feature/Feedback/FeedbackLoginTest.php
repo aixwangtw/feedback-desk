@@ -381,7 +381,7 @@ class FeedbackLoginTest extends TestCase
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
         $this->get(route('feedback.portal', $project))->assertOk();
 
-        $project->update(['client_password_hash' => Hash::make('changed')]);
+        $project->clientAccounts()->where('username', 'test')->update(['password_hash' => Hash::make('changed')]);
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
         $this->get(route('feedback.portal', $project))->assertRedirect(route('feedback.login', $project));

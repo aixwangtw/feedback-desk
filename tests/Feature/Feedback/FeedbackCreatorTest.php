@@ -203,8 +203,8 @@ class FeedbackCreatorTest extends TestCase
             ->assertSee('共 1 題', false)
             ->assertDontSee('篩選後', false)
             ->assertDontSee('data-creator-filter', false)
-            ->assertDontSee('data-report-creator', false)
-            ->assertDontSee('建立者')
+            // 同專案的客戶看得到每張單是哪位客戶開的（每人一個帳號），但看不到團隊建立的單。
+            ->assertSee('data-report-creator', false)
             ->assertDontSee('Dev A')
             ->assertDontSee('Dev B')
             ->getContent();
@@ -216,7 +216,7 @@ class FeedbackCreatorTest extends TestCase
         }
 
         $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
-            ->assertDontSee('dev-a-1')->assertDontSee('data-report-creator', false);
+            ->assertDontSee('dev-a-1')->assertDontSee('Dev A');
     }
 
     public function test_teacher_numbers_are_renumbered_over_visible_reports_only(): void

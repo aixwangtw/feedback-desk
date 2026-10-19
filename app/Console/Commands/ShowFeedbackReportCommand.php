@@ -6,6 +6,7 @@ use App\Models\FeedbackAttachment;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAttachmentLocation;
+use App\Support\FeedbackReportWork;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -47,7 +48,7 @@ class ShowFeedbackReportCommand extends Command
             return self::FAILURE;
         }
 
-        $report->load(['creatorDeveloper', 'feedbackAttachments', 'feedbackMessages' => fn ($query) => $query->orderBy('created_at')->orderBy('id')]);
+        $report->load(['creatorDeveloper', 'creatorClientAccount', 'feedbackAttachments', 'feedbackMessages' => fn ($query) => $query->orderBy('created_at')->orderBy('id'), 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper']);
 
         $data = $this->payload($project, $report);
 
@@ -80,6 +81,7 @@ class ShowFeedbackReportCommand extends Command
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
             'deleted_by_client' => $report->isDeletedByClient(),
+            ...app(FeedbackReportWork::class)->stateForOutput($report, null),
             'created_at' => $report->created_at?->toIso8601String(),
             'updated_at' => $report->updated_at?->toIso8601String(),
             'latest_activity_at' => $report->latest_activity_at?->toIso8601String(),
@@ -90,7 +92,7 @@ class ShowFeedbackReportCommand extends Command
             'adjustment_attachments' => $this->attachmentData($attachments->filter(fn (FeedbackAttachment $a) => $a->kind->value === 'adjustment')),
             'messages' => $report->feedbackMessages->map(fn ($message): array => [
                 'author_type' => $message->author_type->value,
-                'author' => $message->author_name ?: $message->author_type->label(),
+                'author' => $message->displayAuthor($report, true),
                 'created_at' => $message->created_at?->toIso8601String(),
                 'body' => $message->body,
                 'attachments' => $this->attachmentData($attachments->where('feedback_message_id', $message->id)),
@@ -131,6 +133,18 @@ class ShowFeedbackReportCommand extends Command
         $this->components->twoColumnDetail('更新時間', $this->time($data['updated_at']));
         if (filled($data['page_url'])) {
             $this->components->twoColumnDetail('頁面網址', $this->e($data['page_url']));
+        }
+
+        $this->components->twoColumnDetail('認領', $data['claim'] !== null
+            ? $this->e($data['claim']['by']).'（'.$this->time($data['claim']['since']).' 開始）'
+            : '沒有人認領');
+        if ($data['handoff_notes'] !== []) {
+            $this->newLine();
+            $this->line('## 交接紀錄（最新在前，只有團隊看得到）');
+            foreach ($data['handoff_notes'] as $note) {
+                $this->line("- {$this->e($note['author'])}　{$this->time($note['created_at'])}");
+                $this->line('  '.str_replace("\n", "\n  ", $this->e($note['note'])));
+            }
         }
 
         $this->newLine();

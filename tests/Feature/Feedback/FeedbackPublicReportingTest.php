@@ -547,6 +547,9 @@ class FeedbackPublicReportingTest extends TestCase
             'login_prefill_username' => null,
             'login_prefill_password' => null,
         ]);
+        $this->project->clientAccounts()->create(['username' => 'mei', 'name' => '林小美', 'password_hash' => 'x']);
+        $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on'])->assertFailed();
+        $this->project->clientAccounts()->delete();
 
         $this->artisan('feedback:public-reporting', ['project' => 'feedback-desk', 'mode' => 'on'])->assertSuccessful();
         $this->assertTrue($this->project->fresh()->public_reporting_enabled);

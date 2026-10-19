@@ -8,6 +8,7 @@ use App\Enums\FeedbackAutomationStatus;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackAutomationRun;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackActor;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -76,15 +77,34 @@ class ResolveFeedbackReport implements ShouldQueue
             $this->report->feedbackMessages()->create([
                 'author_type' => FeedbackAuthorType::Agent,
                 'author_name' => 'Vibe coding',
+                'author_agent' => 'Codex',
                 'body' => $message,
             ]);
+            $this->report->recordEvent('message', $this->actor());
+
+            // 有人認領中的單，自動處理只留言，不替認領的人改狀態。
+            $previous = $this->report->status;
+            if ($this->report->fresh()?->claimed_at !== null) {
+                $reportStatus = null;
+            }
 
             $this->report->update([
                 'status' => $reportStatus ?? $this->report->status,
                 'completed_at' => $reportStatus === null ? $this->report->completed_at : ($reportStatus === FeedbackReportStatus::Completed ? now() : null),
                 'latest_activity_at' => now(),
             ]);
+            if ($reportStatus !== null && $reportStatus !== $previous) {
+                $this->report->recordEvent('status', $this->actor(), "{$previous->value}>{$reportStatus->value}");
+            }
         });
+    }
+
+    /**
+     * 自動處理在最近動態裡的身分。
+     */
+    private function actor(): FeedbackActor
+    {
+        return new FeedbackActor('Vibe coding', true, agent: 'Codex');
     }
 
     /** @return list<WithoutOverlapping> */
@@ -110,8 +130,10 @@ class ResolveFeedbackReport implements ShouldQueue
             $this->report->feedbackMessages()->create([
                 'author_type' => FeedbackAuthorType::Agent,
                 'author_name' => 'Vibe coding',
+                'author_agent' => 'Codex',
                 'body' => '自動處理未完成：'.$summary,
             ]);
+            $this->report->recordEvent('message', $this->actor());
             $this->report->update(['latest_activity_at' => now()]);
         });
     }

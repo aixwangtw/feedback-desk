@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Enums\FeedbackAttachmentKind;
 use App\Models\FeedbackAttachment;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackActor;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -14,12 +15,12 @@ class UpdateFeedbackReportAction
     /**
      * @param  array{title: string, description: string, screenshots?: list<UploadedFile>, remove_attachments?: list<int|string>}  $data
      */
-    public function handle(FeedbackReport $report, array $data): FeedbackReport
+    public function handle(FeedbackReport $report, array $data, ?FeedbackActor $actor = null): FeedbackReport
     {
         $storedPaths = [];
 
         try {
-            $removedAttachments = DB::transaction(function () use ($report, $data, &$storedPaths) {
+            $removedAttachments = DB::transaction(function () use ($report, $data, $actor, &$storedPaths) {
                 $report->update([
                     'title' => $data['title'],
                     'description' => $data['description'],
@@ -46,6 +47,8 @@ class UpdateFeedbackReportAction
                         'original_name' => $screenshot->getClientOriginalName(),
                         'mime_type' => $screenshot->getMimeType() ?? 'application/octet-stream',
                         'size' => $screenshot->getSize(),
+                        'uploader_client_account_id' => $actor?->clientAccount?->id,
+                        'uploader_developer_id' => $actor?->developer?->id,
                     ]);
                 }
 

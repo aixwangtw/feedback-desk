@@ -24,7 +24,7 @@ class FeedbackStatusController extends Controller
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $status = FeedbackReportStatus::from($request->validated('status'));
 
-        $changeStatus->handle($feedbackReport, $status);
+        $changeStatus->handle($feedbackReport, $status, $access->actor($feedbackProject));
 
         if ($request->expectsJson()) {
             return response()->json([

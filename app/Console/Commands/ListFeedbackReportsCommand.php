@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackAgentName;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -14,7 +15,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 #[Signature('feedback:reports
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {--status=* : 只列出這些狀態（new／needs_input／completed 或 待處理／待審核／已完成），可重複}
-    {--creator= : 建立者篩選：client、public、shared 或 developer:{id}}
+    {--creator= : 建立者篩選：client、client:<id>、public、shared 或 developer:<id>}
     {--include-deleted : 一併列出客戶已刪除（隱藏）的單}
     {--unread : 只列出有未讀客戶留言的單（開發團隊在網頁開啟該單後才算已讀）}
     {--json : 輸出 JSON}')]
@@ -60,8 +61,8 @@ class ListFeedbackReportsCommand extends Command
         }
 
         $creator = (string) $this->option('creator');
-        if ($creator !== '' && ! preg_match('/^(client|public|shared|developer:\d+)$/', $creator)) {
-            $this->components->error('不認得的建立者。可用值：client、public、shared、developer:{id}');
+        if ($creator !== '' && ! preg_match('/^(client|public|shared|client:\d+|developer:\d+)$/', $creator)) {
+            $this->components->error('不認得的建立者。可用值：client、client:{id}、public、shared、developer:{id}');
 
             return self::FAILURE;
         }
@@ -70,7 +71,7 @@ class ListFeedbackReportsCommand extends Command
         $clientNumbers = FeedbackReport::sequenceNumbersForProject($project, clientCreatedOnly: true);
 
         $reports = $project->feedbackReports()
-            ->with(['creatorDeveloper', 'feedbackProject'])
+            ->with(['creatorDeveloper', 'creatorClientAccount', 'claimedBy', 'feedbackProject'])
             ->withOwnerMessageStats()
             ->withCount('feedbackAttachments')
             ->when($this->option('unread'), fn ($query) => $query->unreadByOwner())
@@ -89,6 +90,7 @@ class ListFeedbackReportsCommand extends Command
             'status_label' => $report->status->label(),
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
+            'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent) : null,
             'title' => $report->title,
             'messages_count' => $report->feedback_messages_count,
             'unread_messages_count' => $report->unread_messages_count,
@@ -111,12 +113,13 @@ class ListFeedbackReportsCommand extends Command
         }
 
         $this->table(
-            ['編號', 'public_id', '狀態', '建立者', '標題', '留言', '未讀', '附件', '最後更新'],
+            ['編號', 'public_id', '狀態', '建立者', '認領', '標題', '留言', '未讀', '附件', '最後更新'],
             array_map(fn (array $row): array => [
                 $row['number'],
                 $row['public_id'],
                 $row['status_label'].($row['deleted_by_client'] ? '（已刪除）' : ''),
                 OutputFormatter::escape($row['creator']),
+                OutputFormatter::escape((string) $row['claimed_by']),
                 OutputFormatter::escape($row['title']),
                 $row['messages_count'],
                 $row['unread_messages_count'],

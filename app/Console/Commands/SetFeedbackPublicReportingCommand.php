@@ -55,7 +55,7 @@ class SetFeedbackPublicReportingCommand extends Command
     private function clientAccessSettings(FeedbackProject $project): array
     {
         return array_keys(array_filter([
-            'client_username' => filled($project->client_username),
+            'client_accounts' => $project->clientAccounts()->exists(),
             'client_token_hash' => filled($project->client_token_hash),
             'login_prefill_username' => filled($project->login_prefill_username),
             'login_prefill_password' => filled($project->login_prefill_password),

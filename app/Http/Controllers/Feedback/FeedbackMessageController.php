@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers\Feedback;
 
-use App\Enums\FeedbackAuthorType;
+use App\Actions\PostFeedbackMessageAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackMessageRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackActor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
 
 class FeedbackMessageController extends Controller
 {
@@ -19,41 +19,19 @@ class FeedbackMessageController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackAccess $access,
+        PostFeedbackMessageAction $postMessage,
     ): RedirectResponse|JsonResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $validated = $request->validated();
 
-        DB::transaction(function () use ($validated, $feedbackReport, $access, $feedbackProject): void {
-            $isOwner = $access->isOwner($feedbackProject);
-            $developer = $access->currentDeveloper($feedbackProject);
-            $message = $feedbackReport->feedbackMessages()->create([
-                'author_type' => $isOwner ? FeedbackAuthorType::Owner : FeedbackAuthorType::Reporter,
-                'author_name' => match (true) {
-                    $isOwner && $feedbackReport->isPublicReport() => config('feedback.labels.owner'),
-                    $isOwner => $developer?->name ?? config('feedback.labels.owner'),
-                    $feedbackReport->isPublicReport() => $feedbackReport->reporter_name ?: '公開回報者',
-                    default => config('feedback.labels.client'),
-                },
-                'body' => $validated['body'],
-            ]);
+        // 私密網址回報者（沒有專案登入）照舊記成客戶端；公開回報者用他自己填的稱呼。
+        $actor = match (true) {
+            $access->canManage($feedbackProject) => $access->actor($feedbackProject),
+            $feedbackReport->isPublicReport() => new FeedbackActor($feedbackReport->reporter_name ?: '公開回報者', false),
+            default => FeedbackActor::sharedClient(),
+        };
 
-            foreach ($validated['screenshots'] ?? [] as $screenshot) {
-                $path = $screenshot->store("feedback/{$feedbackProject->id}/{$feedbackReport->public_id}", config('feedback.disk'));
-                $message->feedbackAttachments()->create([
-                    'feedback_report_id' => $feedbackReport->id,
-                    'disk' => config('feedback.disk'),
-                    'path' => $path,
-                    'original_name' => $screenshot->getClientOriginalName(),
-                    'mime_type' => $screenshot->getMimeType() ?? 'application/octet-stream',
-                    'size' => $screenshot->getSize(),
-                ]);
-            }
-
-            $feedbackReport->update(['latest_activity_at' => now()]);
-        });
-
-        // 自己留言時一定看過這張單，不讓自己的留言或前面的留言留成未讀。
-        $access->isOwner($feedbackProject) ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient();
+        $postMessage->handle($feedbackReport, $actor, $validated['body'], $validated['screenshots'] ?? []);
 
         if ($request->expectsJson()) {
             return response()->json(['message' => '訊息已送出。'], 201);

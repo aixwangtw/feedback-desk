@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Enums\FeedbackAttachmentKind;
 use App\Models\FeedbackAttachment;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackActor;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -22,13 +23,13 @@ class UpdateFeedbackReportAdjustmentAction
      *
      * @param  array{note?: string|null, append?: bool, images?: list<File>, remove_attachments?: list<int|string>}  $data
      */
-    public function handle(FeedbackReport $report, array $data): FeedbackReport
+    public function handle(FeedbackReport $report, array $data, ?FeedbackActor $actor = null): FeedbackReport
     {
         $disk = config('feedback.disk');
         $storedPaths = [];
 
         try {
-            $removedAttachments = DB::transaction(function () use ($report, $data, $disk, &$storedPaths) {
+            $removedAttachments = DB::transaction(function () use ($report, $data, $disk, $actor, &$storedPaths) {
                 $attributes = ['latest_activity_at' => now()];
 
                 if (array_key_exists('note', $data)) {
@@ -52,6 +53,9 @@ class UpdateFeedbackReportAdjustmentAction
                 // 客戶端「有新回覆」看這個時間；內容沒變就不算更新。
                 if ($noteChanged || $removedAttachments->isNotEmpty() || ($data['images'] ?? []) !== []) {
                     $report->forceFill(['adjustment_updated_at' => now()])->save();
+                    if ($actor !== null) {
+                        $report->recordEvent('adjustment', $actor);
+                    }
                 }
 
                 foreach ($data['images'] ?? [] as $image) {
@@ -68,6 +72,7 @@ class UpdateFeedbackReportAdjustmentAction
                         'original_name' => $image instanceof UploadedFile ? $image->getClientOriginalName() : $image->getFilename(),
                         'mime_type' => $image->getMimeType() ?? 'application/octet-stream',
                         'size' => $image->getSize(),
+                        'uploader_developer_id' => $actor?->developer?->id,
                     ]);
                 }
 

@@ -24,6 +24,7 @@ class FeedbackConversationController extends Controller
     {
         $this->ensureCanManage($feedbackProject, $access);
         $isOwner = $access->isOwner($feedbackProject);
+        $viewer = $access->clientViewer($feedbackProject);
 
         $latestMessage = fn (string $column) => FeedbackMessage::query()
             ->select($column)
@@ -35,14 +36,14 @@ class FeedbackConversationController extends Controller
         // 一次查詢取回整個專案的單與留言統計；編號依建立時間排，所以先取全部（客戶端含已刪除）再過濾。
         $reports = $feedbackProject->feedbackReports()
             ->select([
-                'id', 'feedback_project_id', 'public_id', 'title', 'status', 'creator_type', 'created_at',
-                'client_deleted_at', 'owner_last_read_at', 'client_last_read_at', 'adjustment_updated_at',
+                'id', 'feedback_project_id', 'public_id', 'title', 'status', 'creator_type', 'creator_developer_id',
+                'creator_client_account_id', 'creator_agent', 'reporter_name', 'created_at', 'client_deleted_at', 'owner_last_read_at', 'client_last_read_at', 'adjustment_updated_at',
             ])
             ->when(! $isOwner, fn ($query) => $query->createdByClient())
             ->when(
                 $isOwner,
                 fn ($query) => $query->withOwnerMessageStats(),
-                fn ($query) => $query->withClientNewReplyCount()
+                fn ($query) => $query->withClientNewReplyCount($viewer)
                     ->withCount('feedbackMessages')
                     ->withMax('feedbackMessages as latest_message_at', 'created_at'),
             )
@@ -50,6 +51,7 @@ class FeedbackConversationController extends Controller
                 'latest_message_body' => $latestMessage('body'),
                 'latest_message_author' => $latestMessage('author_type'),
             ])
+            ->with(['creatorDeveloper', 'creatorClientAccount', 'feedbackProject'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
@@ -74,12 +76,13 @@ class FeedbackConversationController extends Controller
         $access->ensureReportVisible($feedbackReport);
 
         $isOwner = $access->isOwner($feedbackProject);
-        $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustmentIsNewForClient();
+        $viewer = $access->clientViewer($feedbackProject);
+        $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustmentIsNewForClient($viewer);
 
         // 開啟對話（與面板開著時的定時刷新）就算讀過，與回饋單頁的留言刷新一致。
-        $isOwner ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient();
+        $isOwner ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient($viewer);
 
-        $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'adjustmentAttachments']);
+        $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper', 'adjustmentAttachments']);
 
         return response()->json([
             'id' => $feedbackReport->public_id,
@@ -110,7 +113,7 @@ class FeedbackConversationController extends Controller
     }
 
     /**
-     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, created_at: string, unread: int, adjustment_updated: bool, has_update: bool, messages_count: int, thread_url: string, page_url: string}
+     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, created_at: string, unread: int, adjustment_updated: bool, has_update: bool, messages_count: int, creator: string, thread_url: string, page_url: string}
      */
     private function listItem(FeedbackProject $project, FeedbackReport $report, int $number, bool $isOwner): array
     {
@@ -137,6 +140,7 @@ class FeedbackConversationController extends Controller
             'adjustment_updated' => $adjustmentUpdated,
             'has_update' => $unread > 0 || $adjustmentUpdated,
             'messages_count' => (int) $report->feedback_messages_count,
+            'creator' => $report->creatorLabel(),
             'thread_url' => route('feedback.conversations.show', [$project, $report]),
             'page_url' => route('feedback.reports.show', [$project, $report]),
         ];

@@ -45,6 +45,7 @@ class FeedbackPortalController extends Controller
         }
 
         $isOwner = $access->isOwner($feedbackProject);
+        $viewer = $access->clientViewer($feedbackProject);
         $sort = request()->string('sort')->toString();
         // 預設 conversation：與右下角對話面板同一套排序；舊網址的 latest_message_at 已併入預設。
         $sort = in_array($sort, ['title', 'status', 'created_at', 'latest_activity_at'], true)
@@ -75,7 +76,7 @@ class FeedbackPortalController extends Controller
             ->when(! $isOwner, fn ($query) => $query->createdByClient())
             ->when($creator !== '', fn ($query) => $query->createdBy($creator))
             ->when($isOwner, fn ($query) => $query->withOwnerMessageStats(), fn ($query) => $query
-                ->withClientNewReplyCount()
+                ->withClientNewReplyCount($viewer)
                 ->withCount('feedbackMessages')
                 ->withMax('feedbackMessages as latest_message_at', 'created_at'))
             ->when($unreadOnly, fn ($query) => $query->unreadByOwner())
@@ -86,7 +87,7 @@ class FeedbackPortalController extends Controller
             ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
             ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'));
         $withListRelations = fn ($query) => $query
-            ->with($isOwner ? ['creatorDeveloper', 'feedbackProject'] : [])
+            ->with(['creatorDeveloper', 'creatorClientAccount', 'feedbackProject'])
             ->with([
                 'feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')->ofKind(FeedbackAttachmentKind::Feedback),
                 'adjustmentAttachments',
@@ -160,6 +161,10 @@ class FeedbackPortalController extends Controller
     private function creatorOptions(FeedbackProject $project): array
     {
         $options = ['client' => $project->clientLabel()];
+
+        foreach ($project->clientAccounts()->orderBy('name')->orderBy('id')->get() as $account) {
+            $options["client:{$account->id}"] = $project->clientLabel().'：'.$account->name;
+        }
 
         foreach (FeedbackDeveloper::query()->orderBy('name')->orderBy('id')->get() as $developer) {
             $options["developer:{$developer->id}"] = $developer->name;

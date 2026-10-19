@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'feedback_report_id',
     'feedback_message_id',
     'kind',
+    'uploader_client_account_id',
+    'uploader_developer_id',
     'disk',
     'path',
     'original_name',

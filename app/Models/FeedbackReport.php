@@ -6,6 +6,8 @@ use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
+use App\Support\FeedbackActor;
+use App\Support\FeedbackAgentName;
 use Carbon\CarbonInterface;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -24,6 +26,11 @@ use Illuminate\Support\Carbon;
     'reporter_name',
     'creator_type',
     'creator_developer_id',
+    'creator_client_account_id',
+    'creator_agent',
+    'claimed_by_developer_id',
+    'claimed_agent',
+    'claimed_at',
     'title',
     'description',
     'adjustment_note',
@@ -61,6 +68,45 @@ class FeedbackReport extends Model
     public function creatorDeveloper(): BelongsTo
     {
         return $this->belongsTo(FeedbackDeveloper::class, 'creator_developer_id');
+    }
+
+    /** @return BelongsTo<FeedbackClientAccount, $this> */
+    public function creatorClientAccount(): BelongsTo
+    {
+        return $this->belongsTo(FeedbackClientAccount::class, 'creator_client_account_id');
+    }
+
+    /** @return BelongsTo<FeedbackDeveloper, $this> */
+    public function claimedBy(): BelongsTo
+    {
+        return $this->belongsTo(FeedbackDeveloper::class, 'claimed_by_developer_id');
+    }
+
+    /** @return HasMany<FeedbackHandoffNote, $this> */
+    public function handoffNotes(): HasMany
+    {
+        return $this->hasMany(FeedbackHandoffNote::class);
+    }
+
+    /** @return HasMany<FeedbackReportEvent, $this> */
+    public function events(): HasMany
+    {
+        return $this->hasMany(FeedbackReportEvent::class);
+    }
+
+    /**
+     * 記一筆最近動態（誰、用哪個 AI、做了什麼）。
+     */
+    public function recordEvent(string $kind, FeedbackActor $actor, ?string $detail = null): FeedbackReportEvent
+    {
+        return $this->events()->create([
+            'kind' => $kind,
+            'feedback_developer_id' => $actor->developer?->id,
+            'feedback_client_account_id' => $actor->clientAccount?->id,
+            'actor_name' => mb_substr($actor->name, 0, 100),
+            'agent' => $actor->agent,
+            'detail' => $detail !== null ? mb_substr($detail, 0, 200) : null,
+        ]);
     }
 
     /** @return HasMany<FeedbackMessage, $this> */
@@ -136,6 +182,9 @@ class FeedbackReport extends Model
             $creator === 'client' => $query->where('creator_type', FeedbackCreatorType::Client->value),
             $creator === 'public' => $query->where('creator_type', FeedbackCreatorType::Public->value),
             $creator === 'shared' => $query->where('creator_type', FeedbackCreatorType::OwnerShared->value),
+            (bool) preg_match('/^client:(\d+)$/', $creator, $matches) => $query
+                ->where('creator_type', FeedbackCreatorType::Client->value)
+                ->where('creator_client_account_id', (int) $matches[1]),
             (bool) preg_match('/^developer:(\d+)$/', $creator, $matches) => $query
                 ->where('creator_type', FeedbackCreatorType::Developer->value)
                 ->where('creator_developer_id', (int) $matches[1]),
@@ -154,12 +203,17 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 開發者端顯示的建立者名稱。
+     * 清單、單頁與對話面板顯示的建立者：帳號目前的名字，用 AI 開的單加上工具名稱，例如「王小明（Codex）」。
      */
     public function creatorLabel(): string
     {
+        return FeedbackAgentName::label($this->creatorName(), $this->creator_type === FeedbackCreatorType::Public ? null : $this->creator_agent);
+    }
+
+    private function creatorName(): string
+    {
         return match ($this->creator_type) {
-            FeedbackCreatorType::Client => $this->feedbackProject->clientLabel(),
+            FeedbackCreatorType::Client => $this->creatorClientAccount?->name ?? $this->feedbackProject->clientLabel(),
             FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? config('feedback.labels.owner'),
             FeedbackCreatorType::Public => filled($this->reporter_name) ? "公開回報（{$this->reporter_name}）" : '公開回報',
             FeedbackCreatorType::OwnerShared => config('feedback.labels.owner'),
@@ -268,18 +322,45 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 客戶端清單要用的：客戶上次開啟之後，開發者（含 AI）新增的留言數。
+     * 客戶端「上次開啟這張單」的時間（SQL）：客戶帳號各自記在 feedback_client_reads；還沒開過的單，
+     * 帳號建立之前的內容都算讀過，新帳號不會一開始就整片未讀。沒有帳號（專屬連結、公開回報者）用共用的時間。
+     * 只能用在以 feedback_reports 為外層的查詢。
+     *
+     * @return array{0: string, 1: list<int|string>}
+     */
+    public static function clientReadAtSql(?FeedbackClientAccount $viewer): array
+    {
+        if ($viewer === null) {
+            return ['feedback_reports.client_last_read_at', []];
+        }
+
+        return [
+            '(COALESCE((SELECT fcr.last_read_at FROM feedback_client_reads fcr WHERE fcr.feedback_client_account_id = ? AND fcr.feedback_report_id = feedback_reports.id), ?))',
+            [$viewer->id, $viewer->created_at->copy()->utc()->format('Y-m-d H:i:s')],
+        ];
+    }
+
+    /**
+     * 客戶端清單要用的：這位客戶（或共用客戶端）上次開啟之後，開發者（含 AI）新增的留言數，
+     * 另外帶出上次開啟時間（viewer_read_at）給「調整說明有更新」判斷。
      *
      * @param  Builder<FeedbackReport>  $query
      */
     #[Scope]
-    protected function withClientNewReplyCount(Builder $query): void
+    protected function withClientNewReplyCount(Builder $query, ?FeedbackClientAccount $viewer = null): void
     {
+        [$readAt, $bindings] = static::clientReadAtSql($viewer);
+
+        if ($query->getQuery()->columns === null) {
+            $query->select('feedback_reports.*');
+        }
+        $query->selectRaw("{$readAt} as viewer_read_at", $bindings);
+
         $query->withCount(['feedbackMessages as client_new_replies_count' => fn (Builder $query) => $query
             ->whereIn('feedback_messages.author_type', [FeedbackAuthorType::Owner->value, FeedbackAuthorType::Agent->value])
             ->where(fn (Builder $query) => $query
-                ->whereNull('feedback_reports.client_last_read_at')
-                ->orWhereColumn('feedback_messages.created_at', '>', 'feedback_reports.client_last_read_at'))]);
+                ->whereRaw("{$readAt} IS NULL", $bindings)
+                ->orWhereRaw("feedback_messages.created_at > {$readAt}", $bindings))]);
     }
 
     /**
@@ -292,12 +373,39 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 開發者在客戶上次開啟這張單之後更新了調整說明。
+     * 開發者在客戶上次開啟這張單之後更新了調整說明。查詢有帶 viewer_read_at（withClientNewReplyCount）時以它為準，
+     * 否則傳入客戶帳號另外查。
      */
-    public function adjustmentIsNewForClient(): bool
+    public function adjustmentIsNewForClient(?FeedbackClientAccount $viewer = null): bool
     {
-        return $this->adjustment_updated_at !== null
-            && ($this->client_last_read_at === null || $this->adjustment_updated_at->greaterThan($this->client_last_read_at));
+        if ($this->adjustment_updated_at === null) {
+            return false;
+        }
+
+        $readAt = $this->clientReadAt($viewer);
+
+        return $readAt === null || $this->adjustment_updated_at->greaterThan($readAt);
+    }
+
+    /**
+     * 這位客戶（null：共用客戶端）上次開啟這張單的時間。
+     */
+    public function clientReadAt(?FeedbackClientAccount $viewer = null): ?Carbon
+    {
+        if (array_key_exists('viewer_read_at', $this->attributes) && $viewer === null) {
+            return $this->attributes['viewer_read_at'] !== null ? Carbon::parse($this->attributes['viewer_read_at']) : null;
+        }
+
+        if ($viewer === null) {
+            return $this->client_last_read_at;
+        }
+
+        $readAt = FeedbackClientRead::query()
+            ->where('feedback_client_account_id', $viewer->id)
+            ->where('feedback_report_id', $this->id)
+            ->value('last_read_at');
+
+        return $readAt !== null ? Carbon::parse($readAt) : $viewer->created_at;
     }
 
     /**
@@ -353,9 +461,20 @@ class FeedbackReport extends Model
         $this->markReadAt('owner_last_read_at');
     }
 
-    public function markReadByClient(): void
+    /**
+     * 客戶端讀過：共用的客戶已讀時間照樣更新（專屬連結用它），客戶帳號另外記自己的。
+     */
+    public function markReadByClient(?FeedbackClientAccount $viewer = null): void
     {
         $this->markReadAt('client_last_read_at');
+
+        if ($viewer !== null) {
+            FeedbackClientRead::query()->upsert(
+                [['feedback_client_account_id' => $viewer->id, 'feedback_report_id' => $this->id, 'last_read_at' => $this->client_last_read_at]],
+                ['feedback_client_account_id', 'feedback_report_id'],
+                ['last_read_at'],
+            );
+        }
     }
 
     /**
@@ -380,6 +499,7 @@ class FeedbackReport extends Model
             'owner_last_read_at' => 'datetime',
             'client_last_read_at' => 'datetime',
             'adjustment_updated_at' => 'datetime',
+            'claimed_at' => 'datetime',
             'latest_message_at' => 'datetime',
         ];
     }

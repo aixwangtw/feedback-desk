@@ -160,9 +160,7 @@
                         <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
                         <th class="whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
-                        @if ($isOwner)
-                            <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
-                        @endif
+                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                         <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
@@ -199,9 +197,7 @@
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            @if ($isOwner)
-                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
-                            @endif
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
                             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
                                     <div class="flex flex-wrap gap-1 sm:justify-center">
@@ -283,7 +279,7 @@
                                     <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span>@if ($isOwner)<span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@endif</p>
+                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span></p>
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
@@ -377,7 +373,7 @@
             <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}@if ($isOwner) · 建立者：{{ $report->creatorLabel() }}@endif</p>
+                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }} · 建立者：{{ $report->creatorLabel() }}</p>
                         <h2 id="detail-report-title-{{ $report->public_id }}" class="mt-1 break-words text-lg font-bold text-slate-950">{{ $report->title }}</h2>
                     </div>
                     <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>

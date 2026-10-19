@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\FeedbackCreatorType;
+use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
@@ -31,9 +32,27 @@ class FeedbackAccess
 
     public const SOURCE_LINK = 'link';
 
+    /**
+     * 共用 owner 帳號的帳密登入。改版前的客戶帳密登入也是這個值，搬到第一個客戶帳號後仍有效。
+     */
     public const SOURCE_PASSWORD = 'password';
 
     public const SOURCE_DEVELOPER = 'developer';
+
+    /**
+     * 客戶帳號登入（每位客戶一個帳號）。
+     */
+    public const SOURCE_CLIENT_ACCOUNT = 'client_account';
+
+    /**
+     * @var array<int, FeedbackDeveloper|null>
+     */
+    private array $developers = [];
+
+    /**
+     * @var array<int, FeedbackClientAccount|null>
+     */
+    private array $clientAccounts = [];
 
     public function __construct(
         private Session $session,
@@ -44,18 +63,81 @@ class FeedbackAccess
     public function grantOwner(FeedbackProject $project, string $source = self::SOURCE_LINK): void
     {
         $this->session->put($this->ownerKey($project), true);
-        $this->session->forget($this->developerKey($project));
+        $this->session->forget([$this->developerKey($project), $this->developerFingerprintKey($project)]);
         $this->rememberRole($project, self::ROLE_OWNER, $source);
     }
 
     /**
      * 開發者個人帳號登入：權限等同 owner，另外記下是哪位開發者。
+     * 工作階段也綁定密碼雜湊，本人改密碼後其他裝置的登入立即失效。
      */
     public function grantDeveloper(FeedbackProject $project, FeedbackDeveloper $developer): void
     {
         $this->session->put($this->ownerKey($project), true);
         $this->session->put($this->developerKey($project), $developer->id);
+        $this->session->put($this->developerFingerprintKey($project), $this->accountFingerprint($developer));
         $this->rememberRole($project, self::ROLE_OWNER, self::SOURCE_DEVELOPER, $developer);
+    }
+
+    /**
+     * 客戶帳號登入，只對自己的專案有效。
+     */
+    public function grantClientAccount(FeedbackProject $project, FeedbackClientAccount $account): void
+    {
+        $this->session->put($this->clientKey($project), true);
+        $this->session->put($this->clientSourceKey($project), self::SOURCE_CLIENT_ACCOUNT);
+        $this->session->put($this->clientAccountKey($project), $account->id);
+        $this->session->put($this->clientAccountFingerprintKey($project), $this->accountFingerprint($account));
+        $this->clientAccounts[$account->id] = $account;
+        $this->rememberRole($project, self::ROLE_CLIENT, self::SOURCE_CLIENT_ACCOUNT, account: $account);
+    }
+
+    /**
+     * 客戶專屬連結登入：沒有帳號，單與留言記成客戶端共用身分。
+     */
+    public function grantClient(FeedbackProject $project): void
+    {
+        $this->session->put($this->clientKey($project), true);
+        $this->session->put($this->clientSourceKey($project), self::SOURCE_LINK);
+        $this->session->forget([$this->clientAccountKey($project), $this->clientAccountFingerprintKey($project)]);
+        $this->rememberRole($project, self::ROLE_CLIENT, self::SOURCE_LINK);
+    }
+
+    /**
+     * 本人改密碼後：其他裝置綁著舊雜湊的登入全部失效，這個瀏覽器的登入改綁新雜湊，本人不用重新登入。
+     * 團隊個人帳號在每個專案都能登入，所以這個瀏覽器裡每個專案的登入都要重簽。
+     */
+    public function refreshAccountLogins(FeedbackProject $project, FeedbackDeveloper|FeedbackClientAccount $account): void
+    {
+        $this->forgetAccountCache();
+
+        if ($account instanceof FeedbackClientAccount) {
+            $this->grantClientAccount($project, $account);
+
+            return;
+        }
+
+        $this->developers[$account->id] = $account;
+        $entries = $this->cookieEntries();
+        foreach ($entries as $projectId => $roles) {
+            $entry = $roles[self::ROLE_OWNER] ?? null;
+            if (! is_array($entry) || ($entry['source'] ?? null) !== self::SOURCE_DEVELOPER || ($entry['developer_id'] ?? null) !== $account->id) {
+                continue;
+            }
+            $other = FeedbackProject::find((int) $projectId);
+            if ($other !== null) {
+                $entries[$projectId][self::ROLE_OWNER]['fingerprint'] = $this->fingerprint($other, self::ROLE_OWNER, self::SOURCE_DEVELOPER, $account);
+            }
+        }
+        $this->queueCookie($entries);
+
+        foreach ($this->session->all() as $key => $value) {
+            if (is_string($key) && preg_match('/^feedback\.developer\.(\d+)$/', $key, $matches) === 1 && $value === $account->id) {
+                $this->session->put("feedback.developer_fp.{$matches[1]}", $this->accountFingerprint($account));
+            }
+        }
+
+        $this->grantDeveloper($project, $account);
     }
 
     public function grantReporter(FeedbackReport $report): void
@@ -63,18 +145,12 @@ class FeedbackAccess
         $this->session->put($this->reportKey($report), true);
     }
 
-    public function grantClient(FeedbackProject $project, string $source = self::SOURCE_LINK): void
-    {
-        $this->session->put($this->clientKey($project), true);
-        $this->rememberRole($project, self::ROLE_CLIENT, $source);
-    }
-
     /**
      * Remove every owner/client grant for the project from the session and the long-lived cookie.
      */
     public function revoke(FeedbackProject $project): void
     {
-        $this->session->forget([$this->ownerKey($project), $this->clientKey($project), $this->developerKey($project)]);
+        $this->session->forget($this->allSessionKeys($project));
 
         $entries = $this->cookieEntries();
         unset($entries[(string) $project->id]);
@@ -97,25 +173,75 @@ class FeedbackAccess
 
         $developerId = $this->session->get($this->developerKey($project));
 
-        return is_int($developerId) ? FeedbackDeveloper::find($developerId) : null;
+        return is_int($developerId) ? $this->developer($developerId) : null;
+    }
+
+    /**
+     * 這個專案目前登入的客戶帳號；客戶專屬連結、團隊或未登入時為 null。
+     */
+    public function currentClientAccount(FeedbackProject $project): ?FeedbackClientAccount
+    {
+        if ($this->isOwner($project) || ! $this->isClient($project)) {
+            return null;
+        }
+
+        $accountId = $this->session->get($this->clientAccountKey($project));
+
+        return is_int($accountId) ? $this->clientAccount($accountId) : null;
+    }
+
+    /**
+     * 用帳號登入（不是專屬連結、也不是共用 owner 帳號），才有「我的帳號」可以設定。
+     */
+    public function currentAccount(FeedbackProject $project): FeedbackDeveloper|FeedbackClientAccount|null
+    {
+        return $this->currentDeveloper($project) ?? $this->currentClientAccount($project);
+    }
+
+    /**
+     * 客戶端已讀狀態與未讀數以誰為準：登入的客戶帳號各自計算；團隊、專屬連結與回報者用共用的（null）。
+     */
+    public function clientViewer(FeedbackProject $project): ?FeedbackClientAccount
+    {
+        return $this->currentClientAccount($project);
+    }
+
+    /**
+     * 這個瀏覽器在專案裡寫東西時記錄的身分。
+     */
+    public function actor(FeedbackProject $project): FeedbackActor
+    {
+        if ($this->isOwner($project)) {
+            $developer = $this->currentDeveloper($project);
+
+            return $developer !== null ? FeedbackActor::developer($developer) : FeedbackActor::sharedOwner();
+        }
+
+        $account = $this->currentClientAccount($project);
+
+        return $account !== null ? FeedbackActor::client($account) : FeedbackActor::sharedClient();
     }
 
     /**
      * 依目前登入身分決定新單的建立者。
      *
-     * @return array{creator_type: FeedbackCreatorType, creator_developer_id: int|null}
+     * @return array{creator_type: FeedbackCreatorType, creator_developer_id: int|null, creator_client_account_id: int|null}
      */
     public function creatorFor(FeedbackProject $project): array
     {
         if (! $this->isOwner($project)) {
-            return ['creator_type' => FeedbackCreatorType::Client, 'creator_developer_id' => null];
+            return [
+                'creator_type' => FeedbackCreatorType::Client,
+                'creator_developer_id' => null,
+                'creator_client_account_id' => $this->currentClientAccount($project)?->id,
+            ];
         }
 
         $developer = $this->currentDeveloper($project);
 
         return $developer !== null
-            ? ['creator_type' => FeedbackCreatorType::Developer, 'creator_developer_id' => $developer->id]
-            : ['creator_type' => FeedbackCreatorType::OwnerShared, 'creator_developer_id' => null];
+            ? ['creator_type' => FeedbackCreatorType::Developer, 'creator_developer_id' => $developer->id, 'creator_client_account_id' => null]
+            : ['creator_type' => FeedbackCreatorType::OwnerShared, 'creator_developer_id' => null, 'creator_client_account_id' => null];
     }
 
     public function isClient(FeedbackProject $project): bool
@@ -185,7 +311,7 @@ class FeedbackAccess
             ->where('feedback_project_id', $project->id)
             ->where('creator_type', FeedbackCreatorType::Public->value)
             ->whereIn('public_id', array_keys($tokens))
-            ->withClientNewReplyCount()
+            ->withClientNewReplyCount(null)
             ->latest('created_at')
             ->latest('id')
             ->get()
@@ -268,59 +394,157 @@ class FeedbackAccess
             && hash_equals($project->client_token_hash, hash('sha256', $token));
     }
 
+    /**
+     * 帳號資料變了（改名、改密碼、停用）時，丟掉這次請求裡的快取。
+     */
+    public function forgetAccountCache(): void
+    {
+        $this->developers = [];
+        $this->clientAccounts = [];
+    }
+
     private function hasRole(FeedbackProject $project, string $role, string $sessionKey): bool
     {
-        if ($this->session->get($sessionKey, false)) {
+        if ($this->session->get($sessionKey, false) && $this->sessionGrantIsCurrent($project, $role)) {
             return true;
         }
 
         $entry = $this->cookieEntries()[(string) $project->id][$role] ?? null;
-        if (! is_array($entry) || ! $this->entryIsValid($project, $role, $entry)) {
+        if (! is_array($entry)) {
+            return false;
+        }
+
+        $resolved = $this->resolveEntry($project, $role, $entry);
+        if ($resolved === null) {
             return false;
         }
 
         $this->session->put($sessionKey, true);
-        if (($entry['source'] ?? null) === self::SOURCE_DEVELOPER) {
-            $this->session->put($this->developerKey($project), (int) $entry['developer_id']);
+        if ($resolved instanceof FeedbackDeveloper) {
+            $this->session->put($this->developerKey($project), $resolved->id);
+            $this->session->put($this->developerFingerprintKey($project), $this->accountFingerprint($resolved));
+        } elseif ($role === self::ROLE_OWNER) {
+            $this->session->forget([$this->developerKey($project), $this->developerFingerprintKey($project)]);
+        } elseif ($resolved instanceof FeedbackClientAccount) {
+            $this->session->put($this->clientSourceKey($project), self::SOURCE_CLIENT_ACCOUNT);
+            $this->session->put($this->clientAccountKey($project), $resolved->id);
+            $this->session->put($this->clientAccountFingerprintKey($project), $this->accountFingerprint($resolved));
+        } else {
+            $this->session->put($this->clientSourceKey($project), self::SOURCE_LINK);
+            $this->session->forget([$this->clientAccountKey($project), $this->clientAccountFingerprintKey($project)]);
         }
 
         return true;
     }
 
     /**
-     * @param  array{source?: mixed, fingerprint?: mixed, expires_at?: mixed, developer_id?: mixed}  $entry
+     * 工作階段裡的帳號登入跟著帳號目前的密碼走：本人改了密碼、帳號被停用或刪除，其他裝置的工作階段立即失效。
+     * 改版前留下、沒有綁定的工作階段，改用長效 cookie 重新判斷一次。
      */
-    private function entryIsValid(FeedbackProject $project, string $role, array $entry): bool
+    private function sessionGrantIsCurrent(FeedbackProject $project, string $role): bool
     {
-        if (! is_int($entry['expires_at'] ?? null) || $entry['expires_at'] < now()->getTimestamp()) {
+        if ($role === self::ROLE_OWNER) {
+            $developerId = $this->session->get($this->developerKey($project));
+            if ($developerId === null) {
+                return true;
+            }
+
+            $developer = is_int($developerId) ? $this->developer($developerId) : null;
+            $fingerprint = $this->session->get($this->developerFingerprintKey($project));
+            if ($developer !== null && is_string($fingerprint) && hash_equals($this->accountFingerprint($developer), $fingerprint)) {
+                return true;
+            }
+
+            $this->session->forget([$this->ownerKey($project), $this->developerKey($project), $this->developerFingerprintKey($project)]);
+
             return false;
         }
 
-        $developer = null;
-        if (($entry['source'] ?? null) === self::SOURCE_DEVELOPER) {
-            $developer = is_int($entry['developer_id'] ?? null) ? FeedbackDeveloper::find($entry['developer_id']) : null;
+        $source = $this->session->get($this->clientSourceKey($project));
+        if ($source === self::SOURCE_LINK) {
+            return true;
         }
 
-        $expected = $this->fingerprint($project, $role, (string) ($entry['source'] ?? ''), $developer);
+        $accountId = $this->session->get($this->clientAccountKey($project));
+        $account = is_int($accountId) ? $this->clientAccount($accountId) : null;
+        $fingerprint = $this->session->get($this->clientAccountFingerprintKey($project));
+        if ($source === self::SOURCE_CLIENT_ACCOUNT
+            && $account !== null
+            && $account->feedback_project_id === $project->id
+            && ! $account->isDisabled()
+            && is_string($fingerprint)
+            && hash_equals($this->accountFingerprint($account), $fingerprint)) {
+            return true;
+        }
 
-        return $expected !== null
-            && is_string($entry['fingerprint'] ?? null)
-            && hash_equals($expected, $entry['fingerprint']);
+        $this->session->forget([$this->clientKey($project), $this->clientSourceKey($project), $this->clientAccountKey($project), $this->clientAccountFingerprintKey($project)]);
+
+        return false;
+    }
+
+    /**
+     * 長效 cookie 的一筆登入：有效時回傳登入的帳號（團隊個人帳號、客戶帳號），沒有帳號的登入回傳 true，無效回傳 null。
+     *
+     * @param  array{source?: mixed, fingerprint?: mixed, expires_at?: mixed, developer_id?: mixed, client_account_id?: mixed}  $entry
+     */
+    private function resolveEntry(FeedbackProject $project, string $role, array $entry): FeedbackDeveloper|FeedbackClientAccount|true|null
+    {
+        if (! is_int($entry['expires_at'] ?? null) || $entry['expires_at'] < now()->getTimestamp() || ! is_string($entry['fingerprint'] ?? null)) {
+            return null;
+        }
+
+        $source = (string) ($entry['source'] ?? '');
+        $fingerprint = $entry['fingerprint'];
+        $matches = fn (?string $expected): bool => $expected !== null && hash_equals($expected, $fingerprint);
+
+        if ($source === self::SOURCE_DEVELOPER) {
+            $developer = is_int($entry['developer_id'] ?? null) ? $this->developer($entry['developer_id']) : null;
+
+            return $developer !== null && $matches($this->fingerprint($project, $role, $source, $developer)) ? $developer : null;
+        }
+
+        if ($role === self::ROLE_CLIENT && $source === self::SOURCE_CLIENT_ACCOUNT) {
+            $account = is_int($entry['client_account_id'] ?? null) ? $this->clientAccount($entry['client_account_id']) : null;
+
+            return $account !== null
+                && $account->feedback_project_id === $project->id
+                && ! $account->isDisabled()
+                && $matches($this->fingerprint($project, $role, $source, account: $account)) ? $account : null;
+        }
+
+        if ($role === self::ROLE_CLIENT && $source === self::SOURCE_PASSWORD) {
+            // 改版前的客戶帳密登入：綁的是專案那一組密碼雜湊，現在原封不動在搬過去的客戶帳號裡。
+            foreach ($project->clientAccounts()->whereNull('disabled_at')->get() as $account) {
+                if ($matches($this->legacyClientPasswordFingerprint($project, $account))) {
+                    return $this->clientAccounts[$account->id] = $account;
+                }
+            }
+
+            return null;
+        }
+
+        return $matches($this->fingerprint($project, $role, $source)) ? true : null;
     }
 
     /**
      * Ties a remembered grant to the credential that produced it, so rotating an entry link
      * or resetting an account password invalidates the long-lived cookies issued from it.
      */
-    private function fingerprint(FeedbackProject $project, string $role, string $source, ?FeedbackDeveloper $developer = null): ?string
-    {
+    private function fingerprint(
+        FeedbackProject $project,
+        string $role,
+        string $source,
+        ?FeedbackDeveloper $developer = null,
+        ?FeedbackClientAccount $account = null,
+    ): ?string {
         $credentialHash = match ($source) {
             self::SOURCE_LINK => $role === self::ROLE_OWNER ? $project->owner_token_hash : $project->client_token_hash,
-            self::SOURCE_PASSWORD => $role === self::ROLE_OWNER
-                ? config('feedback.accounts.owner.password_hash')
-                : $project->client_password_hash,
+            self::SOURCE_PASSWORD => $role === self::ROLE_OWNER ? config('feedback.accounts.owner.password_hash') : null,
             self::SOURCE_DEVELOPER => $developer !== null && $role === self::ROLE_OWNER
                 ? "{$developer->id}|{$developer->password_hash}"
+                : null,
+            self::SOURCE_CLIENT_ACCOUNT => $account !== null && $role === self::ROLE_CLIENT
+                ? "account|{$account->id}|{$account->password_hash}"
                 : null,
             default => null,
         };
@@ -332,9 +556,50 @@ class FeedbackAccess
         return hash_hmac('sha256', "{$project->id}|{$role}|{$source}|{$credentialHash}", (string) config('app.key'));
     }
 
-    private function rememberRole(FeedbackProject $project, string $role, string $source, ?FeedbackDeveloper $developer = null): void
+    /**
+     * 改版前客戶帳密登入的指紋（credential 是專案那一組密碼雜湊）。
+     */
+    private function legacyClientPasswordFingerprint(FeedbackProject $project, FeedbackClientAccount $account): string
     {
-        $fingerprint = $this->fingerprint($project, $role, $source, $developer);
+        return hash_hmac('sha256', "{$project->id}|".self::ROLE_CLIENT.'|'.self::SOURCE_PASSWORD."|{$account->password_hash}", (string) config('app.key'));
+    }
+
+    /**
+     * 工作階段綁定的帳號密碼指紋。
+     */
+    private function accountFingerprint(FeedbackDeveloper|FeedbackClientAccount $account): string
+    {
+        $kind = $account instanceof FeedbackDeveloper ? 'developer' : 'client';
+
+        return hash_hmac('sha256', "session|{$kind}|{$account->id}|{$account->password_hash}", (string) config('app.key'));
+    }
+
+    private function developer(int $id): ?FeedbackDeveloper
+    {
+        if (! array_key_exists($id, $this->developers)) {
+            $this->developers[$id] = FeedbackDeveloper::find($id);
+        }
+
+        return $this->developers[$id];
+    }
+
+    private function clientAccount(int $id): ?FeedbackClientAccount
+    {
+        if (! array_key_exists($id, $this->clientAccounts)) {
+            $this->clientAccounts[$id] = FeedbackClientAccount::find($id);
+        }
+
+        return $this->clientAccounts[$id];
+    }
+
+    private function rememberRole(
+        FeedbackProject $project,
+        string $role,
+        string $source,
+        ?FeedbackDeveloper $developer = null,
+        ?FeedbackClientAccount $account = null,
+    ): void {
+        $fingerprint = $this->fingerprint($project, $role, $source, $developer, $account);
         if ($fingerprint === null) {
             return;
         }
@@ -345,6 +610,7 @@ class FeedbackAccess
             'fingerprint' => $fingerprint,
             'expires_at' => now()->addDays(self::COOKIE_DAYS)->getTimestamp(),
             ...($developer !== null ? ['developer_id' => $developer->id] : []),
+            ...($account !== null ? ['client_account_id' => $account->id] : []),
         ];
 
         $this->queueCookie($entries);
@@ -412,9 +678,45 @@ class FeedbackAccess
         return "feedback.developer.{$project->id}";
     }
 
+    private function developerFingerprintKey(FeedbackProject $project): string
+    {
+        return "feedback.developer_fp.{$project->id}";
+    }
+
     private function clientKey(FeedbackProject $project): string
     {
         return "feedback.client.{$project->id}";
+    }
+
+    private function clientSourceKey(FeedbackProject $project): string
+    {
+        return "feedback.client_source.{$project->id}";
+    }
+
+    private function clientAccountKey(FeedbackProject $project): string
+    {
+        return "feedback.client_account.{$project->id}";
+    }
+
+    private function clientAccountFingerprintKey(FeedbackProject $project): string
+    {
+        return "feedback.client_account_fp.{$project->id}";
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function allSessionKeys(FeedbackProject $project): array
+    {
+        return [
+            $this->ownerKey($project),
+            $this->developerKey($project),
+            $this->developerFingerprintKey($project),
+            $this->clientKey($project),
+            $this->clientSourceKey($project),
+            $this->clientAccountKey($project),
+            $this->clientAccountFingerprintKey($project),
+        ];
     }
 
     private function reportKey(FeedbackReport $report): string

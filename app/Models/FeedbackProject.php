@@ -32,6 +32,12 @@ class FeedbackProject extends Model
         return $this->hasMany(FeedbackReport::class);
     }
 
+    /** @return HasMany<FeedbackClientAccount, $this> */
+    public function clientAccounts(): HasMany
+    {
+        return $this->hasMany(FeedbackClientAccount::class);
+    }
+
     /**
      * 開發者端顯示老師的名稱；未設定時用「老師」。
      */

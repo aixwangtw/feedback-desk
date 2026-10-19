@@ -25,6 +25,9 @@
                 @isset($headerAction)
                     {{ $headerAction }}
                 @endisset
+                @if ($project && app(\App\Support\FeedbackAccess::class)->currentAccount($project))
+                    <a href="{{ route('feedback.account', $project) }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-account-link>我的帳號</a>
+                @endif
                 @if ($project && app(\App\Support\FeedbackAccess::class)->canManage($project))
                     <form method="POST" action="{{ route('feedback.logout', $project) }}">
                         @csrf

@@ -12,6 +12,7 @@ use App\Http\Requests\Feedback\UpdateFeedbackReportRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackReportWork;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 
@@ -27,7 +28,7 @@ class FeedbackReportController extends Controller
         $creator = $access->creatorFor($feedbackProject);
 
         foreach ($issues as $issue) {
-            $created = $createFeedbackReport->handle($feedbackProject, $issue, $creator);
+            $created = $createFeedbackReport->handle($feedbackProject, $issue, $creator, $access->actor($feedbackProject));
             $access->grantReporter($created['report']);
         }
 
@@ -41,10 +42,11 @@ class FeedbackReportController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         UpdateFeedbackReportAction $updateFeedbackReport,
+        FeedbackAccess $access,
     ): RedirectResponse {
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
 
-        $updateFeedbackReport->handle($feedbackReport, $request->validated());
+        $updateFeedbackReport->handle($feedbackReport, $request->validated(), $access->actor($feedbackProject));
 
         return back()->with('success', "已更新「{$feedbackReport->title}」。");
     }
@@ -100,8 +102,14 @@ class FeedbackReportController extends Controller
             'feedbackAttachments' => fn ($query) => $query->ofKind(FeedbackAttachmentKind::Feedback),
             'adjustmentAttachments',
             'feedbackMessages.feedbackAttachments',
+            'feedbackMessages.authorClientAccount',
+            'feedbackMessages.authorDeveloper',
+            'creatorDeveloper',
+            'creatorClientAccount',
             'automationRuns' => fn ($query) => $query->latest(),
         ]);
+        $isOwner = $access->isOwner($feedbackProject);
+        $developer = $access->currentDeveloper($feedbackProject);
 
         return view('feedback.reports.show', [
             'project' => $feedbackProject,
@@ -111,7 +119,10 @@ class FeedbackReportController extends Controller
                 : null,
             'isPublicReporter' => $feedbackReport->isPublicReport() && ! $access->isOwner($feedbackProject),
             'canManage' => $access->canManage($feedbackProject),
-            'isOwner' => $access->isOwner($feedbackProject),
+            'isOwner' => $isOwner,
+            'work' => $isOwner ? app(FeedbackReportWork::class)->state($feedbackReport, $developer) : null,
+            'canClaim' => $developer !== null,
+            'hasAccount' => $access->currentAccount($feedbackProject) !== null,
         ]);
     }
 
@@ -129,7 +140,7 @@ class FeedbackReportController extends Controller
         // 單頁開著時每幾秒刷新一次留言；刷新看到的新留言也算讀過。
         $this->markRead($feedbackReport, $access);
 
-        $feedbackReport->load('feedbackMessages.feedbackAttachments');
+        $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper']);
 
         return view('feedback.reports._activity', [
             'project' => $feedbackProject,
@@ -179,7 +190,9 @@ class FeedbackReportController extends Controller
      */
     private function markRead(FeedbackReport $report, FeedbackAccess $access): void
     {
-        $access->isOwner($report->feedbackProject) ? $report->markReadByOwner() : $report->markReadByClient();
+        $access->isOwner($report->feedbackProject)
+            ? $report->markReadByOwner()
+            : $report->markReadByClient($access->clientViewer($report->feedbackProject));
     }
 
     private function ensureProjectOwnsReport(FeedbackProject $project, FeedbackReport $report): void

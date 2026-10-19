@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\UpdateFeedbackAdjustmentRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackAccess;
 use Illuminate\Http\RedirectResponse;
 
 class FeedbackAdjustmentController extends Controller
@@ -16,6 +17,7 @@ class FeedbackAdjustmentController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         UpdateFeedbackReportAdjustmentAction $updateAdjustment,
+        FeedbackAccess $access,
     ): RedirectResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
 
@@ -23,7 +25,7 @@ class FeedbackAdjustmentController extends Controller
             'note' => $request->validated('adjustment_note'),
             'images' => $request->file('adjustment_images', []),
             'remove_attachments' => $request->validated('remove_adjustment_attachments', []),
-        ]);
+        ], $access->actor($feedbackProject));
         $feedbackReport->markReadByOwner();
 
         return redirect()

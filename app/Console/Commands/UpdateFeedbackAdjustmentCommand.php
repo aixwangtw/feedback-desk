@@ -3,8 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Actions\UpdateFeedbackReportAdjustmentAction;
+use App\Console\Commands\Concerns\ResolvesFeedbackActor;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackReportWork;
+use App\Support\FeedbackServiceException;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -18,7 +21,10 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {--by-id : 把 report 當資料庫 id（純數字）；未加時純數字會被拒絕}
     {--note= : 調整說明文字；未給則保留原文字，--note="" 會清空}
     {--append : 把 --note 接在既有內容後面（中間空一行）；未加則覆寫}
-    {--image=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內）}')]
+    {--image=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內）}
+    {--as= : 以這個團隊個人帳號記錄（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
+    {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}
+    {--force : 別人認領中仍要做（記錄為接手）}')]
 #[Description('寫入回饋單的「調整說明」文字與圖片（不改動回饋單狀態）')]
 #[Help(<<<'HELP'
 寫入回饋單的「調整說明」，客戶與開發團隊都會在回饋單內容下方看到。
@@ -37,14 +43,17 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
   - 圖片會複製到私有儲存，原檔不會被移動或刪除；只有登入的客戶／開發團隊能看。
   - 指令不會改動回饋單狀態；要改狀態用 php artisan feedback:status。
   - 刪除調整圖片請到開發團隊頁面的回饋單詳情操作。
+  - 別人認領中的單會停下並說明是誰在處理；確定要接手才加 --force（會記錄）。
 HELP)]
 class UpdateFeedbackAdjustmentCommand extends Command
 {
+    use ResolvesFeedbackActor;
+
     private const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
     private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-    public function handle(UpdateFeedbackReportAdjustmentAction $updateAdjustment): int
+    public function handle(UpdateFeedbackReportAdjustmentAction $updateAdjustment, FeedbackReportWork $work): int
     {
         $project = FeedbackProject::where('slug', (string) $this->argument('project'))->first();
         if (! $project) {
@@ -104,7 +113,23 @@ class UpdateFeedbackAdjustmentCommand extends Command
             $data['append'] = $append;
         }
 
-        $report = $updateAdjustment->handle($report, $data);
+        $actor = $this->resolveActor();
+        if ($actor === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $takenOver = $work->guard($report, $actor, (bool) $this->option('force'));
+        } catch (FeedbackServiceException $exception) {
+            $this->components->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $report = $updateAdjustment->handle($report, $data, $actor);
+        if ($takenOver !== null) {
+            $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
+        }
 
         $this->components->info('已更新調整說明：'.OutputFormatter::escape($report->title));
         if ($note !== null) {

@@ -19,7 +19,7 @@
         <li @class(['flex', 'justify-end' => $isMine, 'justify-start' => ! $isMine]) data-chat-message data-author="{{ $message->author_type->value }}" data-side="{{ $isMine ? 'mine' : 'theirs' }}">
             <div @class(['flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', 'items-end' => $isMine, 'items-start' => ! $isMine])>
                 <div @class(['flex flex-wrap items-baseline gap-x-2 px-1 text-xs', 'flex-row-reverse' => $isMine])>
-                    <span class="font-semibold {{ $nameClass }}" data-chat-author>{{ $message->author_name ?: $message->author_type->label() }}</span>
+                    <span class="font-semibold {{ $nameClass }}" data-chat-author>{{ $message->displayAuthor($report, $viewerIsOwner) }}</span>
                     <x-feedback.time :at="$message->created_at" relative class="text-slate-500" />
                 </div>
                 <div @class(['mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', $bubbleClass, 'rounded-tr-md' => $isMine, 'rounded-tl-md' => ! $isMine])>

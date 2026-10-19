@@ -35,6 +35,26 @@ class FeedbackProjectFactory extends Factory
     }
 
     /**
+     * 專案的 client_username／client_password_hash 跟正式站改版前一樣，建立後搬成第一個客戶帳號
+     * （與資料庫遷移相同的做法），專案欄位的密碼雜湊清掉。
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (FeedbackProject $project): void {
+            if (blank($project->client_username) || blank($project->client_password_hash)) {
+                return;
+            }
+
+            $project->clientAccounts()->create([
+                'username' => $project->client_username,
+                'name' => filled($project->client_display_name) ? $project->client_display_name : $project->client_username,
+                'password_hash' => $project->client_password_hash,
+            ]);
+            $project->forceFill(['client_password_hash' => null])->save();
+        });
+    }
+
+    /**
      * 沒有設定老師帳號的專案。
      */
     public function withoutClientAccount(): static

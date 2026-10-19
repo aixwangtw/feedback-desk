@@ -6,6 +6,7 @@ use App\Enums\FeedbackCreatorType;
 use App\Jobs\ResolveFeedbackReport;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackActor;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,19 +15,22 @@ class CreateFeedbackReportAction
 {
     /**
      * @param  array{title: string, description: string, reporter_name?: string|null, screenshots?: list<UploadedFile>}  $data
-     * @param  array{creator_type: FeedbackCreatorType, creator_developer_id: int|null}  $creator
+     * @param  array{creator_type: FeedbackCreatorType, creator_developer_id: int|null, creator_client_account_id?: int|null}  $creator
+     * @param  FeedbackActor|null  $actor  寫進最近動態與附件上傳者的帳號、AI 工具；公開回報不記
      * @return array{report: FeedbackReport, reporter_token: string}
      */
-    public function handle(FeedbackProject $project, array $data, array $creator): array
+    public function handle(FeedbackProject $project, array $data, array $creator, ?FeedbackActor $actor = null): array
     {
         $reporterToken = Str::random(48);
 
-        $report = DB::transaction(function () use ($project, $data, $reporterToken, $creator): FeedbackReport {
+        $report = DB::transaction(function () use ($project, $data, $reporterToken, $creator, $actor): FeedbackReport {
             $report = $project->feedbackReports()->create([
                 'public_id' => (string) Str::uuid(),
                 'reporter_token_hash' => hash('sha256', $reporterToken),
                 'creator_type' => $creator['creator_type'],
                 'creator_developer_id' => $creator['creator_developer_id'],
+                'creator_client_account_id' => $creator['creator_client_account_id'] ?? null,
+                'creator_agent' => $actor?->agent,
                 'reporter_name' => $data['reporter_name'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'],
@@ -45,7 +49,18 @@ class CreateFeedbackReportAction
                     'original_name' => $screenshot->getClientOriginalName(),
                     'mime_type' => $screenshot->getMimeType() ?? 'application/octet-stream',
                     'size' => $screenshot->getSize(),
+                    'uploader_client_account_id' => $actor?->clientAccount?->id,
+                    'uploader_developer_id' => $actor?->developer?->id,
                 ]);
+            }
+
+            if ($actor !== null) {
+                $report->recordEvent('created', $actor);
+            }
+
+            // 客戶帳號自己開的單，對這個帳號一開始就是讀過的。
+            if ($actor?->clientAccount !== null) {
+                $report->markReadByClient($actor->clientAccount);
             }
 
             return $report;

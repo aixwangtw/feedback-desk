@@ -80,7 +80,7 @@ if (root) {
     };
 
     const recountBadge = () => {
-        updateLauncherBadge(state.items.reduce((sum, item) => sum + item.unread + (item.adjustment_updated ? 1 : 0), 0));
+        updateLauncherBadge(state.items.reduce((sum, item) => sum + item.unread, 0));
     };
 
     const renderList = () => {
@@ -205,12 +205,8 @@ if (root) {
         }
 
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
-        document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"]`).forEach((opener) => {
-            opener.querySelector('[data-unread-badge]')?.remove();
-            if (opener.matches('[data-new-reply-badge]')) {
-                opener.remove();
-            }
-        });
+        // 同頁清單／看板上這張單的紅色未讀數字一併拿掉。
+        document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
 
         const item = state.items.find((candidate) => candidate.id === data.id);
         if (item) {

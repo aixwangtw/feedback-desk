@@ -171,8 +171,10 @@
                         <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}">
                             <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
                             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
-                                <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
-                                <x-feedback.message-badges :$report :is-owner="$isOwner" class="mt-1 flex" />
+                                <div class="flex items-start gap-2">
+                                    <button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
+                                    <x-feedback.message-badges :$report :is-owner="$isOwner" class="-my-1" />
+                                </div>
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
@@ -279,9 +281,9 @@
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span>@if ($isOwner)<span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@endif</p>
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
-                                                <x-feedback.message-badges :$report :is-owner="$isOwner" class="mt-1.5 flex" />
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
+                                                <x-feedback.message-badges :$report :is-owner="$isOwner" />
                                                 <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
                                                     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                                                 </button>
@@ -396,7 +398,7 @@
                     <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{{ config('feedback.labels.owner') }}。</p>
                 @endunless
                 <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                    <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open="{{ $report->public_id }}">開啟對話</button>
+                    <x-feedback.message-badges :$report :is-owner="$isOwner" label="開啟對話" />
                     <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
                 </div>
             </div>

@@ -46,14 +46,15 @@ class FeedbackUnreadMessagesTest extends TestCase
 
         $html = $this->get(route('feedback.portal', $this->project))
             ->assertOk()
-            ->assertSee('新留言 2')
-            ->assertSee('留言 5')
-            ->assertSee('留言 1')
+            ->assertSee($this->messageButtonLabel($report, 5, 2), false)
+            ->assertSee($this->messageButtonLabel($quiet, 1), false)
+            ->assertDontSee('新留言 2')
             ->assertSee('有 <span data-unread-report-count>1</span> 張單有未讀留言', false)
             ->assertSee('只看未讀留言')
             ->getContent();
 
-        $this->assertSame(1, substr_count($html, 'data-unread-badge'));
+        // 清單列與該單詳情視窗的「開啟對話」按鈕各一個紅色未讀數字。
+        $this->assertSame(2, substr_count($html, 'data-unread-badge'));
 
         $this->get(route('feedback.portal', [$this->project, 'unread' => 1]))
             ->assertOk()
@@ -63,7 +64,7 @@ class FeedbackUnreadMessagesTest extends TestCase
 
         $this->get(route('feedback.portal', [$this->project, 'unread' => 1, 'view' => 'board']))
             ->assertOk()
-            ->assertSee('新留言 2')
+            ->assertSee($this->messageButtonLabel($report, 5, 2), false)
             ->assertDontSee('沒有新留言');
     }
 
@@ -75,7 +76,7 @@ class FeedbackUnreadMessagesTest extends TestCase
 
         $this->actingAsOwner();
 
-        $this->get(route('feedback.portal', $this->project))->assertSee('新留言 1');
+        $this->get(route('feedback.portal', $this->project))->assertSee($this->messageButtonLabel($report, 2, 1), false);
     }
 
     public function test_opening_a_report_as_owner_marks_it_read_without_touching_activity_time(): void
@@ -96,7 +97,8 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->assertSame($updatedAt, $report->updated_at->toDateTimeString());
         $this->assertSame($clientReadAt, $report->client_last_read_at->toDateTimeString());
         $this->get(route('feedback.portal', $this->project))
-            ->assertDontSee('新留言 1')
+            ->assertDontSee('data-unread-badge', false)
+            ->assertSee($this->messageButtonLabel($report, 1), false)
             ->assertSee('目前沒有未讀留言');
     }
 
@@ -132,7 +134,7 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->travel(1)->minutes();
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '老師補充'])->assertRedirect();
 
-        $this->get(route('feedback.portal', $this->project))->assertDontSee('有新回覆');
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-new-reply-badge', false);
         $this->assertSame(1, $this->project->feedbackReports()->unreadByOwner()->count());
     }
 
@@ -142,13 +144,13 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->message($report, FeedbackAuthorType::Owner, now()->subMinutes(5));
         $this->actingAsClient();
 
-        $this->get(route('feedback.portal', $this->project))->assertSee('有新回覆');
-        $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->assertSee('有新回覆');
+        $this->get(route('feedback.portal', $this->project))->assertSee($this->messageButtonLabel($report, 1, 1), false)->assertSee('data-new-reply-badge', false);
+        $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->assertSee($this->messageButtonLabel($report, 1, 1), false);
 
         $this->travel(1)->minutes();
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
 
-        $this->get(route('feedback.portal', $this->project))->assertDontSee('有新回覆');
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-new-reply-badge', false);
         // 客戶開啟不會動到開發者的已讀時間。
         $this->assertTrue($report->refresh()->owner_last_read_at->lessThan(now()->subMinutes(30)));
     }
@@ -169,7 +171,8 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->assertSame($changedAt->toDateTimeString(), $report->refresh()->adjustment_updated_at->toDateTimeString());
 
         $this->actingAsClient();
-        $this->get(route('feedback.portal', $this->project))->assertSee('有新回覆');
+        // 沒有留言、只有調整說明更新時，也會出現留言按鈕並以紅色 1 提示。
+        $this->get(route('feedback.portal', $this->project))->assertSee($this->messageButtonLabel($report, 0, 1), false);
     }
 
     public function test_client_pages_never_show_owner_unread_data_or_honor_the_unread_filter(): void
@@ -186,7 +189,7 @@ class FeedbackUnreadMessagesTest extends TestCase
             ->assertDontSee('未讀留言')
             ->assertDontSee('依最新留言時間排序')
             ->assertDontSee('data-unread-summary', false)
-            ->assertDontSee('data-message-count', false);
+            ->assertSee($this->messageButtonLabel($unread, 1), false);
     }
 
     public function test_owner_can_sort_by_latest_message_time(): void
@@ -299,6 +302,14 @@ class FeedbackUnreadMessagesTest extends TestCase
             $this->assertFalse($report->hasNewReplyForClient());
         }
         $this->assertSame(5, DB::table('feedback_reports')->whereNull('adjustment_updated_at')->count());
+    }
+
+    /**
+     * 清單／看板上「留言」按鈕的 aria-label，含總留言數與未讀數。
+     */
+    private function messageButtonLabel(FeedbackReport $report, int $total, int $unread = 0): string
+    {
+        return 'aria-label="'.e("開啟「{$report->title}」的留言對話（".($total > 0 ? "共 {$total} 則留言" : '還沒有留言').($unread > 0 ? "，{$unread} 則未讀" : '').'）').'"';
     }
 
     private function reportReadAt(Carbon $ownerReadAt, Carbon $clientReadAt, ?string $title = null): FeedbackReport

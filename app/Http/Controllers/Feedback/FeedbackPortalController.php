@@ -72,6 +72,7 @@ class FeedbackPortalController extends Controller
                 ->with($isOwner ? ['creatorDeveloper', 'feedbackProject'] : [])
                 ->when($isOwner, fn ($query) => $query->withOwnerMessageStats(), fn ($query) => $query
                     ->withClientNewReplyCount()
+                    ->withCount('feedbackMessages')
                     ->withMax('feedbackMessages as latest_message_at', 'created_at'))
                 ->when($unreadOnly, fn ($query) => $query->unreadByOwner())
                 ->with([

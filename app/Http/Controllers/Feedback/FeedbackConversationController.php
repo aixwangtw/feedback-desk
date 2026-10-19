@@ -58,12 +58,12 @@ class FeedbackConversationController extends Controller
             ->values()
             ->map(fn (FeedbackReport $report, int $index): array => $this->listItem($feedbackProject, $report, $index + 1, $isOwner))
             ->when(! $isOwner, fn ($items) => $items->reject(fn (array $item): bool => $item['deleted']))
-            ->sort(fn (array $a, array $b): int => [$b['has_update'], $b['sort_at']] <=> [$a['has_update'], $a['sort_at']])
+            ->sort(fn (array $a, array $b): int => [$b['unread'] > 0, $b['sort_at']] <=> [$a['unread'] > 0, $a['sort_at']])
             ->values();
 
         return response()->json([
             'items' => $items->map(fn (array $item): array => collect($item)->except('sort_at')->all())->all(),
-            'unread_total' => $items->sum('unread') + $items->where('adjustment_updated', true)->count(),
+            'unread_total' => $items->sum('unread'),
         ]);
     }
 
@@ -74,8 +74,7 @@ class FeedbackConversationController extends Controller
         $access->ensureReportVisible($feedbackReport);
 
         $isOwner = $access->isOwner($feedbackProject);
-        $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustment_updated_at !== null
-            && ($feedbackReport->client_last_read_at === null || $feedbackReport->adjustment_updated_at->greaterThan($feedbackReport->client_last_read_at));
+        $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustmentIsNewForClient();
 
         // 開啟對話（與面板開著時的定時刷新）就算讀過，與回饋單頁的留言刷新一致。
         $isOwner ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient();
@@ -104,9 +103,9 @@ class FeedbackConversationController extends Controller
      */
     private function listItem(FeedbackProject $project, FeedbackReport $report, int $number, bool $isOwner): array
     {
-        $unread = (int) ($isOwner ? $report->unread_messages_count : $report->client_new_replies_count);
-        $adjustmentUpdated = ! $isOwner && $report->adjustment_updated_at !== null
-            && ($report->client_last_read_at === null || $report->adjustment_updated_at->greaterThan($report->client_last_read_at));
+        // 與清單、看板上留言按鈕的紅色數字相同：客戶端的調整說明更新也算 1。
+        $unread = $report->unreadCountFor($isOwner);
+        $adjustmentUpdated = ! $isOwner && $report->adjustmentIsNewForClient();
         $latestAt = $report->latest_message_at;
         $latestAuthor = FeedbackAuthorType::tryFrom((string) $report->latest_message_author);
 

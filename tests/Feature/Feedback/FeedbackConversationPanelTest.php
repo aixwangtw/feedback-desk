@@ -96,7 +96,8 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertSame('AI 回覆', $response->json('items.0.preview'));
         $this->assertFalse($response->json('items.0.preview_is_mine'));
         $this->assertTrue($response->json('items.1.adjustment_updated'));
-        $this->assertSame(0, $response->json('items.1.unread'));
+        // 調整說明更新算 1 則未讀，與清單上留言按鈕的紅色數字一致。
+        $this->assertSame(1, $response->json('items.1.unread'));
         $this->assertSame(3, $response->json('unread_total'));
         // 客戶端編號只算老師建立的單（含已刪除），與清單頁一致。
         $this->assertSame([3, 2], array_column($response->json('items'), 'number'));
@@ -346,9 +347,10 @@ class FeedbackConversationPanelTest extends TestCase
         $this->actingAsClient();
         $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
         $this->assertStringContainsString('data-viewer="client"', $page);
-        $badge = Str::between($page, 'data-new-reply-badge', '</button>');
-        $this->assertNotSame('', $badge);
-        $this->assertMatchesRegularExpression('/<button[^>]*data-chat-open="'.$report->public_id.'"[^>]*data-new-reply-badge/', $page);
+        // 客戶端：老師自己的留言不算未讀，調整說明更新算 1，紅色數字顯示 1。
+        $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言，1 則未讀/', $page);
+        $this->assertMatchesRegularExpression('/data-unread-badge\s+data-new-reply-badge\s*>1</', $page);
+        $this->assertStringNotContainsString('有新回覆', $page);
         $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
         $this->assertStringContainsString('開啟對話', $dialog);
     }

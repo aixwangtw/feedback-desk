@@ -286,10 +286,29 @@ class FeedbackReport extends Model
      */
     public function hasNewReplyForClient(): bool
     {
-        $adjustmentIsNew = $this->adjustment_updated_at !== null
-            && ($this->client_last_read_at === null || $this->adjustment_updated_at->greaterThan($this->client_last_read_at));
+        return $this->adjustmentIsNewForClient() || (int) ($this->client_new_replies_count ?? 0) > 0;
+    }
 
-        return $adjustmentIsNew || (int) ($this->client_new_replies_count ?? 0) > 0;
+    /**
+     * 開發者在客戶上次開啟這張單之後更新了調整說明。
+     */
+    public function adjustmentIsNewForClient(): bool
+    {
+        return $this->adjustment_updated_at !== null
+            && ($this->client_last_read_at === null || $this->adjustment_updated_at->greaterThan($this->client_last_read_at));
+    }
+
+    /**
+     * 清單、看板與對話面板共用的未讀數：開發者看客戶的新留言；客戶看開發者（含 AI）的新留言，調整說明有更新再加 1。
+     * 需先用 withOwnerMessageStats 或 withClientNewReplyCount 載入留言數。
+     */
+    public function unreadCountFor(bool $forOwner): int
+    {
+        if ($forOwner) {
+            return (int) ($this->unread_messages_count ?? 0);
+        }
+
+        return (int) ($this->client_new_replies_count ?? 0) + ($this->adjustmentIsNewForClient() ? 1 : 0);
     }
 
     public function markReadByOwner(): void

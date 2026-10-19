@@ -6,6 +6,7 @@ use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
+use Carbon\CarbonInterface;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'feedback_project_id',
@@ -309,6 +311,41 @@ class FeedbackReport extends Model
         }
 
         return (int) ($this->client_new_replies_count ?? 0) + ($this->adjustmentIsNewForClient() ? 1 : 0);
+    }
+
+    /**
+     * 留言對話面板、問題清單與看板共用的預設排序（resources/js/chat-order.js 用同一套規則）：
+     * 有未讀的最前、其次有留言但已讀的，兩者依最新留言時間新到舊；沒有留言的最後，依建立時間新到舊。
+     * 同時間再依編號新到舊（編號最新為 1）。鍵值由大到小排即為上述順序。
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
+    public static function conversationSortKey(int $unread, int $messagesCount, CarbonInterface|string|null $latestMessageAt, CarbonInterface|string $createdAt, int $number): array
+    {
+        $tier = match (true) {
+            $unread > 0 => 2,
+            $messagesCount > 0 => 1,
+            default => 0,
+        };
+        $time = $tier > 0 && $latestMessageAt !== null ? $latestMessageAt : $createdAt;
+
+        return [$tier, Carbon::parse($time)->getTimestamp(), -$number];
+    }
+
+    /**
+     * 依檢視者身分取這張單的預設排序鍵；需先用 withOwnerMessageStats，或 withClientNewReplyCount 加留言數與最新留言時間。
+     *
+     * @return array{0: int, 1: int, 2: int}
+     */
+    public function conversationSortKeyFor(bool $forOwner, int $number): array
+    {
+        return static::conversationSortKey(
+            $this->unreadCountFor($forOwner),
+            (int) ($this->feedback_messages_count ?? 0),
+            $this->latest_message_at,
+            $this->created_at,
+            $number,
+        );
     }
 
     public function markReadByOwner(): void

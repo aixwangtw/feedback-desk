@@ -64,7 +64,7 @@ class FeedbackReportNumberTest extends TestCase
         preg_match_all('/data-report-number>(\d+)</', $html, $matches);
 
         $this->assertSame(['1', '2', '3'], $matches[1]);
-        $this->assertMatchesRegularExpression('/<option value="created_at" selected/', $html);
+        $this->assertMatchesRegularExpression('/<option value="conversation" selected/', $html);
     }
 
     public function test_detail_page_shows_the_same_number(): void

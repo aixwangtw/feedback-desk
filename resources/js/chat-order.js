@@ -1,8 +1,8 @@
-// 右下角對話清單的排序，與 FeedbackConversationController::sortKey 同一套規則：
+// 右下角對話清單的排序，與 FeedbackReport::conversationSortKey（面板、問題清單與看板的預設排序）同一套規則：
 // 1. 有未讀的最前，依最新留言時間新到舊；
 // 2. 其次有留言但已讀的，依最新留言時間新到舊；
 // 3. 沒有留言的最後，依建立時間新到舊。
-// 同時間再依編號新到舊。
+// 同時間再依編號新到舊（編號最新為 1）。
 
 const tierOf = (item) => {
     if (item.unread > 0) {
@@ -31,7 +31,7 @@ export const compareConversations = (a, b) => {
         return timeDiff;
     }
 
-    return (b.number ?? 0) - (a.number ?? 0);
+    return (a.number ?? 0) - (b.number ?? 0);
 };
 
 /**

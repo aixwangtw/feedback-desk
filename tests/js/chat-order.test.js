@@ -40,10 +40,10 @@ test('只有調整說明更新（沒有留言但未讀）也排在最前', () =>
     assert.equal(orderConversations([...fixtures(), adjustmentOnly])[2].id, 'adjustment');
 });
 
-test('同時間依編號新到舊', () => {
-    const a = item('a', { created: '2026-10-01T00:00:00+00:00', number: 1 });
-    const b = item('b', { created: '2026-10-01T00:00:00+00:00', number: 2 });
-    assert.deepEqual(ids(orderConversations([a, b])), ['b', 'a']);
+test('同時間依編號新到舊（編號最新為 1）', () => {
+    const newer = item('newer', { created: '2026-10-01T00:00:00+00:00', number: 1 });
+    const older = item('older', { created: '2026-10-01T00:00:00+00:00', number: 2 });
+    assert.deepEqual(ids(orderConversations([older, newer])), ['newer', 'older']);
 });
 
 test('不改動傳入的陣列', () => {

@@ -7,8 +7,8 @@
             'deleted' => $isOwner ? $deletedFilter : null,
             'creator' => $isOwner ? $creator : null,
             'unread' => $unreadOnly ? 1 : null,
-            'sort' => $sort,
-            'direction' => $direction,
+            'sort' => $sort === 'conversation' ? null : $sort,
+            'direction' => $sort === 'conversation' ? null : $direction,
             'page' => request()->integer('page') > 1 ? request()->integer('page') : null,
         ], fn ($value) => $value !== null && $value !== '');
         $portalUrl = function (array $overrides = [], array $forget = []) use ($project, $baseQuery): string {
@@ -51,7 +51,7 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">{{ config('feedback.portal_title') }}</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設照建立日期排序，最新的在最前面。' : '狀態可直接在表格中切換，點欄名即可排序；預設照建立日期排序，最新的在最前面。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' }}</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到{{ config('feedback.labels.client') }}的回報，等{{ config('feedback.labels.owner') }}處理。</span></li>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>{{ config('feedback.labels.owner') }}已改好並寫了調整說明，請{{ config('feedback.labels.client') }}確認。</span></li>
@@ -89,7 +89,6 @@
                 @elseif ($unreadReportCount > 0)
                     <a href="{{ $portalUrl(['unread' => 1], ['page']) }}" class="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2" data-unread-filter>只看未讀留言</a>
                 @endif
-                <a href="{{ $portalUrl(['sort' => 'latest_message_at', 'direction' => 'desc'], ['page']) }}" @class(['rounded text-xs font-semibold underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', 'text-teal-800' => $sort !== 'latest_message_at', 'text-slate-950' => $sort === 'latest_message_at']) @if ($sort === 'latest_message_at') aria-current="true" @endif data-sort-latest-message>依最新留言時間排序@if ($sort === 'latest_message_at') {{ $sortMark('latest_message_at') }}@endif</a>
             </div>
         @endif
 
@@ -133,19 +132,24 @@
             @endif
             <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 @if ($viewMode === 'list') md:hidden @else md:flex md:items-center md:gap-2 @endif">排序欄位
                 <select name="sort" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
+                    <option value="conversation" @selected($sort === 'conversation')>預設（新留言優先）</option>
                     <option value="latest_activity_at" @selected($sort === 'latest_activity_at')>最後更新</option>
-                    <option value="latest_message_at" @selected($sort === 'latest_message_at')>最新留言</option>
                     <option value="created_at" @selected($sort === 'created_at')>建立時間</option>
                     <option value="title" @selected($sort === 'title')>問題</option>
                     <option value="status" @selected($sort === 'status')>狀態</option>
                 </select>
             </label>
+            @if ($sort !== 'conversation')
             <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 @if ($viewMode === 'list') md:hidden @else md:flex md:items-center md:gap-2 @endif">順序
                 <select name="direction" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="desc" @selected($direction === 'desc')>新到舊／降冪</option>
                     <option value="asc" @selected($direction === 'asc')>舊到新／升冪</option>
                 </select>
             </label>
+            @endif
+            @if ($viewMode === 'list' && $sort !== 'conversation')
+                <a href="{{ $portalUrl([], ['sort', 'direction', 'page']) }}" class="col-span-2 hidden rounded text-xs font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 md:inline" data-sort-reset>恢復預設排序（新留言優先）</a>
+            @endif
         </form>
 
         @if ($viewMode === 'list')

@@ -99,23 +99,14 @@ class FeedbackConversationController extends Controller
     }
 
     /**
-     * 對話清單排序（resources/js/chat-order.js 用同一套規則）：
-     * 有未讀的最前、其次有留言但已讀的，兩者依最新留言時間新到舊；沒有留言的最後，依建立時間新到舊。
-     * 同時間再依編號新到舊。
+     * 對話清單排序，與問題清單、看板的預設排序同一套規則（FeedbackReport::conversationSortKey）。
      *
      * @param  array{unread: int, messages_count: int, latest_at: string|null, created_at: string, number: int}  $item
      * @return array{0: int, 1: int, 2: int}
      */
     private function sortKey(array $item): array
     {
-        $tier = match (true) {
-            $item['unread'] > 0 => 2,
-            $item['messages_count'] > 0 => 1,
-            default => 0,
-        };
-        $time = $tier > 0 && $item['latest_at'] !== null ? $item['latest_at'] : $item['created_at'];
-
-        return [$tier, Carbon::parse($time)->getTimestamp(), $item['number']];
+        return FeedbackReport::conversationSortKey($item['unread'], $item['messages_count'], $item['latest_at'], $item['created_at'], $item['number']);
     }
 
     /**

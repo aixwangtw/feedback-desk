@@ -51,6 +51,9 @@ class FeedbackMessageController extends Controller
             $feedbackReport->update(['latest_activity_at' => now()]);
         });
 
+        // 自己留言時一定看過這張單，不讓自己的留言或前面的留言留成未讀。
+        $access->isOwner($feedbackProject) ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient();
+
         return back()->with('success', '訊息已送出。');
     }
 }

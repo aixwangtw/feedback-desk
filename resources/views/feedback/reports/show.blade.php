@@ -14,6 +14,8 @@
         </section>
     @endif
 
+    @php $canPostMessage = ! ($isPublicReporter && ! $project->public_reporting_enabled); @endphp
+
     <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div class="grid gap-6">
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -52,6 +54,10 @@
             @if ($isOwner || $report->hasAdjustment())
                 <section id="adjustment" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                     @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report])
+
+                    @if (! $isOwner && $canPostMessage)
+                        <p class="mt-4 rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-900" data-adjustment-message-hint>看完有問題，可直接在下方留言</p>
+                    @endif
 
                     @if ($isOwner)
                         @php $adjustmentErrors = $errors->getBag('adjustment'); @endphp
@@ -105,11 +111,16 @@
                 @include('feedback.reports._activity', ['project' => $project, 'report' => $report])
             </section>
 
-            @if ($isPublicReporter && ! $project->public_reporting_enabled)
+            @if (! $canPostMessage)
                 <section class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:p-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</section>
             @else
-            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                <h2 class="text-base font-semibold text-slate-950">補充訊息</h2>
+            <section @class(['rounded-2xl p-5 shadow-sm sm:p-7', 'border border-slate-200 bg-white' => $isOwner, 'border-2 border-teal-300 bg-teal-50/40' => ! $isOwner]) id="message-form" data-message-section>
+                @if ($isOwner)
+                    <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                @else
+                    <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
+                    <p class="mt-1 text-sm leading-6 text-slate-700" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
+                @endif
                 <form method="POST" action="{{ route('feedback.messages.store', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
                     @csrf
                     <div>

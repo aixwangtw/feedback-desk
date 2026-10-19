@@ -94,6 +94,8 @@ class FeedbackReportController extends Controller
             $access->deny($feedbackProject);
         }
 
+        $this->markRead($feedbackReport, $access);
+
         $feedbackReport->load([
             'feedbackAttachments' => fn ($query) => $query->ofKind(FeedbackAttachmentKind::Feedback),
             'adjustmentAttachments',
@@ -123,6 +125,9 @@ class FeedbackReportController extends Controller
             $access->deny($feedbackProject);
         }
         $access->ensureReportVisible($feedbackReport);
+
+        // 單頁開著時每幾秒刷新一次留言；刷新看到的新留言也算讀過。
+        $this->markRead($feedbackReport, $access);
 
         $feedbackReport->load('feedbackMessages.feedbackAttachments');
 
@@ -167,6 +172,14 @@ class FeedbackReportController extends Controller
         $feedbackReport->update(['client_deleted_at' => null]);
 
         return back()->with('success', '已還原「'.$feedbackReport->title.'」，'.config('feedback.labels.client').'端會重新看到。');
+    }
+
+    /**
+     * 開發者開啟算開發者讀過；客戶與公開回報者開啟算客戶端讀過。
+     */
+    private function markRead(FeedbackReport $report, FeedbackAccess $access): void
+    {
+        $access->isOwner($report->feedbackProject) ? $report->markReadByOwner() : $report->markReadByClient();
     }
 
     private function ensureProjectOwnsReport(FeedbackProject $project, FeedbackReport $report): void

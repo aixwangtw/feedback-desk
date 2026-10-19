@@ -31,6 +31,9 @@ class CreateFeedbackReportAction
                 'title' => $data['title'],
                 'description' => $data['description'],
                 'latest_activity_at' => now(),
+                // 建立者自己那一端視為已讀；客戶建立的單要等開發者開啟才算讀過。
+                'client_last_read_at' => now(),
+                'owner_last_read_at' => in_array($creator['creator_type'], [FeedbackCreatorType::Client, FeedbackCreatorType::Public], true) ? null : now(),
             ]);
 
             foreach ($data['screenshots'] ?? [] as $screenshot) {

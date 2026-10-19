@@ -185,6 +185,7 @@ class FeedbackAccess
             ->where('feedback_project_id', $project->id)
             ->where('creator_type', FeedbackCreatorType::Public->value)
             ->whereIn('public_id', array_keys($tokens))
+            ->withClientNewReplyCount()
             ->latest('created_at')
             ->latest('id')
             ->get()

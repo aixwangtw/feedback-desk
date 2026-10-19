@@ -39,12 +39,20 @@ class UpdateFeedbackReportAdjustmentAction
                     );
                 }
 
+                $noteChanged = array_key_exists('adjustment_note', $attributes)
+                    && $attributes['adjustment_note'] !== $report->adjustment_note;
+
                 $report->update($attributes);
 
                 $removedAttachments = $report->adjustmentAttachments()
                     ->whereIn('id', $data['remove_attachments'] ?? [])
                     ->get();
                 $removedAttachments->each->delete();
+
+                // 客戶端「有新回覆」看這個時間；內容沒變就不算更新。
+                if ($noteChanged || $removedAttachments->isNotEmpty() || ($data['images'] ?? []) !== []) {
+                    $report->forceFill(['adjustment_updated_at' => now()])->save();
+                }
 
                 foreach ($data['images'] ?? [] as $image) {
                     $path = Storage::disk($disk)->putFile(

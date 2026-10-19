@@ -6,6 +6,7 @@
             'status' => $selectedStatus?->value,
             'deleted' => $isOwner ? $deletedFilter : null,
             'creator' => $isOwner ? $creator : null,
+            'unread' => $unreadOnly ? 1 : null,
             'sort' => $sort,
             'direction' => $direction,
             'page' => request()->integer('page') > 1 ? request()->integer('page') : null,
@@ -30,6 +31,7 @@
         $statusUrl = fn (\App\Enums\FeedbackReportStatus $status): string => route('feedback.portal', $project).'?'.http_build_query(array_filter([
             'status' => $status->value,
             'creator' => $isOwner ? $creator : null,
+            'unread' => $unreadOnly ? 1 : null,
             'view' => $viewMode === 'board' ? 'board' : null,
             'q' => $keyword,
         ]));
@@ -64,7 +66,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && ($deletedFilter || $creator !== '')))（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach (\App\Enums\FeedbackReportStatus::cases() as $summaryStatus)
                     @php
@@ -79,8 +81,23 @@
             </nav>
         </div>
 
+        @if ($isOwner)
+            <div @class(['flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5 text-sm', 'border-rose-200 bg-rose-50 text-rose-900' => $unreadReportCount > 0, 'border-slate-200 bg-white text-slate-600' => $unreadReportCount === 0]) data-unread-summary>
+                <p class="font-semibold">@if ($unreadReportCount > 0)有 <span data-unread-report-count>{{ $unreadReportCount }}</span> 張單有未讀留言@else目前沒有未讀留言@endif</p>
+                @if ($unreadOnly)
+                    <a href="{{ $portalUrl([], ['unread', 'page']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-unread-filter>顯示全部</a>
+                @elseif ($unreadReportCount > 0)
+                    <a href="{{ $portalUrl(['unread' => 1], ['page']) }}" class="rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2" data-unread-filter>只看未讀留言</a>
+                @endif
+                <a href="{{ $portalUrl(['sort' => 'latest_message_at', 'direction' => 'desc'], ['page']) }}" @class(['rounded text-xs font-semibold underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', 'text-teal-800' => $sort !== 'latest_message_at', 'text-slate-950' => $sort === 'latest_message_at']) @if ($sort === 'latest_message_at') aria-current="true" @endif data-sort-latest-message>依最新留言時間排序@if ($sort === 'latest_message_at') {{ $sortMark('latest_message_at') }}@endif</a>
+            </div>
+        @endif
+
         <form method="GET" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
             <input type="hidden" name="view" value="{{ $viewMode }}">
+            @if ($unreadOnly)
+                <input type="hidden" name="unread" value="1">
+            @endif
             <label class="relative col-span-2 block min-w-0 md:mr-auto md:w-80">
                 <span class="sr-only">搜尋問題</span>
                 <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -117,6 +134,7 @@
             <label class="grid min-w-0 gap-1 text-xs font-semibold text-slate-600 @if ($viewMode === 'list') md:hidden @else md:flex md:items-center md:gap-2 @endif">排序欄位
                 <select name="sort" data-auto-submit class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                     <option value="latest_activity_at" @selected($sort === 'latest_activity_at')>最後更新</option>
+                    <option value="latest_message_at" @selected($sort === 'latest_message_at')>最新留言</option>
                     <option value="created_at" @selected($sort === 'created_at')>建立時間</option>
                     <option value="title" @selected($sort === 'title')>問題</option>
                     <option value="status" @selected($sort === 'status')>狀態</option>
@@ -154,6 +172,7 @@
                             <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
                             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
                                 <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
+                                <x-feedback.message-badges :$report :is-owner="$isOwner" class="mt-1 flex" />
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
@@ -230,7 +249,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="9" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                        <tr class="block sm:table-row"><td colspan="9" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">{{ $unreadOnly ? '沒有未讀留言的單。' : '目前沒有問題，請按「新增問題」登記第一筆。' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -260,6 +279,7 @@
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span>@if ($isOwner)<span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@endif</p>
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
+                                                <x-feedback.message-badges :$report :is-owner="$isOwner" class="mt-1.5 flex" />
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
                                                 <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
@@ -372,6 +392,9 @@
                     </div>
                 @endif
                 <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
+                @unless ($isOwner)
+                    <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「查看留言紀錄」直接留言給{{ config('feedback.labels.owner') }}。</p>
+                @endunless
                 <div class="flex justify-end border-t border-slate-100 pt-4">
                     <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
                 </div>

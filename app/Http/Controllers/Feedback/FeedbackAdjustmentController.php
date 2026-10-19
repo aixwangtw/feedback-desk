@@ -24,6 +24,7 @@ class FeedbackAdjustmentController extends Controller
             'images' => $request->file('adjustment_images', []),
             'remove_attachments' => $request->validated('remove_adjustment_attachments', []),
         ]);
+        $feedbackReport->markReadByOwner();
 
         return redirect()
             ->to(route('feedback.reports.show', [$feedbackProject, $feedbackReport]).'#adjustment')

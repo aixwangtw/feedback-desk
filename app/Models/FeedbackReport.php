@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FeedbackAttachmentKind;
+use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use Database\Factories\FeedbackReportFactory;
@@ -29,6 +30,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'completed_at',
     'client_deleted_at',
     'latest_activity_at',
+    'owner_last_read_at',
+    'client_last_read_at',
+    'adjustment_updated_at',
 ])]
 class FeedbackReport extends Model
 {
@@ -222,6 +226,93 @@ class FeedbackReport extends Model
             ->all();
     }
 
+    /**
+     * 客戶留言中，開發者上次開啟這張單之後才出現的；開發者與 AI 的留言不算。
+     * 只能用在以 feedback_reports 為外層的子查詢（withCount、whereHas）。
+     *
+     * @param  Builder<FeedbackMessage>  $query
+     */
+    public static function constrainToUnreadByOwner(Builder $query): void
+    {
+        $query->where('feedback_messages.author_type', FeedbackAuthorType::Reporter->value)
+            ->where(fn (Builder $query) => $query
+                ->whereNull('feedback_reports.owner_last_read_at')
+                ->orWhereColumn('feedback_messages.created_at', '>', 'feedback_reports.owner_last_read_at'));
+    }
+
+    /**
+     * 開發者端清單要用的留言統計：總留言數、未讀客戶留言數、最新留言時間。
+     *
+     * @param  Builder<FeedbackReport>  $query
+     */
+    #[Scope]
+    protected function withOwnerMessageStats(Builder $query): void
+    {
+        $query->withCount([
+            'feedbackMessages',
+            'feedbackMessages as unread_messages_count' => fn (Builder $query) => static::constrainToUnreadByOwner($query),
+        ])->withMax('feedbackMessages as latest_message_at', 'created_at');
+    }
+
+    /**
+     * 有開發者還沒看過的客戶留言的單。
+     *
+     * @param  Builder<FeedbackReport>  $query
+     */
+    #[Scope]
+    protected function unreadByOwner(Builder $query): void
+    {
+        $query->whereHas('feedbackMessages', fn (Builder $query) => static::constrainToUnreadByOwner($query));
+    }
+
+    /**
+     * 客戶端清單要用的：客戶上次開啟之後，開發者（含 AI）新增的留言數。
+     *
+     * @param  Builder<FeedbackReport>  $query
+     */
+    #[Scope]
+    protected function withClientNewReplyCount(Builder $query): void
+    {
+        $query->withCount(['feedbackMessages as client_new_replies_count' => fn (Builder $query) => $query
+            ->whereIn('feedback_messages.author_type', [FeedbackAuthorType::Owner->value, FeedbackAuthorType::Agent->value])
+            ->where(fn (Builder $query) => $query
+                ->whereNull('feedback_reports.client_last_read_at')
+                ->orWhereColumn('feedback_messages.created_at', '>', 'feedback_reports.client_last_read_at'))]);
+    }
+
+    /**
+     * 客戶端的「有新回覆」：開發者在客戶上次開啟後留言，或更新了調整說明。
+     * 需先用 withClientNewReplyCount 載入留言數。
+     */
+    public function hasNewReplyForClient(): bool
+    {
+        $adjustmentIsNew = $this->adjustment_updated_at !== null
+            && ($this->client_last_read_at === null || $this->adjustment_updated_at->greaterThan($this->client_last_read_at));
+
+        return $adjustmentIsNew || (int) ($this->client_new_replies_count ?? 0) > 0;
+    }
+
+    public function markReadByOwner(): void
+    {
+        $this->markReadAt('owner_last_read_at');
+    }
+
+    public function markReadByClient(): void
+    {
+        $this->markReadAt('client_last_read_at');
+    }
+
+    /**
+     * 只寫已讀時間，不動 updated_at 與最後更新時間。
+     */
+    private function markReadAt(string $column): void
+    {
+        $now = now();
+        static::query()->whereKey($this->getKey())->toBase()->update([$column => $now]);
+        $this->setAttribute($column, $now);
+        $this->syncOriginalAttribute($column);
+    }
+
     protected function casts(): array
     {
         return [
@@ -230,6 +321,10 @@ class FeedbackReport extends Model
             'completed_at' => 'datetime',
             'client_deleted_at' => 'datetime',
             'latest_activity_at' => 'datetime',
+            'owner_last_read_at' => 'datetime',
+            'client_last_read_at' => 'datetime',
+            'adjustment_updated_at' => 'datetime',
+            'latest_message_at' => 'datetime',
         ];
     }
 }

@@ -38,6 +38,7 @@
                         <li class="flex flex-wrap items-center justify-between gap-3 py-3">
                             <div class="min-w-0">
                                 <a href="{{ route('feedback.reports.show', [$project, $myReport]) }}" class="block truncate text-sm font-semibold text-teal-800 hover:underline" data-my-report-link>{{ $myReport->title }}</a>
+                                <x-feedback.message-badges :report="$myReport" :is-owner="false" class="mt-1" />
                                 <x-feedback.time :at="$myReport->created_at" class="text-xs text-slate-500" />
                             </div>
                             <x-feedback.status-badge :status="$myReport->status" />

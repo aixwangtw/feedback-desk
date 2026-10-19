@@ -37,15 +37,16 @@ class FeedbackPortalController extends Controller
             $access->deny($feedbackProject);
         }
 
+        $isOwner = $access->isOwner($feedbackProject);
         $sort = request()->string('sort')->toString();
-        $sort = in_array($sort, ['title', 'status', 'created_at', 'latest_activity_at'], true)
+        $sort = in_array($sort, ['title', 'status', 'created_at', 'latest_activity_at', 'latest_message_at'], true)
             ? $sort
             : 'created_at';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
         $keyword = mb_substr(trim(request()->string('q')->toString()), 0, 100);
         $viewMode = request()->string('view')->toString() === 'board' ? 'board' : 'list';
-        $isOwner = $access->isOwner($feedbackProject);
+        $unreadOnly = $isOwner && request()->boolean('unread');
         $deletedFilter = request()->string('deleted')->toString();
         $deletedFilter = $isOwner ? (in_array($deletedFilter, ['only', 'hide'], true) ? $deletedFilter : null) : 'hide';
 
@@ -69,6 +70,10 @@ class FeedbackPortalController extends Controller
                 ->when(! $isOwner, fn ($query) => $query->createdByClient())
                 ->when($creator !== '', fn ($query) => $query->createdBy($creator))
                 ->with($isOwner ? ['creatorDeveloper', 'feedbackProject'] : [])
+                ->when($isOwner, fn ($query) => $query->withOwnerMessageStats(), fn ($query) => $query
+                    ->withClientNewReplyCount()
+                    ->withMax('feedbackMessages as latest_message_at', 'created_at'))
+                ->when($unreadOnly, fn ($query) => $query->unreadByOwner())
                 ->with([
                     'feedbackAttachments' => fn ($query) => $query->whereNull('feedback_message_id')->ofKind(FeedbackAttachmentKind::Feedback),
                     'adjustmentAttachments',
@@ -92,6 +97,8 @@ class FeedbackPortalController extends Controller
             'deletedFilter' => $deletedFilter,
             'creator' => $creator,
             'creatorOptions' => $creatorOptions,
+            'unreadOnly' => $unreadOnly,
+            'unreadReportCount' => $isOwner ? $feedbackProject->feedbackReports()->unreadByOwner()->count() : 0,
         ]);
     }
 

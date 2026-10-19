@@ -16,6 +16,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {--status=* : 只列出這些狀態（new／needs_input／completed 或 待處理／待審核／已完成），可重複}
     {--creator= : 建立者篩選：client、public、shared 或 developer:{id}}
     {--include-deleted : 一併列出客戶已刪除（隱藏）的單}
+    {--unread : 只列出有未讀客戶留言的單（開發團隊在網頁開啟該單後才算已讀）}
     {--json : 輸出 JSON}')]
 #[Description('列出專案的回饋單（最新在前）')]
 #[Help(<<<'HELP'
@@ -32,6 +33,9 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     所以兩邊編號可能不同。JSON 的 client_number 是客戶頁面看到的編號（非客戶建立的單為 null）。
   - 編號會隨新單增加而變動，要穩定指定請用 public_id。
   - 預設不含客戶已刪除的單，加 --include-deleted 才會列出。
+  - 「未讀」是客戶在開發團隊上次於網頁開啟該單之後留的言；開發團隊與 AI 的留言不算。
+    這個指令只讀資料，不會把單標為已讀。只看有未讀留言的單：
+      php artisan feedback:reports my-project --unread
 HELP)]
 class ListFeedbackReportsCommand extends Command
 {
@@ -67,7 +71,9 @@ class ListFeedbackReportsCommand extends Command
 
         $reports = $project->feedbackReports()
             ->with(['creatorDeveloper', 'feedbackProject'])
-            ->withCount(['feedbackMessages', 'feedbackAttachments'])
+            ->withOwnerMessageStats()
+            ->withCount('feedbackAttachments')
+            ->when($this->option('unread'), fn ($query) => $query->unreadByOwner())
             ->when($statuses !== [], fn ($query) => $query->whereIn('status', $statuses))
             ->when($creator !== '', fn ($query) => $query->createdBy($creator))
             ->unless($this->option('include-deleted'), fn ($query) => $query->whereNull('client_deleted_at'))
@@ -85,6 +91,8 @@ class ListFeedbackReportsCommand extends Command
             'creator' => $report->creatorLabel(),
             'title' => $report->title,
             'messages_count' => $report->feedback_messages_count,
+            'unread_messages_count' => $report->unread_messages_count,
+            'latest_message_at' => $report->latest_message_at?->toIso8601String(),
             'attachments_count' => $report->feedback_attachments_count,
             'deleted_by_client' => $report->isDeletedByClient(),
             'latest_activity_at' => $report->latest_activity_at?->toIso8601String(),
@@ -103,7 +111,7 @@ class ListFeedbackReportsCommand extends Command
         }
 
         $this->table(
-            ['編號', 'public_id', '狀態', '建立者', '標題', '留言', '附件', '最後更新'],
+            ['編號', 'public_id', '狀態', '建立者', '標題', '留言', '未讀', '附件', '最後更新'],
             array_map(fn (array $row): array => [
                 $row['number'],
                 $row['public_id'],
@@ -111,6 +119,7 @@ class ListFeedbackReportsCommand extends Command
                 OutputFormatter::escape($row['creator']),
                 OutputFormatter::escape($row['title']),
                 $row['messages_count'],
+                $row['unread_messages_count'],
                 $row['attachments_count'],
                 $row['latest_activity_at'] ? date('Y-m-d H:i', strtotime($row['latest_activity_at'])) : '',
             ], $rows),

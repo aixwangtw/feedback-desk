@@ -270,7 +270,7 @@ describe('report commands', () => {
     const listed = {
         include_public: false,
         reports: [
-            { number: 1, client_number: 1, public_id: 'uuid-1', status: 'new', status_label: '待處理', creator_type: 'client', creator: '晴天咖啡', source: 'project_member', title: '\u001b[2J清除畫面', messages_count: 2, attachments_count: 1, deleted_by_client: false, latest_activity_at: '2026-10-14T02:30:00.000Z' },
+            { number: 1, client_number: 1, public_id: 'uuid-1', status: 'new', status_label: '待處理', creator_type: 'client', creator: '晴天咖啡', source: 'project_member', title: '\u001b[2J清除畫面', messages_count: 2, unread_messages_count: 1, latest_message_at: '2026-10-14T02:30:00.000Z', attachments_count: 1, deleted_by_client: false, latest_activity_at: '2026-10-14T02:30:00.000Z' },
         ],
     };
 
@@ -285,6 +285,22 @@ describe('report commands', () => {
         expect(fake.text()).toContain('--include-public');
         expect(await main(['reports', 'demo', '--status', 'doing'], fake.rt)).toBe(1);
         expect(fake.errors()).toContain('new（待處理）');
+    });
+
+    it('filters to reports with unread client messages and shows the unread count', async () => {
+        const fake = signedIn(() => jsonResponse(listed));
+        expect(await main(['reports', 'demo', '--unread'], fake.rt)).toBe(0);
+        expect(fake.calls[0].url).toBe('https://desk.example.com/api/v1/projects/demo/reports?unread=1');
+        expect(fake.text()).toContain('未讀');
+        expect(fake.text()).toContain('不會標為已讀');
+        const json = signedIn(() => jsonResponse(listed));
+        await main(['reports', 'demo', '--unread', '--json'], json.rt);
+        const parsed = JSON.parse(json.text())[0];
+        expect(parsed.unread_messages_count).toBe(1);
+        expect(parsed.latest_message_at).toBe('2026-10-14T02:30:00.000Z');
+        const empty = signedIn(() => jsonResponse({ include_public: false, reports: [] }));
+        await main(['reports', 'demo', '--unread'], empty.rt);
+        expect(empty.text()).toContain('沒有未讀留言的回饋單。');
     });
 
     it('prints JSON for agents', async () => {

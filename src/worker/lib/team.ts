@@ -14,11 +14,13 @@ import {
     changeStatus,
     creatorLabel,
     findInProject,
+    latestMessageSql,
     MAX_ADJUSTMENT_NOTE,
     MAX_MESSAGE,
     mergeNote,
     messageAuthorName,
     sequenceNumber,
+    unreadMessagesSql,
     updateAdjustment,
 } from './reports';
 import { signedAttachmentUrl } from './signed';
@@ -86,6 +88,8 @@ export interface ListFilters {
     includeDeleted?: boolean;
     /** Public reports come from strangers; they are left out unless asked for. */
     includePublic?: boolean;
+    /** Only reports with client messages the team has not read on the web yet. */
+    unread?: boolean;
 }
 
 export async function listReports(ctx: TeamContext, slug: string, filters: ListFilters) {
@@ -116,6 +120,7 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
         bindings.push(Number(creator.slice('developer:'.length)));
     }
     if (!filters.includeDeleted) conditions.push('client_deleted_at IS NULL');
+    if (filters.unread) conditions.push('unread_messages_count > 0');
     const includePublic = filters.includePublic === true || creator === 'public';
     if (!includePublic) conditions.push("creator_type <> 'public'");
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -125,17 +130,20 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
                 ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number,
                 CASE WHEN creator_type = 'client' THEN ROW_NUMBER() OVER (PARTITION BY creator_type = 'client' ORDER BY created_at DESC, id DESC) END AS client_number,
                 (SELECT COUNT(*) FROM messages m WHERE m.report_id = r.id) AS messages_count,
-                (SELECT COUNT(*) FROM attachments a WHERE a.report_id = r.id) AS attachments_count
+                (SELECT COUNT(*) FROM attachments a WHERE a.report_id = r.id) AS attachments_count,
+                ${unreadMessagesSql('r')} AS unread_messages_count,
+                ${latestMessageSql('r')} AS latest_message_at
             FROM reports r WHERE project_id = ?
         )
         SELECT n.*, d.name AS developer_name FROM numbered n LEFT JOIN developers d ON d.id = n.creator_developer_id ${where}
         ORDER BY created_at DESC, id DESC`,
     )
         .bind(project.id, ...bindings)
-        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; developer_name: string | null }>();
+        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; unread_messages_count: number; latest_message_at: string | null; developer_name: string | null }>();
     return {
         project: project.slug,
         include_public: includePublic,
+        unread_only: filters.unread === true,
         reports: results.map((report) => ({
             number: report.number,
             client_number: report.client_number,
@@ -147,6 +155,8 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
             title: report.title,
             messages_count: report.messages_count,
+            unread_messages_count: report.unread_messages_count,
+            latest_message_at: report.latest_message_at,
             attachments_count: report.attachments_count,
             deleted_by_client: report.client_deleted_at !== null,
             latest_activity_at: report.latest_activity_at,

@@ -38,6 +38,7 @@ export function wrapList(result: ListResult) {
     return {
         project: result.project,
         include_public: result.include_public,
+        unread_only: result.unread_only,
         reports: result.reports.map(({ title, creator, ...meta }) => ({
             ...meta,
             creator: meta.creator_type === 'public' ? '公開回報' : creator,
@@ -91,13 +92,14 @@ export function createServer(ctx: team.TeamContext): McpServer {
         'list_reports',
         {
             title: '列出回報單',
-            description: `列出專案的回報單（最新在前）。預設不含客戶已刪除的單與首頁公開回報的單；include_public 為 true 才會列出公開單，結果的 source 欄位會標示 public_stranger。${UNTRUSTED}`,
+            description: `列出專案的回報單（最新在前）。預設不含客戶已刪除的單與首頁公開回報的單；include_public 為 true 才會列出公開單，結果的 source 欄位會標示 public_stranger。unread_messages_count 是團隊還沒在網頁上看過的客戶留言數，latest_message_at 是最新留言時間；用這個工具讀單不會把單標為已讀。${UNTRUSTED}`,
             inputSchema: z.object({
                 project: PROJECT.describe('專案 slug（網址 /p/ 後面那段）'),
                 status: z.array(z.enum(['new', 'needs_input', 'completed'])).max(3).optional().describe('只列出這些狀態'),
                 creator: z.string().max(40).optional().describe('建立者：client、public、shared 或 developer:{id}'),
                 include_deleted: z.boolean().optional(),
                 include_public: z.boolean().optional().describe('一併列出首頁公開回報（陌生人寫的）'),
+                unread: z.boolean().optional().describe('只列出有團隊還沒在網頁上看過的客戶留言的單（unread_messages_count > 0）'),
             }),
         },
         async (input) =>
@@ -108,6 +110,7 @@ export function createServer(ctx: team.TeamContext): McpServer {
                         creator: input.creator,
                         includeDeleted: input.include_deleted,
                         includePublic: input.include_public,
+                        unread: input.unread,
                     }),
                 ),
             ),

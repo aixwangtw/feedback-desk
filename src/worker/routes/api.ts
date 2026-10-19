@@ -196,6 +196,7 @@ api.get('/projects/:slug/reports', async (c) => {
             creator: query.get('creator') ?? '',
             includeDeleted: query.get('include_deleted') === '1',
             includePublic: query.get('include_public') === '1',
+            unread: query.get('unread') === '1',
         }),
     );
 });

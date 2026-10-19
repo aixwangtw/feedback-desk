@@ -323,7 +323,7 @@ Workers 免費方案每個請求只有 10 ms 的 CPU 時間，常見的慢速雜
 | `public-reporting <slug> on\|off [--force]` | 開關首頁公開回報。 |
 | `developer create <帳號> [--name]` / `developer reset <帳號>` / `developer list` | 團隊個人帳號，密碼由系統產生；`reset` 同時撤銷該帳號所有 API token。 |
 | `developer disable\|enable\|delete <帳號>` | 停用、重新啟用、刪除團隊帳號（建立過的單保留）。不能對自己目前登入的帳號操作。 |
-| `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
+| `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--unread] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
 | `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/` 並印出路徑。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id]` | 寫調整說明與圖片，不改狀態。 |
 | `status <project> <public_id\|編號> <狀態>` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |

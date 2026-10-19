@@ -24,6 +24,22 @@ function dialogsSrc(slug: string, publicId: string, backPath: string): string {
     return `${paths.reportDialogs(slug, publicId)}?back=${encodeURIComponent(backPath)}`;
 }
 
+export const MessageBadges: FC<{ isOwner: boolean; row: PortalRow }> = ({ isOwner, row }) => {
+    const unread = isOwner && row.unreadMessages > 0;
+    const count = isOwner && row.messagesCount > 0;
+    const reply = !isOwner && row.hasNewReply;
+    if (!unread && !count && !reply) {
+        return null;
+    }
+    return (
+        <span class="mt-1 flex flex-wrap items-center gap-1.5" data-message-badges>
+            {unread ? <span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white" data-unread-messages={row.unreadMessages}>新留言 {row.unreadMessages}</span> : null}
+            {count ? <span class="text-[11px] text-slate-400" data-messages-count={row.messagesCount}>留言 {row.messagesCount}</span> : null}
+            {reply ? <span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white" data-new-reply>有新回覆</span> : null}
+        </span>
+    );
+};
+
 export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
 export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachmentUrl }) => {
@@ -36,6 +52,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachm
             <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{row.number}</span></td>
             <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
                 <button type="button" class="text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
+                <MessageBadges isOwner={isOwner} row={row} />
                 {isOwner && deleted ? (
                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{labels.client}已刪除</span>
@@ -122,6 +139,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
                 <div class="min-w-0 flex-1">
                     <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span>{isOwner ? <span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {row.creatorLabel}</span> : null}</p>
                     <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
+                    <MessageBadges isOwner={isOwner} row={row} />
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>
                     <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label={`編輯「${report.title}」`} title="編輯" data-card-action data-dialog-open={`edit-report-${report.public_id}`}>

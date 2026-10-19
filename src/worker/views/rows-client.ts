@@ -30,6 +30,9 @@ export interface PortalRowsPayload {
         creatorLabel: string;
         attachments: CompactAttachment[];
         adjustmentAttachments: CompactAttachment[];
+        unreadMessages: number;
+        messagesCount: number;
+        hasNewReply: boolean;
     }>;
 }
 
@@ -58,6 +61,10 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             creatorLabel: row.creatorLabel,
             attachments: compact(row.attachments),
             adjustmentAttachments: compact(row.adjustmentAttachments),
+            // Team-only counts are never sent to the client side, and vice versa.
+            unreadMessages: ctx.isOwner ? row.unreadMessages : 0,
+            messagesCount: ctx.isOwner ? row.messagesCount : 0,
+            hasNewReply: ctx.isOwner ? false : row.hasNewReply,
         })),
     };
 }

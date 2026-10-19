@@ -29,8 +29,8 @@ export async function createReport(
     const results = await db.batch([
         db
             .prepare(
-                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, title, description, status, latest_activity_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?) RETURNING *`,
+                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
             )
             .bind(
                 project.id,
@@ -41,6 +41,9 @@ export async function createReport(
                 creator.creator_developer_id,
                 data.title,
                 data.description,
+                at,
+                // Reports from the client side start read for the client; team-created ones for both sides.
+                creator.creator_type === 'client' || creator.creator_type === 'public' ? null : at,
                 at,
                 at,
                 at,
@@ -176,18 +179,58 @@ export async function updateAdjustment(
     const db = env.DB;
     const at = nowIso(now);
     const removed = await removableAttachments(db, report.id, data.removeAttachmentIds, 'adjustment');
-    const statements: D1PreparedStatement[] = [];
-    if (data.note !== undefined) {
-        statements.push(
-            db.prepare('UPDATE reports SET adjustment_note = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(mergeNote(report.adjustment_note, data.note, data.append ?? false), at, at, report.id),
-        );
-    } else {
-        statements.push(db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id));
-    }
+    const note = data.note !== undefined ? mergeNote(report.adjustment_note, data.note, data.append ?? false) : report.adjustment_note;
+    // Only a real change shows the client "有新回覆"; saving the same text again does not.
+    const changed = note !== report.adjustment_note || removed.length > 0 || data.uploads.length > 0;
+    const changedAt = changed ? at : report.adjustment_updated_at;
+    const statements: D1PreparedStatement[] = [
+        data.note !== undefined
+            ? db.prepare('UPDATE reports SET adjustment_note = ?, adjustment_updated_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(note, changedAt, at, at, report.id)
+            : db.prepare('UPDATE reports SET adjustment_updated_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(changedAt, at, at, report.id),
+    ];
     statements.push(...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)));
     statements.push(...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'adjustment', nowIso: at }));
     await db.batch(statements);
     await deleteObjects(env, removed);
+}
+
+/** Message author types written by the team side (people and AI agents). */
+export const TEAM_AUTHOR_TYPES = "('owner', 'agent')";
+
+/**
+ * SQL for the number of client messages the team has not seen. `table` is the alias of the reports
+ * row in the surrounding query. Team and AI messages never count.
+ */
+export function unreadMessagesSql(table: string): string {
+    return `(SELECT COUNT(*) FROM messages um WHERE um.report_id = ${table}.id AND um.author_type = 'reporter'
+        AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
+}
+
+/** SQL condition: the report has at least one client message the team has not seen. */
+export function hasUnreadMessagesSql(table: string): string {
+    return `EXISTS (SELECT 1 FROM messages um WHERE um.report_id = ${table}.id AND um.author_type = 'reporter'
+        AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
+}
+
+/** SQL condition: a team reply or an adjustment change the client has not seen yet. */
+export function hasNewReplySql(table: string): string {
+    return `(EXISTS (SELECT 1 FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
+            AND (${table}.client_last_read_at IS NULL OR rm.created_at > ${table}.client_last_read_at))
+        OR (${table}.adjustment_updated_at IS NOT NULL AND (${table}.client_last_read_at IS NULL OR ${table}.adjustment_updated_at > ${table}.client_last_read_at)))`;
+}
+
+/** SQL for the time of the newest message on the report (NULL without messages). */
+export function latestMessageSql(table: string): string {
+    return `(SELECT MAX(lm.created_at) FROM messages lm WHERE lm.report_id = ${table}.id)`;
+}
+
+/**
+ * Marks the report as read by the team or by the client side. Only the read time changes, so the
+ * activity time, the ETag and the list order stay as they are.
+ */
+export async function markRead(env: Env, report: Pick<Report, 'id'>, side: 'owner' | 'client', now = Date.now()): Promise<void> {
+    const column = side === 'owner' ? 'owner_last_read_at' : 'client_last_read_at';
+    await env.DB.prepare(`UPDATE reports SET ${column} = ? WHERE id = ?`).bind(nowIso(now), report.id).run();
 }
 
 /** Status value => number of reports in the whole project. */

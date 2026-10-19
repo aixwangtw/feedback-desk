@@ -20,6 +20,8 @@ interface ListedReport {
     source: string;
     title: string;
     messages_count: number;
+    unread_messages_count: number;
+    latest_message_at: string | null;
     attachments_count: number;
     deleted_by_client: boolean;
     latest_activity_at: string;
@@ -72,6 +74,7 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
         creator: { type: 'string' },
         'include-deleted': { type: 'boolean' },
         'include-public': { type: 'boolean' },
+        unread: { type: 'boolean' },
     });
     const slug = requirePositional(args, 0, '<project>');
     for (const input of list(args, 'status')) {
@@ -84,6 +87,7 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
     if (str(args, 'creator')) query.set('creator', str(args, 'creator') as string);
     if (bool(args, 'include-deleted')) query.set('include_deleted', '1');
     if (bool(args, 'include-public')) query.set('include_public', '1');
+    if (bool(args, 'unread')) query.set('unread', '1');
     const api = apiFor(rt, str(args, 'url'));
     const result = await api.get<{ reports: ListedReport[]; include_public: boolean }>(`/projects/${encodePath(slug)}/reports?${query.toString()}`);
     if (bool(args, 'json')) {
@@ -91,11 +95,11 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
         return 0;
     }
     if (result.reports.length === 0) {
-        rt.out('沒有符合條件的回饋單。');
+        rt.out(bool(args, 'unread') ? '沒有未讀留言的回饋單。' : '沒有符合條件的回饋單。');
     } else {
         rt.out(
             table(
-                ['編號', 'public_id', '狀態', '建立者', '標題', '留言', '附件', '最後更新'],
+                ['編號', 'public_id', '狀態', '建立者', '標題', '留言', '未讀', '附件', '最後更新'],
                 result.reports.map((report) => [
                     String(report.number),
                     report.public_id,
@@ -103,12 +107,14 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
                     report.creator,
                     report.title,
                     String(report.messages_count),
+                    String(report.unread_messages_count ?? 0),
                     String(report.attachments_count),
                     time(rt, report.latest_activity_at),
                 ]),
             ),
         );
         rt.out('編號為開發團隊頁面的清單編號；客戶頁面只算客戶建立的單，編號可能不同（--json 有 client_number）。');
+        rt.out('「未讀」是團隊還沒在網頁上看過的客戶留言數；用 CLI 讀單不會標為已讀。--unread 只列有未讀留言的單。');
     }
     if (!result.include_public) {
         rt.out('預設不列首頁公開回報（陌生人寫的單）；要看請加 --include-public 或 --creator=public。');

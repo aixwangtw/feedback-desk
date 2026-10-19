@@ -14,6 +14,10 @@ import {
     createReport,
     creatorLabel,
     deleteReport,
+    hasNewReplySql,
+    hasUnreadMessagesSql,
+    latestMessageSql,
+    markRead,
     MAX_ADJUSTMENT_NOTE,
     MAX_DESCRIPTION,
     MAX_MESSAGE,
@@ -24,6 +28,7 @@ import {
     setClientDeleted,
     statusCounts,
     updateAdjustment,
+    unreadMessagesSql,
     updateReport,
 } from '../lib/reports';
 import {
@@ -49,7 +54,7 @@ import { verifyTurnstile } from '../lib/turnstile';
 export const web = new Hono<AppEnv>();
 
 const PER_PAGE = 50;
-const SORTS = ['title', 'status', 'created_at', 'latest_activity_at'] as const;
+const SORTS = ['title', 'status', 'created_at', 'latest_activity_at', 'latest_message_at'] as const;
 
 async function projectOr404(c: AppContext): Promise<Project> {
     const project = await findProjectBySlug(c.env.DB, c.req.param('slug') ?? '');
@@ -379,6 +384,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const viewMode: 'list' | 'board' = c.req.query('view') === 'board' ? 'board' : 'list';
     const deletedInput = c.req.query('deleted') ?? '';
     const deletedFilter: 'only' | 'hide' | null = isOwner ? (deletedInput === 'only' || deletedInput === 'hide' ? deletedInput : null) : 'hide';
+    // Team-side only: the client never filters by (or learns about) the team's unread state.
+    const unreadOnly = isOwner && c.req.query('unread') === '1';
     const pageInput = Number.parseInt(c.req.query('page') ?? '1', 10);
     const page = Number.isFinite(pageInput) && pageInput > 1 ? pageInput : 1;
 
@@ -422,6 +429,9 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         filters.push("(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");
         bindings.push(likeContains(keyword), likeContains(keyword));
     }
+    if (unreadOnly) {
+        filters.push(hasUnreadMessagesSql('numbered'));
+    }
     if (deletedFilter === 'hide') {
         filters.push('client_deleted_at IS NULL');
     } else if (deletedFilter === 'only') {
@@ -433,19 +443,21 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq FROM reports WHERE project_id = ? ${clientOnly}
         )
         SELECT id, project_id, public_id, reporter_name, creator_type, creator_developer_id, title, adjustment_note, status, client_deleted_at,
-            latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total
+            latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
+            ${isOwner ? `${unreadMessagesSql('numbered')} AS unread_messages_count, (SELECT COUNT(*) FROM messages cm WHERE cm.report_id = numbered.id) AS messages_count, 0 AS has_new_reply` : `0 AS unread_messages_count, 0 AS messages_count, ${hasNewReplySql('numbered')} AS has_new_reply`}
         FROM numbered ${where}
         ORDER BY ${sort} ${direction}, id ${direction} LIMIT ? OFFSET ?`;
     const totalSql = isOwner
         ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ?'
         : "SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND creator_type = 'client' AND client_deleted_at IS NULL";
     const countConditions = isOwner ? '' : "AND creator_type = 'client' AND client_deleted_at IS NULL";
-    const [list, total, counts] = await db.batch([
+    const [list, total, counts, unread] = await db.batch([
         db.prepare(listSql).bind(project.id, ...bindings, PER_PAGE, (page - 1) * PER_PAGE),
         db.prepare(totalSql).bind(project.id),
         db.prepare(`SELECT status, COUNT(*) AS aggregate FROM reports WHERE project_id = ? ${countConditions} GROUP BY status`).bind(project.id),
+        isOwner ? db.prepare(`SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND ${hasUnreadMessagesSql('reports')}`).bind(project.id) : db.prepare('SELECT 0 AS total'),
     ]);
-    const reports = list.results as Array<Report & { seq: number; filtered_total: number }>;
+    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_messages_count: number; messages_count: number; has_new_reply: number }>;
     let filteredTotal = reports[0]?.filtered_total ?? 0;
     if (reports.length === 0 && page > 1) {
         const row = await db
@@ -481,6 +493,9 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             creatorLabel: isOwner ? creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null) : '',
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
+            unreadMessages: isOwner ? report.unread_messages_count : 0,
+            messagesCount: isOwner ? report.messages_count : 0,
+            hasNewReply: !isOwner && report.has_new_reply === 1,
         };
     });
     const flash = form ? {} : await access.flash();
@@ -500,6 +515,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             keyword={keyword}
             viewMode={viewMode}
             deletedFilter={deletedFilter}
+            unreadOnly={unreadOnly}
+            unreadReportCount={isOwner ? (unread.results[0] as { total: number }).total : 0}
             creator={creator}
             creatorOptions={creatorOptions}
             page={page}
@@ -756,7 +773,9 @@ web.get('/p/:slug/reports/:publicId', async (c) => {
     if (!(await access.canView(project, report))) {
         return deny(c, project);
     }
-    return renderReport(c, project, report);
+    const response = await renderReport(c, project, report);
+    await markRead(c.env, report, (await access.isOwner(project)) ? 'owner' : 'client', c.get('now'));
+    return response;
 });
 
 web.get('/p/:slug/reports/:publicId/activity', async (c) => {
@@ -783,6 +802,8 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
             messageAttachments.set(attachment.message_id, [...(messageAttachments.get(attachment.message_id) ?? []), attachment]);
         }
     }
+    // A 304 means nothing new since the last fetch, which already marked the report read.
+    await markRead(c.env, report, (await access.isOwner(project)) ? 'owner' : 'client', c.get('now'));
     c.header('ETag', etag);
     c.header('Cache-Control', 'private, no-cache');
     return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} />);
@@ -812,6 +833,9 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
         creatorLabel: isOwner ? creatorLabel(c.env, report, project, developer?.name ?? null) : '',
         attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
         adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
+        unreadMessages: 0,
+        messagesCount: 0,
+        hasNewReply: false,
     };
     return c.html(
         <ReportDialogs
@@ -1045,6 +1069,8 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
         { author_type: isOwner ? 'owner' : 'reporter', author_name: messageAuthorName(c.env, report, isOwner, developer?.name ?? null), body, uploads },
         c.get('now'),
     );
+    // Writing a message means the writer has seen the report, including messages before it.
+    await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'));
     access.setFlash({ success: '訊息已送出。' });
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });
@@ -1082,6 +1108,7 @@ web.post('/p/:slug/reports/:publicId/adjustment', async (c) => {
         return renderReport(c, project, report, { adjustmentErrors: errors, adjustmentOld: note }, 422);
     }
     await updateAdjustment(c.env, report, { note, append: false, uploads, removeAttachmentIds: remove }, c.get('now'));
+    await markRead(c.env, report, 'owner', c.get('now'));
     access.setFlash({ success: '已更新調整說明。' });
     return c.redirect(`${paths.report(project.slug, report.public_id)}#adjustment`, 302);
 });

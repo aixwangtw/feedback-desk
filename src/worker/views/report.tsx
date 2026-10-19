@@ -180,6 +180,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                     {isOwner || hasAdjustment ? (
                         <section id="adjustment" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                             <AdjustmentBlock report={report} adjustmentAttachments={props.adjustmentAttachments} attachmentUrl={attachmentUrl} />
+                            {!isOwner && !readOnly ? <p class="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600" data-adjustment-message-hint>看完有問題，可直接在下方留言</p> : null}
 
                             {isOwner ? (
                                 <details class="mt-5 border-t border-slate-100 pt-4" open={adjustmentErrors.length > 0} data-adjustment-editor>
@@ -229,8 +230,15 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                     {readOnly ? (
                         <section class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:p-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</section>
                     ) : (
-                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                            <h2 class="text-base font-semibold text-slate-950">補充訊息</h2>
+                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-message-form>
+                            {isOwner ? (
+                                <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                            ) : (
+                                <>
+                                    <h2 class="text-base font-semibold text-slate-950">留言給{labels.owner}</h2>
+                                    <p class="mt-1 text-sm text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
+                                </>
+                            )}
                             <form method="post" action={paths.reportMessages(slug, report.public_id)} class="mt-4 grid gap-4" data-upload-form>
 <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
                                 <div>

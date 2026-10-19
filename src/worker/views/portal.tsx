@@ -15,6 +15,12 @@ export interface PortalRow {
     creatorLabel: string;
     attachments: Attachment[];
     adjustmentAttachments: Attachment[];
+    /** Team side only: client messages the team has not read yet (always 0 for the client). */
+    unreadMessages: number;
+    /** Team side only: all messages on the report (always 0 for the client). */
+    messagesCount: number;
+    /** Client side only: a team reply or adjustment change the client has not seen. */
+    hasNewReply: boolean;
 }
 
 export interface PortalFormState {
@@ -39,6 +45,10 @@ export interface PortalProps {
     keyword: string;
     viewMode: 'list' | 'board';
     deletedFilter: 'only' | 'hide' | null;
+    /** Team side: list only reports with unread client messages. */
+    unreadOnly: boolean;
+    /** Team side: reports in the whole project with unread client messages (0 for the client). */
+    unreadReportCount: number;
     creator: string;
     creatorOptions: Array<[string, string]>;
     page: number;
@@ -69,6 +79,7 @@ const Thumb: FC<{ href: string; name: string; size?: string; border?: string; ad
 
 export const PortalPage: FC<PortalProps> = (props) => {
     const { v, project, isOwner, rows, sort, direction, selectedStatus, keyword, viewMode, deletedFilter, creator } = props;
+    const unreadOnly = isOwner && props.unreadOnly;
     const labels = v.cfg.labels;
     const slug = project.slug;
     const baseQuery: Record<string, string | number | null> = {
@@ -77,6 +88,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
         status: selectedStatus,
         deleted: isOwner ? deletedFilter : null,
         creator: isOwner ? creator : null,
+        unread: unreadOnly ? 1 : null,
         sort,
         direction,
         page: props.page > 1 ? props.page : null,
@@ -90,7 +102,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     };
     const sortUrl = (column: string): string => portalUrl({ sort: column, direction: sort === column && direction === 'asc' ? 'desc' : 'asc' }, ['page']);
     const statusUrl = (status: ReportStatus): string =>
-        `${paths.portal(slug)}?${query({ status, creator: isOwner ? creator : null, view: viewMode === 'board' ? 'board' : null, q: keyword })}`;
+        `${paths.portal(slug)}?${query({ status, creator: isOwner ? creator : null, unread: unreadOnly ? 1 : null, view: viewMode === 'board' ? 'board' : null, q: keyword })}`;
     const sortMark = (column: string): string => (sort === column ? (direction === 'asc' ? '↑' : '↓') : '');
     const ariaSort = (column: string): string => (sort === column ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
     const form = props.form;
@@ -99,7 +111,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     for (const row of rows) {
         pageStatusCounts[row.report.status] = (pageStatusCounts[row.report.status] ?? 0) + 1;
     }
-    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (isOwner && (deletedFilter !== null || creator !== ''));
+    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
@@ -147,8 +159,23 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     </nav>
                 </div>
 
+                {isOwner && (props.unreadReportCount > 0 || unreadOnly) ? (
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rose-100 bg-rose-50 px-4 py-2.5 text-sm text-rose-900" data-unread-summary>
+                        <p class="font-semibold">{props.unreadReportCount > 0 ? `有 ${props.unreadReportCount} 張單有未讀留言` : '目前沒有未讀留言'}</p>
+                        {unreadOnly ? (
+                            <a href={portalUrl({}, ['unread', 'page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-unread-show-all>顯示全部</a>
+                        ) : (
+                            <a href={portalUrl({ unread: 1 }, ['page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-unread-only>只看未讀留言</a>
+                        )}
+                        {sort !== 'latest_message_at' ? (
+                            <a href={portalUrl({ sort: 'latest_message_at', direction: 'desc' }, ['page'])} class="rounded text-xs font-semibold text-rose-800 underline underline-offset-2 hover:text-rose-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-sort-latest-message>依最新留言排序</a>
+                        ) : null}
+                    </div>
+                ) : null}
+
                 <form method="get" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
                     <input type="hidden" name="view" value={viewMode} />
+                    {unreadOnly ? <input type="hidden" name="unread" value="1" /> : null}
                     <label class="relative col-span-2 block min-w-0 md:mr-auto md:w-80">
                         <span class="sr-only">搜尋問題</span>
                         <svg viewBox="0 0 24 24" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -188,6 +215,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                         <select name="sort" data-auto-submit class={FILTER_SELECT}>
                             <option value="latest_activity_at" selected={sort === 'latest_activity_at'}>最後更新</option>
                             <option value="created_at" selected={sort === 'created_at'}>建立時間</option>
+                            <option value="latest_message_at" selected={sort === 'latest_message_at'}>最新留言時間</option>
                             <option value="title" selected={sort === 'title'}>問題</option>
                             <option value="status" selected={sort === 'status'}>狀態</option>
                         </select>
@@ -305,6 +333,7 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                         </div>
                     ) : null}
                     <p class="text-xs text-slate-500">建立：<Time v={v} at={report.created_at} />　最後更新：<Time v={v} at={report.latest_activity_at} /></p>
+                    {isOwner ? null : <p class="text-sm text-slate-600" data-message-hint>有問題或補充，可以點「查看留言紀錄」直接留言給{v.cfg.labels.owner}。</p>}
                     <div class="flex justify-end border-t border-slate-100 pt-4">
                         <a href={paths.report(slug, report.public_id)} class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
                     </div>

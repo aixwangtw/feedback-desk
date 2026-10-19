@@ -40,7 +40,7 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   developer list
 
 處理回報單
-  reports <project> [--status new] [--creator client] [--include-deleted] [--include-public] [--json]
+  reports <project> [--status new] [--creator client] [--include-deleted] [--include-public] [--unread] [--json]
   report <project> <public_id|編號> [--json] [--no-download] [--download-dir 路徑]
                                    附件預設下載到 ~/.cache/feedback-desk（權限 700）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id]

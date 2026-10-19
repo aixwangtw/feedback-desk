@@ -43,6 +43,12 @@ export interface Report {
     completed_at: string | null;
     client_deleted_at: string | null;
     latest_activity_at: string;
+    /** Last time the team opened the report; client messages after it are unread. */
+    owner_last_read_at: string | null;
+    /** Last time the client (or public reporter) opened the report. */
+    client_last_read_at: string | null;
+    /** Last real change of the adjustment note or its images. */
+    adjustment_updated_at: string | null;
     created_at: string;
     updated_at: string;
 }

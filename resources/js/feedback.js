@@ -338,7 +338,7 @@ document.querySelectorAll('[data-kanban-list]').forEach((list) => {
         sort: false,
         animation: 160,
         draggable: '[data-kanban-card]',
-        filter: 'a, form, input, select, textarea, [data-card-action]',
+        filter: 'a, form, input, select, textarea, [data-card-action], [data-chat-open]',
         preventOnFilter: false,
         chosenClass: 'kanban-card-chosen',
         ghostClass: 'kanban-card-ghost',

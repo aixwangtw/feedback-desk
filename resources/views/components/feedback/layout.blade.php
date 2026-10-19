@@ -9,6 +9,7 @@
     <title>{{ $title }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
+@php $showChatPanel = $project && app(\App\Support\FeedbackAccess::class)->canManage($project); @endphp
 <body class="min-h-screen bg-slate-50 font-sans text-slate-950 antialiased">
     <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-teal-50 to-transparent"></div>
 
@@ -34,7 +35,7 @@
         </div>
     </header>
 
-    <main class="relative mx-auto w-full {{ $maxWidth }} px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+    <main @class(['relative mx-auto w-full px-4 py-8 sm:px-6 sm:py-12 lg:px-8', $maxWidth, 'pb-28 sm:pb-28' => $showChatPanel])>
         @if (session('success'))
             <div role="status" class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
                 {{ session('success') }}
@@ -43,6 +44,10 @@
 
         {{ $slot }}
     </main>
+
+    @if ($showChatPanel)
+        <x-feedback.chat-panel :$project />
+    @endif
 
     <x-feedback.image-lightbox />
 </body>

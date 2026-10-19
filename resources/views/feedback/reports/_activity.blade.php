@@ -1,33 +1,42 @@
-<div class="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
-    <h2 class="text-base font-semibold text-slate-950">處理紀錄</h2>
-    <x-feedback.status-badge :status="$report->status" />
-</div>
+{{-- 留言串（聊天泡泡）：回饋單頁與右下角對話面板共用。看的人自己這一方的訊息靠右。 --}}
+@use('App\Enums\FeedbackAuthorType')
+@php
+    $viewerIsOwner ??= app(\App\Support\FeedbackAccess::class)->isOwner($project);
+    $compact ??= false;
+@endphp
 
-<div class="mt-5 grid gap-5">
+<ol class="grid gap-4" data-chat-messages>
     @forelse ($report->feedbackMessages as $message)
-        <article class="flex gap-3">
-            <div class="grid size-9 shrink-0 place-items-center rounded-full {{ $message->author_type === \App\Enums\FeedbackAuthorType::Agent ? 'bg-violet-100 text-violet-700' : ($message->author_type === \App\Enums\FeedbackAuthorType::Owner ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600') }} text-xs font-bold">
-                {{ mb_substr($message->author_type->label(), 0, 1) }}
-            </div>
-            <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <p class="text-sm font-semibold text-slate-900">{{ $message->author_name ?: $message->author_type->label() }}</p>
-                    <x-feedback.time :at="$message->created_at" relative class="text-xs text-slate-500" />
+        @php
+            $isTeamSide = $message->author_type !== FeedbackAuthorType::Reporter;
+            $isMine = $viewerIsOwner === $isTeamSide;
+            [$bubbleClass, $nameClass] = match ($message->author_type) {
+                FeedbackAuthorType::Agent => ['bg-violet-50 ring-violet-200', 'text-violet-800'],
+                FeedbackAuthorType::Owner => ['bg-teal-50 ring-teal-200', 'text-teal-800'],
+                FeedbackAuthorType::Reporter => ['bg-amber-50 ring-amber-200', 'text-amber-800'],
+            };
+        @endphp
+        <li @class(['flex', 'justify-end' => $isMine, 'justify-start' => ! $isMine]) data-chat-message data-author="{{ $message->author_type->value }}" data-side="{{ $isMine ? 'mine' : 'theirs' }}">
+            <div @class(['flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', 'items-end' => $isMine, 'items-start' => ! $isMine])>
+                <div @class(['flex flex-wrap items-baseline gap-x-2 px-1 text-xs', 'flex-row-reverse' => $isMine])>
+                    <span class="font-semibold {{ $nameClass }}" data-chat-author>{{ $message->author_name ?: $message->author_type->label() }}</span>
+                    <x-feedback.time :at="$message->created_at" relative class="text-slate-500" />
                 </div>
-                <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ $message->body }}</p>
-                @if ($message->feedbackAttachments->isNotEmpty())
-                    <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        @foreach ($message->feedbackAttachments as $attachment)
-                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}">
-                                <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="aspect-video w-full object-cover" loading="lazy">
-                                <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">放大預覽</span>
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
+                <div @class(['mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', $bubbleClass, 'rounded-tr-md' => $isMine, 'rounded-tl-md' => ! $isMine])>
+                    <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{{ $message->body }}</p>
+                    @if ($message->feedbackAttachments->isNotEmpty())
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            @foreach ($message->feedbackAttachments as $attachment)
+                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block {{ $compact ? 'size-20' : 'size-24 sm:size-28' }} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽" data-chat-attachment>
+                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
             </div>
-        </article>
+        </li>
     @empty
-        <div class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">已收到回報，新的處理進度會顯示在這裡。</div>
+        <li class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-chat-empty>還沒有留言，新的處理進度會顯示在這裡。</li>
     @endforelse
-</div>
+</ol>

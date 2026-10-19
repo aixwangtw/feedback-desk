@@ -393,9 +393,10 @@
                 @endif
                 <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
                 @unless ($isOwner)
-                    <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「查看留言紀錄」直接留言給{{ config('feedback.labels.owner') }}。</p>
+                    <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{{ config('feedback.labels.owner') }}。</p>
                 @endunless
-                <div class="flex justify-end border-t border-slate-100 pt-4">
+                <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                    <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open="{{ $report->public_id }}">開啟對話</button>
                     <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
                 </div>
             </div>

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Feedback\FeedbackAdjustmentController;
 use App\Http\Controllers\Feedback\FeedbackAttachmentController;
 use App\Http\Controllers\Feedback\FeedbackClientController;
+use App\Http\Controllers\Feedback\FeedbackConversationController;
 use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
@@ -24,6 +25,12 @@ $feedbackRoutes = function (): void {
         ->name('feedback.logout');
     Route::get('/p/{feedbackProject:slug}', [FeedbackPortalController::class, 'show'])
         ->name('feedback.portal');
+    Route::get('/p/{feedbackProject:slug}/conversations', [FeedbackConversationController::class, 'index'])
+        ->middleware('throttle:120,1')
+        ->name('feedback.conversations.index');
+    Route::get('/p/{feedbackProject:slug}/conversations/{feedbackReport:public_id}', [FeedbackConversationController::class, 'show'])
+        ->middleware('throttle:120,1')
+        ->name('feedback.conversations.show');
     Route::post('/p/{feedbackProject:slug}/reports', [FeedbackReportController::class, 'store'])
         ->middleware('throttle:10,1')
         ->name('feedback.reports.store');

@@ -1,8 +1,13 @@
 {{-- 回饋單「調整說明」唯讀區塊；老師與開發者共用。 --}}
-@php $compact = $compact ?? false; @endphp
+@php
+    $compact = $compact ?? false;
+    $showHeading = $showHeading ?? true;
+@endphp
 
 <div data-adjustment>
-    <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整說明</h2>
+    @if ($showHeading)
+        <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整說明</h2>
+    @endif
     @if (filled($report->adjustment_note))
         <div class="mt-2" data-adjustment-note>{{ \App\Support\FeedbackRichText::render($report->adjustment_note, $compact) }}</div>
     @elseif ($report->adjustmentAttachments->isEmpty())

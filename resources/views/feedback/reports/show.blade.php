@@ -107,41 +107,56 @@
                 </section>
             @endif
 
-            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-activity data-refresh-url="{{ route('feedback.reports.activity', [$project, $report]) }}">
-                @include('feedback.reports._activity', ['project' => $project, 'report' => $report])
-            </section>
-
-            @if (! $canPostMessage)
-                <section class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:p-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</section>
-            @else
-            <section @class(['rounded-2xl p-5 shadow-sm sm:p-7', 'border border-slate-200 bg-white' => $isOwner, 'border-2 border-teal-300 bg-teal-50/40' => ! $isOwner]) id="message-form" data-message-section>
-                @if ($isOwner)
-                    <h2 class="text-base font-semibold text-slate-950">留言</h2>
-                @else
-                    <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
-                    <p class="mt-1 text-sm leading-6 text-slate-700" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
-                @endif
-                <form method="POST" action="{{ route('feedback.messages.store', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
-                    @csrf
-                    <div>
-                        <label for="body" class="sr-only">訊息內容</label>
-                        <textarea id="body" name="body" required maxlength="10000" rows="4" placeholder="補充操作步驟、回答{{ config('feedback.labels.owner') }}問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
-                        @error('body')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
-                    </div>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        @if ($isPublicReporter)
-                            <span class="text-xs text-slate-500">截圖最多 {{ \App\Support\PublicReporting::MAX_SCREENSHOTS }} 張，每張 5 MB。</span>
+            <section id="conversation" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
+                    <div class="min-w-0">
+                        @if ($isOwner || ! $canPostMessage)
+                            <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                        @else
+                            <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
+                            <p class="mt-1 text-sm leading-6 text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
                         @endif
-                        <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                            加入截圖
-                            <input id="message-screenshots" name="screenshots[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview">
-                        </label>
-                        <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
                     </div>
-                    <div id="message-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
-                </form>
+                    <div class="flex items-center gap-2">
+                        @if ($canManage)
+                            <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open="{{ $report->public_id }}">在對話面板開啟</button>
+                        @endif
+                        <x-feedback.status-badge :status="$report->status" />
+                    </div>
+                </div>
+
+                <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url="{{ route('feedback.reports.activity', [$project, $report]) }}">
+                    @include('feedback.reports._activity', ['project' => $project, 'report' => $report, 'viewerIsOwner' => $isOwner])
+                </div>
+
+                @if (! $canPostMessage)
+                    <p class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</p>
+                @else
+                    <div id="message-form" class="border-t border-slate-100 px-5 py-4 sm:px-7" data-message-section>
+                        <form method="POST" action="{{ route('feedback.messages.store', [$project, $report]) }}" enctype="multipart/form-data" class="grid gap-3">
+                            @csrf
+                            <div>
+                                <label for="body" class="sr-only">訊息內容</label>
+                                <textarea id="body" name="body" required maxlength="10000" rows="3" placeholder="補充操作步驟、回答{{ config('feedback.labels.owner') }}問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
+                                @error('body')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
+                                @error('screenshots')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
+                                @error('screenshots.*')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
+                            </div>
+                            <div id="message-preview" class="grid grid-cols-3 gap-3 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                        加入截圖
+                                        <input id="message-screenshots" name="screenshots[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview">
+                                    </label>
+                                    <span class="text-xs text-slate-500">{{ $isPublicReporter ? '截圖最多 '.\App\Support\PublicReporting::MAX_SCREENSHOTS.' 張，每張 5 MB。' : '截圖最多 5 張，每張 10 MB。' }}</span>
+                                </div>
+                                <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
+                            </div>
+                        </form>
+                    </div>
+                @endif
             </section>
-            @endif
         </div>
 
         <aside class="grid gap-4 lg:sticky lg:top-6">

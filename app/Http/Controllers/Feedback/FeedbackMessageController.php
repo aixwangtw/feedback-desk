@@ -8,6 +8,7 @@ use App\Http\Requests\Feedback\StoreFeedbackMessageRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +19,7 @@ class FeedbackMessageController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackAccess $access,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $validated = $request->validated();
 
@@ -53,6 +54,10 @@ class FeedbackMessageController extends Controller
 
         // 自己留言時一定看過這張單，不讓自己的留言或前面的留言留成未讀。
         $access->isOwner($feedbackProject) ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient();
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => '訊息已送出。'], 201);
+        }
 
         return back()->with('success', '訊息已送出。');
     }

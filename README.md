@@ -47,10 +47,10 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 - 遇到下列必須我本人做的事，先停下來，用編號清楚告訴我要做什麼、在哪個網址或畫面、做完要回你什麼，等我回覆「好了」才繼續：
   1. 註冊或登入 Cloudflare 帳號（https://dash.cloudflare.com/sign-up），免費方案即可。
   2. 在 Cloudflare 主控台啟用 R2（第一次使用要先完成啟用流程；免費額度內不收費）。
-  3. 執行 deploy 時 wrangler 會開瀏覽器要我登入 Cloudflare 並按「允許」；沒有瀏覽器時請告訴我改在哪台電腦做。
+  3. 執行 deploy 時，這台電腦還沒登入過 Cloudflare 的話，wrangler 會開瀏覽器要我登入並按「允許」，指令會一直等到我按完；沒有瀏覽器時請告訴我改在哪台電腦做。
   4. 第一次用 Workers 時要設定 workers.dev 子網域，請把 wrangler 的提示原文給我看，讓我決定子網域名稱。
   5. bootstrap 建立第一個團隊帳號：問我要用的帳號名稱與顯示名稱，並問我要「自己輸入密碼」（請我在終端機自己執行 bootstrap … --set-password，你不要看到密碼）或「由系統產生」。系統產生的密碼只顯示一次，提醒我立刻存進密碼管理器，存好才繼續；不要把密碼寫進任何檔案或對話摘要。
-  6. login 時瀏覽器會開授權頁：請我用剛才的帳號登入、自己輸入終端機上的授權碼、確認申請時間後按「授權」。
+  6. login 時瀏覽器會開授權頁：請我用剛才的帳號登入、自己輸入終端機上的授權碼、確認申請時間後按「授權」。login 指令會等待最多 10 分鐘；如果你執行指令有時間上限（常見是 2 分鐘），請改成背景執行，或請我自己在終端機執行 login，不要因為逾時就重跑而產生新的授權碼。
   7. 專案的客戶入口與開發團隊入口連結只顯示一次，提醒我存進密碼管理器。
   8. 連接 AI 工具後，提醒我重開那個 AI 工具；Claude Code 第一次開啟資料夾時要同意信任，再用 /mcp（Codex 用 codex mcp list）確認 feedback-desk 已連線。其他 agent 照 README「其他 AI Agent 怎麼接」設定，token 用環境變數交給它，不要把 token 寫進對話或專案檔案。
 - 每個指令失敗時，把錯誤訊息原文給我看，對照 README 說明可能原因與下一步，不要自己猜著改設定或刪資源。
@@ -161,6 +161,7 @@ npx github:aixwangtw/feedback-desk login
 - 授權碼不會放在網址裡，所以別人傳來的連結沒辦法替你填好。**如果你沒有在自己的終端機執行 login，不要在這個頁面授權**：授權後對方可以用你的身分做你在網站上能做的事（團隊帳號是所有專案；客戶帳號是自己專案的看單、開單、留言）。
 - 客戶帳號也能 login，之後用命令列或 MCP 看單、開單附圖、留言；改狀態、寫調整說明、管理帳號只有團隊帳號能做。
 - 授權碼 10 分鐘後過期，過期就重新執行 `login`。
+- 出現 `連不到 https://…：fetch failed`，但瀏覽器打得開網站：多半是網路連線較慢或 IPv6 不通（WSL 常見），請先更新到最新版再試（新版已放寬連線等待時間）；仍不行時可以加環境變數 `NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2500`（Node 22 實測有效）。
 - 這個做法在遠端主機、容器裡也能用：瀏覽器可以在另一台電腦上開。
 - 取得的 token 存在 `~/.config/feedback-desk/config.json`，只有你的系統帳號能讀。預設不會到期；要自動到期可加 `--expires 90`（天）。
 
@@ -394,7 +395,7 @@ npx github:aixwangtw/feedback-desk public-reporting public-desk on
 
 - Workers：官方寫明沒有一般性的每秒請求數上限（「There is no general limit on requests per second.」，[Workers limits](https://developers.cloudflare.com/workers/platform/limits/)）。
 - D1：官方寫明單一資料庫一次只處理一個查詢，吞吐量取決於查詢耗時；例：平均 1 ms 的查詢每秒最多約 1,000 個，100 ms 則約 10 個（[D1 limits](https://developers.cloudflare.com/d1/platform/limits/)）。這個工具的查詢在正式環境要花多久，**沒有量過**，官方也沒有公布。
-- 本機 `wrangler dev` 實測的整個請求耗時（含本機資料庫往返，不是 CPU 時間，也不代表正式環境）：面板輪詢沒有變動約 29～31 ms、開清單頁約 39～40 ms、登入約 60～75 ms。
+- 實際部署後的面板輪詢（2～3 個查詢）在伺服器端總耗時約 0.2～0.5 秒（**實測**，見下方），這包含 Worker 到資料庫的網路往返，不是資料庫執行查詢的時間；資料庫本身執行一個查詢要多久，官方沒有公布，這裡也量不到。
 - 推算：開著面板又開著一段對話的人，每秒約產生 1 個 D1 查詢（清單每 10 秒 2 個、對話每 5 秒 3～4 個）。如果正式環境平均查詢是 1 ms，D1 大約可以撐 1,000 人同時開著面板；如果是 10 ms，約 100 人。
 - 實際上先遇到的通常是**每天的請求額度**：一個人開著面板（含對話）每小時約 1,080 次請求，每天 10 萬次約等於「同時開面板的人數 × 開著的小時數 ≈ 92」，例如 10 個人同時開 9 小時；只開著頁面、面板關著時每人每小時約 60 次，約等於「人數 × 小時 ≈ 1,660」，例如 69 個人 24 小時開著分頁。
 
@@ -403,7 +404,8 @@ npx github:aixwangtw/feedback-desk public-reporting public-desk on
 - 附截圖需要瀏覽器開啟 JavaScript：截圖由瀏覽器每張各送一個請求，直接寫進 R2。
 - 單一頁面超過 20 張單時，清單列由瀏覽器產生（畫面相同），所以長清單也需要 JavaScript。清單每頁 50 張。
 - 改密碼分兩步（先確認目前密碼、再設新密碼），每個請求最多只算一次密碼雜湊。
-- 剛部署完的前幾個請求比較吃 CPU。實測沒有被擋，但無法保證不會遇到；遇到時重新整理頁面即可。
+- 實際部署到 Cloudflare 後用 `wrangler tail` 量到的每個請求 CPU 時間（**實測**，2026-10-20，專案只有 1 張單、5 則留言左右；同一種請求量了 2～11 次）：健康檢查 0～1 ms（新啟動的第一次 12 ms）、登入 5～10 ms（含一次密碼雜湊）、面板清單輪詢 2～22 ms、開清單頁 6～23 ms、開單張問題頁 9～33 ms、確認目前密碼 12～18 ms。有些請求超過 10 ms，但這幾次全部回應正常（outcome 為 ok）。官方文件寫每個 isolate 對偶爾超過有一些彈性、持續超過會被終止（「Each isolate has some built-in flexibility to allow for cases where your Worker infrequently runs over the configured limit.」，[Workers limits](https://developers.cloudflare.com/workers/platform/limits/)），沒有給確切規則，所以單很多、留言很多時不保證不會遇到；目前最吃 CPU 的是單張問題頁。遇到時重新整理頁面即可。
+- 同一批請求在伺服器端的總耗時（wallTime，包含 Worker 到資料庫的網路往返）約 0.2～0.6 秒，單張問題頁約 0.9～1.6 秒；從台灣用 curl 量到的整體回應時間約 0.4～2.5 秒（**實測**，含網路）。
 - 沒有自動處理：要處理單時，由你在自己的電腦開 Claude Code 或 Codex。需要讓主機自己處理新單，請見「想自己掌控主機或需要自動處理怎麼辦？」。
 
 ## 密碼怎麼設定、誰能改？

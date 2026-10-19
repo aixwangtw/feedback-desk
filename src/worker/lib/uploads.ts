@@ -1,3 +1,4 @@
+import type { Author } from './access';
 import type { Env } from '../env';
 import { randomId } from './crypto';
 import { placeholders } from './db';
@@ -196,17 +197,28 @@ export async function findClaimableUploads(
 export function claimStatements(
     db: D1Database,
     uploads: Upload[],
-    target: { reportPublicId: string; kind: 'feedback' | 'adjustment'; messageId?: number | null; nowIso: string },
+    target: { reportPublicId: string; kind: 'feedback' | 'adjustment'; messageId?: number | null; nowIso: string; author?: Author },
 ): D1PreparedStatement[] {
     const statements: D1PreparedStatement[] = [];
     for (const upload of uploads) {
         statements.push(
             db
                 .prepare(
-                    `INSERT INTO attachments (report_id, message_id, kind, object_key, original_name, mime_type, size, created_at)
-                     VALUES ((SELECT id FROM reports WHERE public_id = ?), ?, ?, ?, ?, ?, ?, ?)`,
+                    `INSERT INTO attachments (report_id, message_id, kind, object_key, original_name, mime_type, size, uploader_client_account_id, uploader_developer_id, created_at)
+                     VALUES ((SELECT id FROM reports WHERE public_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 )
-                .bind(target.reportPublicId, target.messageId ?? null, target.kind, upload.object_key, upload.original_name, upload.mime_type, upload.size, target.nowIso),
+                .bind(
+                    target.reportPublicId,
+                    target.messageId ?? null,
+                    target.kind,
+                    upload.object_key,
+                    upload.original_name,
+                    upload.mime_type,
+                    upload.size,
+                    target.author?.clientAccountId ?? null,
+                    target.author?.developerId ?? null,
+                    target.nowIso,
+                ),
         );
         statements.push(db.prepare('DELETE FROM uploads WHERE id = ?').bind(upload.id));
     }

@@ -131,6 +131,8 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     messageOld?: string;
     /** ETag of the activity fragment, so the first poll can already get 304. */
     activityEtag?: string;
+    /** Who created the report (account name), shown to project members. */
+    creatorLabel?: string;
 }
 
 export const ReportPage: FC<ReportPageProps> = (props) => {
@@ -177,6 +179,11 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     ) : null}
                                     {report.title}
                                 </h1>
+                                {props.creatorLabel && !isPublicReporter ? (
+                                    <p class="mt-1 text-xs text-slate-500" data-report-creator>
+                                        建立者：{props.creatorLabel}
+                                    </p>
+                                ) : null}
                                 {isOwner && report.client_deleted_at ? (
                                     <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{labels.client}已刪除</span>

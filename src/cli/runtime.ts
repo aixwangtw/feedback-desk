@@ -34,6 +34,10 @@ export interface Runtime {
     openBrowser: (url: string) => Promise<boolean>;
     sleep: (ms: number) => Promise<void>;
     now: () => number;
+    /** Everything piped to stdin (for --password-stdin). */
+    readStdin: () => Promise<string>;
+    /** Asks for a secret on the terminal without echoing it; null when stdin is not a terminal. */
+    promptSecret: (prompt: string) => Promise<string | null>;
 }
 
 export function runProcess(command: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
@@ -94,6 +98,58 @@ async function openBrowserDefault(url: string): Promise<boolean> {
     return false;
 }
 
+function readStdinDefault(): Promise<string> {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', (chunk: string) => {
+            data += chunk;
+        });
+        process.stdin.on('end', () => resolve(data));
+        process.stdin.on('error', reject);
+    });
+}
+
+/** Raw-mode line input that prints nothing for the typed characters. */
+function promptSecretDefault(prompt: string): Promise<string | null> {
+    const stdin = process.stdin;
+    if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
+        return Promise.resolve(null);
+    }
+    return new Promise((resolve) => {
+        process.stderr.write(prompt);
+        let value = '';
+        const finish = (result: string | null) => {
+            stdin.setRawMode(false);
+            stdin.pause();
+            stdin.removeListener('data', onData);
+            process.stderr.write('\n');
+            resolve(result);
+        };
+        const onData = (chunk: string) => {
+            for (const char of chunk) {
+                if (char === '\r' || char === '\n') {
+                    finish(value);
+                    return;
+                }
+                if (char === '\u0003') {
+                    finish(null);
+                    process.exit(130);
+                }
+                if (char === '\u007f' || char === '\b') {
+                    value = [...value].slice(0, -1).join('');
+                } else if (char >= ' ') {
+                    value += char;
+                }
+            }
+        };
+        stdin.setEncoding('utf8');
+        stdin.setRawMode(true);
+        stdin.resume();
+        stdin.on('data', onData);
+    });
+}
+
 export function defaultRuntime(): Runtime {
     return {
         env: process.env,
@@ -108,6 +164,8 @@ export function defaultRuntime(): Runtime {
         openBrowser: openBrowserDefault,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         now: () => Date.now(),
+        readStdin: readStdinDefault,
+        promptSecret: promptSecretDefault,
     };
 }
 

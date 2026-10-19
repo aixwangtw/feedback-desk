@@ -4,7 +4,10 @@
     "main": "src/worker/index.tsx",
     "compatibility_date": "2026-10-01",
     "compatibility_flags": ["nodejs_compat"],
-    "d1_databases": [{ "binding": "DB", "database_name": "feedback-desk-test-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
+    "d1_databases": [{ "binding": "DB", "database_name": "feedback-desk-test-db", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" },
+        // Empty database for upgrade tests: older migrations, then old-style rows, then the new migration.
+        { "binding": "UPGRADE_DB", "database_name": "feedback-desk-upgrade-db", "database_id": "00000000-0000-0000-0000-000000000001" }
+    ],
     "r2_buckets": [{ "binding": "FILES", "bucket_name": "feedback-desk-test-files" }],
     "vars": {
         "APP_SECRET": "test-secret-not-used-in-production-0123456789",

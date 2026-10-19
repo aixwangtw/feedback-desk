@@ -257,3 +257,95 @@ export const DevicePage: FC<{
         </Layout>
     );
 };
+
+export interface AccountView {
+    kind: 'developer' | 'client';
+    username: string;
+    name: string;
+    passwordSetBySelf: boolean;
+}
+
+const PRIMARY_BUTTON =
+    'inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2';
+
+/** The signed-in account's own settings: display name, and password in two steps. */
+export const AccountPage: FC<{
+    v: ViewContext;
+    project: Project;
+    account: AccountView | null;
+    step: 'current' | 'new';
+    passwordErrors: string[];
+    nameErrors: string[];
+    nameOld?: string;
+    success?: string;
+}> = ({ v, project, account, step, passwordErrors, nameErrors, nameOld, success }) => (
+    <Layout v={v} title={`我的帳號｜${project.name}`} project={project} showLogout success={success}>
+        <div class="mx-auto grid max-w-md gap-6" data-account-page>
+            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <p class="text-sm font-semibold text-teal-700">{project.name}</p>
+                <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-950">我的帳號</h1>
+                {!account ? (
+                    <p class="mt-4 text-sm leading-6 text-slate-600" data-account-no-account>
+                        你是用專屬連結登入的，沒有帳號可以設定。要用帳號登入，請先登出，再用帳號密碼登入後回到這一頁。
+                    </p>
+                ) : (
+                    <>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">
+                            登入帳號：<span class="font-semibold text-slate-900" data-account-username>{account.username}</span>
+                            {account.kind === 'developer' ? `（${v.cfg.labels.owner}個人帳號，所有專案共用）` : `（這個專案的${v.cfg.labels.client}帳號）`}
+                            。登入帳號不能改。
+                        </p>
+                        <form method="post" action={paths.accountName(project.slug)} class="mt-5 grid gap-3" data-account-name-form>
+                            <ErrorList errors={nameErrors} />
+                            <div>
+                                <label for="name" class="mb-2 block text-sm font-semibold text-slate-800">顯示名稱</label>
+                                <input id="name" name="name" value={nameOld ?? account.name} required maxlength={100} autocomplete="name" class={INPUT} />
+                                <p class="mt-1.5 text-xs text-slate-500">回報單、留言與對話面板上顯示的名字。</p>
+                            </div>
+                            <button type="submit" class={PRIMARY_BUTTON}>儲存名稱</button>
+                        </form>
+                    </>
+                )}
+            </section>
+            {account ? (
+                <section id="password" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" data-password-section>
+                    <h2 class="text-lg font-bold text-slate-950">改密碼</h2>
+                    <p class="mt-1 text-sm text-slate-600" data-password-state>
+                        目前的密碼：{account.passwordSetBySelf ? '你自己設定的（其他成員不能重設）' : '系統產生的'}
+                    </p>
+                    <ul class="mt-4 grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700" data-password-rules>
+                        <li>建議用密碼管理器（例如 1Password、Bitwarden 或瀏覽器內建的）產生一組新密碼，再貼到這裡。</li>
+                        <li>至少 16 個字；不能全是同一個字、不能是連續字元，也不能包含登入帳號。</li>
+                        <li>改好後，其他裝置上的登入都會登出{account.kind === 'developer' ? '，CLI 與 MCP 用的 API token 也會撤銷，要重新執行 login' : ''}。</li>
+                        <li>自己設定的密碼，其他成員不能重設或改掉。忘記時只有掌握 Cloudflare 帳號的部署者能救回。</li>
+                    </ul>
+                    <ErrorList errors={passwordErrors} class="mt-5" />
+                    {step === 'current' ? (
+                        <form method="post" action={paths.accountVerify(project.slug)} class="mt-6 grid gap-5" data-password-current>
+                            <input type="text" name="username" value={account.username} autocomplete="username" readonly hidden />
+                            <div>
+                                <label for="current_password" class="mb-2 block text-sm font-semibold text-slate-800">目前的密碼</label>
+                                <input id="current_password" name="current_password" type="password" required maxlength={200} autocomplete="current-password" class={INPUT} />
+                            </div>
+                            <button type="submit" class={PRIMARY_BUTTON}>下一步</button>
+                        </form>
+                    ) : (
+                        <form method="post" action={paths.accountPassword(project.slug)} class="mt-6 grid gap-5" data-password-new>
+                            <input type="text" name="username" value={account.username} autocomplete="username" readonly hidden />
+                            <p class="text-sm font-medium text-emerald-800">已確認目前的密碼，請在 5 分鐘內設定新密碼。</p>
+                            <div>
+                                <label for="new_password" class="mb-2 block text-sm font-semibold text-slate-800">新密碼</label>
+                                <input id="new_password" name="new_password" type="password" required minlength={16} maxlength={200} autocomplete="new-password" autofocus class={INPUT} />
+                            </div>
+                            <div>
+                                <label for="new_password_confirmation" class="mb-2 block text-sm font-semibold text-slate-800">再輸入一次新密碼</label>
+                                <input id="new_password_confirmation" name="new_password_confirmation" type="password" required minlength={16} maxlength={200} autocomplete="new-password" class={INPUT} />
+                            </div>
+                            <button type="submit" class={PRIMARY_BUTTON}>更新密碼</button>
+                        </form>
+                    )}
+                </section>
+            ) : null}
+        </div>
+    </Layout>
+);

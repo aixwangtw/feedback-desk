@@ -1,8 +1,8 @@
 import { config, type Env } from '../env';
 import { CookieJar } from './cookies';
 import { hmac, sha256Hex, timingSafeEqualString } from './crypto';
-import { findDeveloper, placeholders } from './db';
-import { isCreatedByClient, isDeletedByClient, isPublicReport, type Developer, type Project, type Report } from './models';
+import { findClientAccount, findClientAccountInProject, findDeveloper, placeholders } from './db';
+import { isCreatedByClient, isDeletedByClient, isPublicReport, type ClientAccount, type Developer, type Project, type Report } from './models';
 
 export const AUTH_COOKIE = 'fd_auth';
 export const PUBLIC_COOKIE = 'fd_public';
@@ -28,6 +28,8 @@ interface GrantEntry {
     e: number;
     /** Developer id for developer logins. */
     d?: number;
+    /** Client account id for client password logins (missing on logins from before migration 0005). */
+    a?: number;
 }
 
 interface AuthCookie {
@@ -53,6 +55,19 @@ export interface Flash {
 export interface Creator {
     creator_type: 'client' | 'developer' | 'owner_shared' | 'public';
     creator_developer_id: number | null;
+    creator_client_account_id?: number | null;
+}
+
+/** Who is writing, for the account columns on messages and attachments. */
+export interface Author {
+    developerId: number | null;
+    clientAccountId: number | null;
+}
+
+interface ValidGrant {
+    entry: GrantEntry;
+    developer: Developer | null;
+    account: ClientAccount | null;
 }
 
 /**
@@ -65,6 +80,7 @@ export class Access {
     private authCookie: AuthCookie | null = null;
     private readonly roleCache = new Map<string, Promise<boolean>>();
     private readonly developerCache = new Map<number, Promise<Developer | null>>();
+    private readonly accountCache = new Map<number, Promise<ClientAccount | null>>();
     private readonly nowSeconds: number;
 
     constructor(
@@ -108,23 +124,36 @@ export class Access {
         return developer;
     }
 
-    private async fingerprint(project: Project, role: Role, source: GrantSource, developer: Developer | null = null): Promise<string | null> {
+    private clientAccount(id: number): Promise<ClientAccount | null> {
+        let account = this.accountCache.get(id);
+        if (!account) {
+            account = findClientAccount(this.env.DB, id);
+            this.accountCache.set(id, account);
+        }
+        return account;
+    }
+
+    private async fingerprint(project: Project, role: Role, source: GrantSource, developer: Developer | null = null, account: ClientAccount | null = null): Promise<string | null> {
         let credential: string | null = null;
         if (source === 'link') {
             credential = role === 'owner' ? project.owner_token_hash : project.client_token_hash;
-        } else if (source === 'password') {
-            credential = role === 'client' ? project.client_password_hash : null;
+        } else if (source === 'password' && role === 'client' && account) {
+            credential = `account|${account.id}|${account.password_hash}`;
         } else if (source === 'developer' && developer && role === 'owner') {
             credential = `${developer.id}|${developer.password_hash}`;
         }
         if (!credential) {
             return null;
         }
-        return hmac(this.env.APP_SECRET, `${project.id}|${role}|${source}|${credential}`);
+        return this.grantFingerprint(project.id, role, source, credential);
     }
 
-    private async grant(project: Project, role: Role, source: GrantSource, developer: Developer | null = null): Promise<void> {
-        const fingerprint = await this.fingerprint(project, role, source, developer);
+    private grantFingerprint(projectId: number | string, role: Role, source: GrantSource, credential: string): Promise<string> {
+        return hmac(this.env.APP_SECRET, `${projectId}|${role}|${source}|${credential}`);
+    }
+
+    private async grant(project: Project, role: Role, source: GrantSource, developer: Developer | null = null, account: ClientAccount | null = null): Promise<void> {
+        const fingerprint = await this.fingerprint(project, role, source, developer, account);
         if (!fingerprint) {
             return;
         }
@@ -134,6 +163,10 @@ export class Access {
         if (developer) {
             entry.d = developer.id;
             this.developerCache.set(developer.id, Promise.resolve(developer));
+        }
+        if (account) {
+            entry.a = account.id;
+            this.accountCache.set(account.id, Promise.resolve(account));
         }
         cookie.p[key] = { ...cookie.p[key], [role === 'owner' ? 'o' : 'c']: entry };
         this.saveAuth(cookie);
@@ -147,8 +180,14 @@ export class Access {
         return this.grant(project, 'owner', 'developer', developer);
     }
 
-    grantClient(project: Project, source: GrantSource = 'link'): Promise<void> {
-        return this.grant(project, 'client', source);
+    /** Client entry link login. */
+    grantClient(project: Project): Promise<void> {
+        return this.grant(project, 'client', 'link');
+    }
+
+    /** Client account login; also used to stay signed in after the holder changes the password. */
+    grantClientAccount(project: Project, account: ClientAccount): Promise<void> {
+        return this.grant(project, 'client', 'password', null, account);
     }
 
     async grantReporter(report: Pick<Report, 'id'>): Promise<void> {
@@ -166,21 +205,42 @@ export class Access {
         this.saveAuth(cookie);
     }
 
-    private async validEntry(project: Project, role: Role): Promise<GrantEntry | null> {
+    private async validGrant(project: Project, role: Role): Promise<ValidGrant | null> {
         const cookie = await this.auth();
         const entry = cookie.p[String(project.id)]?.[role === 'owner' ? 'o' : 'c'];
         if (!entry || typeof entry.e !== 'number' || entry.e < this.nowSeconds || typeof entry.f !== 'string') {
             return null;
         }
         let developer: Developer | null = null;
+        let account: ClientAccount | null = null;
+        let expected: string | null;
         if (entry.s === 'developer') {
             developer = typeof entry.d === 'number' ? await this.developer(entry.d) : null;
             if (!developer || developer.disabled_at) {
                 return null;
             }
+            expected = await this.fingerprint(project, role, entry.s, developer);
+        } else if (entry.s === 'password') {
+            if (role !== 'client') {
+                return null;
+            }
+            if (typeof entry.a === 'number') {
+                account = await this.clientAccount(entry.a);
+                expected = account && account.project_id === project.id && !account.disabled_at ? await this.fingerprint(project, role, entry.s, null, account) : null;
+            } else {
+                // A login from before migration 0005: it was bound to the project's single client
+                // password, which now belongs to the copied account with the same username.
+                account = project.client_username ? await findClientAccountInProject(this.env.DB, project.id, project.client_username) : null;
+                expected = account && !account.disabled_at ? await this.grantFingerprint(project.id, role, 'password', account.password_hash) : null;
+            }
+        } else {
+            expected = await this.fingerprint(project, role, entry.s);
         }
-        const expected = await this.fingerprint(project, role, entry.s, developer);
-        return expected !== null && timingSafeEqualString(expected, entry.f) ? entry : null;
+        return expected !== null && timingSafeEqualString(expected, entry.f) ? { entry, developer, account } : null;
+    }
+
+    private async validEntry(project: Project, role: Role): Promise<GrantEntry | null> {
+        return (await this.validGrant(project, role))?.entry ?? null;
     }
 
     private hasRole(project: Project, role: Role): Promise<boolean> {
@@ -214,9 +274,66 @@ export class Access {
         return this.developer(entry.d);
     }
 
+    /** How the client role was obtained in this browser (link or password); null without a valid client login. */
+    async clientSource(project: Project): Promise<GrantSource | null> {
+        return (await this.validEntry(project, 'client'))?.s ?? null;
+    }
+
+    /** Signed in with an account that has a password (not an entry link), so "change password" applies. */
+    async hasPasswordAccount(project: Project): Promise<boolean> {
+        const developer = await this.currentDeveloper(project);
+        if (developer && !developer.disabled_at) {
+            return true;
+        }
+        return (await this.currentClientAccount(project)) !== null;
+    }
+
+    /** The client account signed in on this project; null for the client entry link or no client login. */
+    async currentClientAccount(project: Project): Promise<ClientAccount | null> {
+        const grant = await this.validGrant(project, 'client');
+        return grant && grant.entry.s === 'password' ? grant.account : null;
+    }
+
+    /**
+     * Whose read state and unread counts apply on the client side: a signed-in client account, or
+     * null for the shared client side (entry link, single-report and public reporters). Only
+     * meaningful when the viewer is not the team.
+     */
+    async clientViewer(project: Project): Promise<ClientAccount | null> {
+        return (await this.isOwner(project)) ? null : this.currentClientAccount(project);
+    }
+
+    /** The accounts recorded on what this browser writes in the project. */
+    async author(project: Project): Promise<Author> {
+        if (await this.isOwner(project)) {
+            return { developerId: (await this.currentDeveloper(project))?.id ?? null, clientAccountId: null };
+        }
+        return { developerId: null, clientAccountId: (await this.currentClientAccount(project))?.id ?? null };
+    }
+
+    /**
+     * After the account holder changes their own password: every login bound to the old hash
+     * (other browsers, CLI sign-in pages) stops working, and this browser's logins of that
+     * account are re-signed with the new hash so the holder stays signed in.
+     */
+    async refreshDeveloperLogins(developer: Developer): Promise<void> {
+        const cookie = await this.auth();
+        for (const [projectId, grants] of Object.entries(cookie.p)) {
+            const entry = grants.o;
+            if (entry && entry.s === 'developer' && entry.d === developer.id) {
+                entry.f = await this.grantFingerprint(projectId, 'owner', 'developer', `${developer.id}|${developer.password_hash}`);
+            }
+        }
+        if (cookie.t && cookie.t.i === developer.id) {
+            cookie.t.f = await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`);
+        }
+        this.developerCache.set(developer.id, Promise.resolve(developer));
+        this.saveAuth(cookie);
+    }
+
     async creatorFor(project: Project): Promise<Creator> {
         if (!(await this.isOwner(project))) {
-            return { creator_type: 'client', creator_developer_id: null };
+            return { creator_type: 'client', creator_developer_id: null, creator_client_account_id: (await this.currentClientAccount(project))?.id ?? null };
         }
         const developer = await this.currentDeveloper(project);
         return developer

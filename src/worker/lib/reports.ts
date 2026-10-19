@@ -3,10 +3,10 @@ import { STATUSES } from '../../shared/status';
 import { nowIso } from '../../shared/time';
 import type { Env } from '../env';
 import { config } from '../env';
-import type { Creator } from './access';
+import type { Author, Creator } from './access';
 import { randomString, sha256Hex } from './crypto';
 import { placeholders } from './db';
-import type { Attachment, Project, Report, Upload } from './models';
+import type { Attachment, ClientAccount, Project, Report, Upload } from './models';
 import { claimStatements } from './uploads';
 
 export const MAX_TITLE = 160;
@@ -29,8 +29,8 @@ export async function createReport(
     const results = await db.batch([
         db
             .prepare(
-                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
+                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, creator_client_account_id, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
             )
             .bind(
                 project.id,
@@ -39,6 +39,7 @@ export async function createReport(
                 data.reporter_name ?? null,
                 creator.creator_type,
                 creator.creator_developer_id,
+                creator.creator_client_account_id ?? null,
                 data.title,
                 data.description,
                 at,
@@ -48,7 +49,20 @@ export async function createReport(
                 at,
                 at,
             ),
-        ...claimStatements(db, data.uploads, { reportPublicId: publicId, kind: 'feedback', nowIso: at }),
+        ...claimStatements(db, data.uploads, {
+            reportPublicId: publicId,
+            kind: 'feedback',
+            nowIso: at,
+            author: { developerId: creator.creator_developer_id, clientAccountId: creator.creator_client_account_id ?? null },
+        }),
+        // A client account's own new report starts read for that account.
+        ...(creator.creator_client_account_id
+            ? [
+                  db
+                      .prepare('INSERT OR REPLACE INTO client_reads (client_account_id, report_id, last_read_at) VALUES (?, (SELECT id FROM reports WHERE public_id = ?), ?)')
+                      .bind(creator.creator_client_account_id, publicId, at),
+              ]
+            : []),
     ]);
     return { report: results[0].results[0] as Report, reporterToken };
 }
@@ -56,7 +70,7 @@ export async function createReport(
 export async function updateReport(
     env: Env,
     report: Report,
-    data: { title: string; description: string; uploads: Upload[]; removeAttachmentIds: number[] },
+    data: { title: string; description: string; uploads: Upload[]; removeAttachmentIds: number[]; author?: Author },
     now = Date.now(),
 ): Promise<void> {
     const db = env.DB;
@@ -65,7 +79,7 @@ export async function updateReport(
     await db.batch([
         db.prepare('UPDATE reports SET title = ?, description = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(data.title, data.description, at, at, report.id),
         ...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)),
-        ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', nowIso: at }),
+        ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', nowIso: at, author: data.author }),
     ]);
     await deleteObjects(env, removed);
 }
@@ -127,14 +141,16 @@ export async function setClientDeleted(env: Env, report: Report, deleted: boolea
 export async function addMessage(
     env: Env,
     report: Report,
-    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[] },
+    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[]; author?: Author },
     now = Date.now(),
 ): Promise<void> {
     const db = env.DB;
     const at = nowIso(now);
     const message = await db
-        .prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id')
-        .bind(report.id, data.author_type, data.author_name, data.body, at, at)
+        .prepare(
+            'INSERT INTO messages (report_id, author_type, author_name, author_client_account_id, author_developer_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+        )
+        .bind(report.id, data.author_type, data.author_name, data.author?.clientAccountId ?? null, data.author?.developerId ?? null, data.body, at, at)
         .first<{ id: number }>();
     if (!message) {
         throw new Error('message insert returned no id');
@@ -142,7 +158,7 @@ export async function addMessage(
     try {
         // Attachments point at the message by its own id.
         await db.batch([
-            ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at }),
+            ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at, author: data.author }),
             db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id),
         ]);
     } catch (error) {
@@ -173,7 +189,7 @@ export function mergeNote(current: string | null, note: string | null, append: b
 export async function updateAdjustment(
     env: Env,
     report: Report,
-    data: { note?: string | null; append?: boolean; uploads: Upload[]; removeAttachmentIds: number[] },
+    data: { note?: string | null; append?: boolean; uploads: Upload[]; removeAttachmentIds: number[]; author?: Author },
     now = Date.now(),
 ): Promise<void> {
     const db = env.DB;
@@ -189,7 +205,7 @@ export async function updateAdjustment(
             : db.prepare('UPDATE reports SET adjustment_updated_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(changedAt, at, at, report.id),
     ];
     statements.push(...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)));
-    statements.push(...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'adjustment', nowIso: at }));
+    statements.push(...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'adjustment', nowIso: at, author: data.author }));
     await db.batch(statements);
     await deleteObjects(env, removed);
 }
@@ -212,23 +228,63 @@ export function hasUnreadMessagesSql(table: string): string {
         AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
 }
 
-/** SQL for the number of team (and AI) messages the client has not seen. */
-export function clientUnreadRepliesSql(table: string): string {
-    return `(SELECT COUNT(*) FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
-        AND (${table}.client_last_read_at IS NULL OR rm.created_at > ${table}.client_last_read_at))`;
+/**
+ * Whose client-side read state applies: a signed-in client account (each has its own), or null for
+ * the shared client side (entry link, single-report and public reporters).
+ */
+export type ClientViewer = Pick<ClientAccount, 'id' | 'created_at'> | null;
+
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+/**
+ * SQL for when the client viewer last opened the report (NULL: never). A client account that has
+ * not opened a report yet counts everything before the account existed as read, so a new account
+ * does not start with every old reply lit up. Values are numbers and checked timestamps from the
+ * database, never user input, so they are inlined.
+ */
+export function clientReadAtSql(table: string, viewer: ClientViewer): string {
+    if (!viewer) {
+        return `${table}.client_last_read_at`;
+    }
+    if (!Number.isInteger(viewer.id) || !ISO_TIME.test(viewer.created_at)) {
+        throw new Error('invalid client viewer');
+    }
+    return `COALESCE((SELECT cr.last_read_at FROM client_reads cr WHERE cr.client_account_id = ${viewer.id} AND cr.report_id = ${table}.id), '${viewer.created_at}')`;
 }
 
-/** SQL: 1 when the adjustment note or images changed after the client last opened the report. */
-export function adjustmentNewForClientSql(table: string): string {
-    return `(CASE WHEN ${table}.adjustment_updated_at IS NOT NULL AND (${table}.client_last_read_at IS NULL OR ${table}.adjustment_updated_at > ${table}.client_last_read_at) THEN 1 ELSE 0 END)`;
+/** SQL for the number of team (and AI) messages the client viewer has not seen. */
+export function clientUnreadRepliesSql(table: string, viewer: ClientViewer = null): string {
+    const readAt = clientReadAtSql(table, viewer);
+    return `(SELECT COUNT(*) FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
+        AND (${readAt} IS NULL OR rm.created_at > ${readAt}))`;
+}
+
+/** SQL: 1 when the adjustment note or images changed after the client viewer last opened the report. */
+export function adjustmentNewForClientSql(table: string, viewer: ClientViewer = null): string {
+    const readAt = clientReadAtSql(table, viewer);
+    return `(CASE WHEN ${table}.adjustment_updated_at IS NOT NULL AND (${readAt} IS NULL OR ${table}.adjustment_updated_at > ${readAt}) THEN 1 ELSE 0 END)`;
 }
 
 /**
- * SQL for the unread count on the chat buttons and in the chat panel: client messages for the team;
- * team messages for the client, plus 1 when the adjustment changed.
+ * SQL for the unread count on the chat buttons and in the chat panel: client messages for the team
+ * (shared by the whole team); team messages for the client viewer, plus 1 when the adjustment changed.
  */
-export function viewerUnreadSql(table: string, isOwner: boolean): string {
-    return isOwner ? unreadMessagesSql(table) : `(${clientUnreadRepliesSql(table)} + ${adjustmentNewForClientSql(table)})`;
+export function viewerUnreadSql(table: string, isOwner: boolean, viewer: ClientViewer = null): string {
+    return isOwner ? unreadMessagesSql(table) : `(${clientUnreadRepliesSql(table, viewer)} + ${adjustmentNewForClientSql(table, viewer)})`;
+}
+
+/** When the client viewer last opened the report (null: never), for checks outside SQL. */
+export async function clientReadAt(db: D1Database, report: Pick<Report, 'id' | 'client_last_read_at'>, viewer: ClientViewer): Promise<string | null> {
+    if (!viewer) {
+        return report.client_last_read_at;
+    }
+    const row = await db.prepare('SELECT last_read_at FROM client_reads WHERE client_account_id = ? AND report_id = ?').bind(viewer.id, report.id).first<{ last_read_at: string }>();
+    return row?.last_read_at ?? viewer.created_at;
+}
+
+/** SQL for the current name of the client account that created the report (NULL without one). */
+export function creatorClientNameSql(table: string): string {
+    return `(SELECT cca.name FROM client_accounts cca WHERE cca.id = ${table}.creator_client_account_id)`;
 }
 
 /** SQL for the number of messages on the report. */
@@ -250,9 +306,9 @@ export function conversationOrderSql(columns: { unread: string; messagesCount: s
 }
 
 /** Unread count (for this viewer side) and message count of one report, for its chat button. */
-export async function chatCounts(db: D1Database, report: Pick<Report, 'id'>, isOwner: boolean): Promise<{ unread: number; messagesCount: number }> {
+export async function chatCounts(db: D1Database, report: Pick<Report, 'id'>, isOwner: boolean, viewer: ClientViewer = null): Promise<{ unread: number; messagesCount: number }> {
     const row = await db
-        .prepare(`SELECT ${viewerUnreadSql('r', isOwner)} AS unread, ${messagesCountSql('r')} AS messages_count FROM reports r WHERE r.id = ?`)
+        .prepare(`SELECT ${viewerUnreadSql('r', isOwner, viewer)} AS unread, ${messagesCountSql('r')} AS messages_count FROM reports r WHERE r.id = ?`)
         .bind(report.id)
         .first<{ unread: number; messages_count: number }>();
     return { unread: row?.unread ?? 0, messagesCount: row?.messages_count ?? 0 };
@@ -265,11 +321,25 @@ export function latestMessageSql(table: string): string {
 
 /**
  * Marks the report as read by the team or by the client side. Only the read time changes, so the
- * activity time, the ETag and the list order stay as they are.
+ * activity time, the ETag and the list order stay as they are. A client account also gets its own
+ * read time; the shared client time still moves (entry-link viewers use it, and it moves the
+ * client chat version so other client accounts' panels refresh).
  */
-export async function markRead(env: Env, report: Pick<Report, 'id'>, side: 'owner' | 'client', now = Date.now()): Promise<void> {
-    const column = side === 'owner' ? 'owner_last_read_at' : 'client_last_read_at';
-    await env.DB.prepare(`UPDATE reports SET ${column} = ? WHERE id = ?`).bind(nowIso(now), report.id).run();
+export async function markRead(env: Env, report: Pick<Report, 'id'>, side: 'owner' | 'client', now = Date.now(), viewer: ClientViewer = null): Promise<void> {
+    const at = nowIso(now);
+    if (side === 'owner') {
+        await env.DB.prepare('UPDATE reports SET owner_last_read_at = ? WHERE id = ?').bind(at, report.id).run();
+        return;
+    }
+    const statements = [env.DB.prepare('UPDATE reports SET client_last_read_at = ? WHERE id = ?').bind(at, report.id)];
+    if (viewer) {
+        statements.push(
+            env.DB.prepare(
+                'INSERT INTO client_reads (client_account_id, report_id, last_read_at) VALUES (?, ?, ?) ON CONFLICT (client_account_id, report_id) DO UPDATE SET last_read_at = excluded.last_read_at',
+            ).bind(viewer.id, report.id, at),
+        );
+    }
+    await env.DB.batch(statements);
 }
 
 /** Status value => number of reports in the whole project. */
@@ -332,11 +402,12 @@ export function creatorLabel(
     report: Pick<Report, 'creator_type' | 'reporter_name'>,
     project: Pick<Project, 'client_display_name'>,
     developerName: string | null,
+    clientAccountName: string | null = null,
 ): string {
     const labels = config(env).labels;
     switch (report.creator_type) {
         case 'client':
-            return clientLabel(env, project);
+            return clientAccountName ?? clientLabel(env, project);
         case 'developer':
             return developerName ?? labels.owner;
         case 'public':
@@ -350,8 +421,8 @@ export function clientLabel(env: Env, project: Pick<Project, 'client_display_nam
     return project.client_display_name && project.client_display_name.trim() !== '' ? project.client_display_name : config(env).labels.client;
 }
 
-/** Author name stored on a new message. */
-export function messageAuthorName(env: Env, report: Report, isOwner: boolean, developerName: string | null): string {
+/** Author name stored on a new message (pages show the account's current name when one is linked). */
+export function messageAuthorName(env: Env, report: Report, isOwner: boolean, developerName: string | null, clientAccountName: string | null = null): string {
     const labels = config(env).labels;
     if (isOwner) {
         return report.creator_type === 'public' ? labels.owner : developerName ?? labels.owner;
@@ -359,5 +430,5 @@ export function messageAuthorName(env: Env, report: Report, isOwner: boolean, de
     if (report.creator_type === 'public') {
         return report.reporter_name || '公開回報者';
     }
-    return labels.client;
+    return clientAccountName ?? labels.client;
 }

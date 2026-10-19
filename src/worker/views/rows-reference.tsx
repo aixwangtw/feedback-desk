@@ -58,9 +58,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachm
                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                 </form>
             </td>
-            {isOwner ? (
-                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
-            ) : null}
+            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                 {row.attachments.length > 0 ? (
                     <div class="flex flex-wrap gap-1 sm:justify-center">
@@ -123,7 +121,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
         <article class={cx('cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)} title="拖拉卡片可改變狀態">
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
-                    <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span>{isOwner ? <span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {row.creatorLabel}</span> : null}</p>
+                    <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {row.creatorLabel}</span></p>
                     <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>

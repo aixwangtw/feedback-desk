@@ -7,7 +7,9 @@ export interface Project {
     client_display_name: string | null;
     owner_token_hash: string;
     client_token_hash: string | null;
+    /** Before migration 0005 the one client login of the project; now only used to find that account. */
     client_username: string | null;
+    /** Emptied by migration 0005; client passwords live in client_accounts. */
     client_password_hash: string | null;
     login_prefill_username: string | null;
     login_prefill_password: string | null;
@@ -26,6 +28,22 @@ export interface Developer {
     password_hash: string;
     /** Disabled accounts cannot sign in; their logins and API tokens stop working. */
     disabled_at: string | null;
+    /** 1 when the account holder chose this password; other members cannot reset it. */
+    password_set_by_self: number;
+    created_at: string;
+    updated_at: string;
+}
+
+/** One client person of one project (migration 0005). */
+export interface ClientAccount {
+    id: number;
+    project_id: number;
+    username: string;
+    name: string;
+    password_hash: string;
+    /** 1 when the holder chose this password; the team cannot reset it. */
+    password_set_by_self: number;
+    disabled_at: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -38,6 +56,8 @@ export interface Report {
     reporter_name: string | null;
     creator_type: CreatorType;
     creator_developer_id: number | null;
+    /** The client account that created it; null for the client entry link and public reports. */
+    creator_client_account_id: number | null;
     title: string;
     description: string;
     adjustment_note: string | null;
@@ -60,7 +80,10 @@ export interface Message {
     id: number;
     report_id: number;
     author_type: 'reporter' | 'owner' | 'agent';
+    /** Name stored when written; pages show the account's current name when one is linked. */
     author_name: string | null;
+    author_client_account_id: number | null;
+    author_developer_id: number | null;
     body: string;
     created_at: string;
     updated_at: string;
@@ -75,6 +98,8 @@ export interface Attachment {
     original_name: string;
     mime_type: string;
     size: number;
+    uploader_client_account_id: number | null;
+    uploader_developer_id: number | null;
     created_at: string;
 }
 

@@ -7,6 +7,7 @@ import { api, developerForToken } from './routes/api';
 import { HttpError, viewContext, type AppEnv } from './routes/context';
 import { device } from './routes/device';
 import { files } from './routes/files';
+import { account } from './routes/account';
 import { web } from './routes/web';
 import { MessagePage } from './views/pages';
 import { CONTENT_SECURITY_POLICY, secretUsable } from './lib/security';
@@ -100,6 +101,7 @@ app.all('/mcp', async (c) => {
 app.route('/api/v1', api);
 app.route('/', files);
 app.route('/', device);
+app.route('/', account);
 app.route('/', web);
 
 export { app };

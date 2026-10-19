@@ -1,7 +1,8 @@
 import { pbkdf2Sync, randomBytes, randomInt } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bool, parse, requirePositional, str } from '../args';
+import { bool, parse, requirePositional, str, type Parsed } from '../args';
+import { selfSetPasswordProblems, SELF_SET_PASSWORD_ITERATIONS } from '../../shared/password';
 import { checkWranglerConfig, deployDir, readState, readWranglerConfig, refreshArtifacts, wranglerTemplate, writeState } from '../deploy-dir';
 import { CLI_COMMAND, CliError, type Runtime } from '../runtime';
 import { d1Query, deployedUrls, ensureWranglerLogin, sqlString, wrangler } from '../wrangler';
@@ -149,44 +150,164 @@ export async function deploy(rt: Runtime, argv: string[]): Promise<number> {
     return 0;
 }
 
+/** Reads a password the deployer chose: piped (--password-stdin) or typed twice without echo (--set-password). */
+async function chosenPassword(rt: Runtime, args: Parsed, username: string): Promise<string | null> {
+    const fromStdin = bool(args, 'password-stdin');
+    const interactive = bool(args, 'set-password');
+    if (fromStdin && interactive) {
+        throw new CliError('--password-stdin 與 --set-password 只能選一個。');
+    }
+    let password: string | null = null;
+    if (fromStdin) {
+        password = (await rt.readStdin()).replace(/\r?\n$/, '');
+    } else if (interactive) {
+        rt.out('請輸入密碼（畫面不會顯示）。建議用密碼管理器產生一組再貼上。');
+        const first = await rt.promptSecret('密碼：');
+        if (first === null) {
+            throw new CliError('目前不是互動終端機，無法輸入密碼；請改用 --password-stdin，或不加參數讓系統產生密碼。');
+        }
+        const second = await rt.promptSecret('再輸入一次：');
+        if (first !== second) {
+            throw new CliError('兩次輸入的密碼不一樣。');
+        }
+        password = first;
+    }
+    if (password === null) {
+        return null;
+    }
+    const problems = selfSetPasswordProblems(password, username);
+    if (problems.length > 0) {
+        throw new CliError(problems.join(''));
+    }
+    return password;
+}
+
+/** SQL that ends every API credential of a team account (tokens, approved but unclaimed CLI logins). */
+function revokeDeveloperSql(id: number): string[] {
+    return [`DELETE FROM api_tokens WHERE developer_id = ${id}`, `UPDATE device_codes SET status = 'denied' WHERE developer_id = ${id} AND status = 'approved'`];
+}
+
 export async function bootstrap(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { dir: { type: 'string' }, name: { type: 'string' }, reset: { type: 'boolean' } });
+    const args = parse(argv, {
+        dir: { type: 'string' },
+        name: { type: 'string' },
+        reset: { type: 'boolean' },
+        'password-stdin': { type: 'boolean' },
+        'set-password': { type: 'boolean' },
+    });
     const username = requirePositional(args, 0, '<帳號>').trim();
     if (username === '' || [...username].length > 50) {
         throw new CliError('帳號不可為空白，且不可超過 50 字。');
     }
+    const reset = bool(args, 'reset');
+    if (reset && (bool(args, 'password-stdin') || bool(args, 'set-password'))) {
+        throw new CliError('--reset 是忘記密碼時用的，一律產生新密碼；登入後可在網頁「我的帳號」改成自己的密碼。');
+    }
     const dir = deployDir(rt, str(args, 'dir'));
     readWranglerConfig(dir);
+    const chosen = reset ? null : await chosenPassword(rt, args, username);
     await ensureWranglerLogin(rt, dir);
-    const existing = await d1Query<{ id: number; username: string }>(rt, dir, 'SELECT id, username FROM developers ORDER BY id');
-    const reset = bool(args, 'reset');
-    const password = generatePassword();
-    const hash = hashPassword(password);
-    const now = new Date(rt.now()).toISOString();
     if (reset) {
-        if (!existing.some((row) => row.username === username)) {
-            throw new CliError(`找不到團隊帳號 ${username}，--reset 只能重設既有帳號。`);
-        }
-        await d1Query(rt, dir, `UPDATE developers SET password_hash = ${sqlString(hash)}, updated_at = ${sqlString(now)} WHERE username = ${sqlString(username)}`);
-        rt.out(`已重設團隊帳號 ${username} 的密碼（此帳號原本的網頁登入已失效）。`);
-    } else {
-        if (existing.length > 0) {
-            throw new CliError(
-                `已經有團隊帳號（${existing.map((row) => row.username).join('、')}）。新增帳號請登入後用 ${CLI_COMMAND} developer create；忘記密碼可用 bootstrap ${existing[0].username} --reset。`,
-            );
-        }
-        const name = (str(args, 'name') ?? username).trim() || username;
-        await d1Query(
-            rt,
-            dir,
-            `INSERT INTO developers (name, username, password_hash, created_at, updated_at) VALUES (${sqlString(name)}, ${sqlString(username)}, ${sqlString(hash)}, ${sqlString(now)}, ${sqlString(now)})`,
-        );
-        rt.out(`已建立第一個團隊帳號：${name}（${username}）`);
+        return recoverAccount(rt, dir, username, undefined, 'developer');
     }
+    const existing = await d1Query<{ id: number; username: string }>(rt, dir, 'SELECT id, username FROM developers ORDER BY id');
+    if (existing.length > 0) {
+        throw new CliError(
+            `已經有團隊帳號（${existing.map((row) => row.username).join('、')}）。新增帳號請登入後用 ${CLI_COMMAND} developer create；忘記密碼請用 ${CLI_COMMAND} account recover ${existing[0].username}。`,
+        );
+    }
+    const password = chosen ?? generatePassword();
+    const hash = hashPassword(password, chosen ? SELF_SET_PASSWORD_ITERATIONS : PASSWORD_ITERATIONS);
+    const now = new Date(rt.now()).toISOString();
+    const name = (str(args, 'name') ?? username).trim() || username;
+    await d1Query(
+        rt,
+        dir,
+        `INSERT INTO developers (name, username, password_hash, password_set_by_self, created_at, updated_at) VALUES (${sqlString(name)}, ${sqlString(username)}, ${sqlString(hash)}, ${chosen ? 1 : 0}, ${sqlString(now)}, ${sqlString(now)})`,
+    );
+    rt.out(`已建立第一個團隊帳號：${name}（${username}）`);
     rt.out(`帳號：${username}`);
-    rt.out(`密碼：${password}`);
-    rt.out('密碼只會顯示這一次，請存入密碼管理器。');
+    if (chosen) {
+        rt.out('密碼：使用你剛才輸入的密碼（其他成員不能重設它；忘記時用 account recover 救回）。');
+    } else {
+        rt.out(`密碼：${password}`);
+        rt.out('密碼只會顯示這一次，請存入密碼管理器。登入後可在網頁「我的帳號」改成自己的密碼。');
+    }
     const state = readState(dir);
     rt.out(`下一步：${CLI_COMMAND} login${state.url ? ` --url ${state.url}` : ' --url https://你的站'}`);
     return 0;
+}
+
+/**
+ * Forgotten password: writes a generated password straight into D1 with the deployer's own
+ * Cloudflare login (wrangler), not through the Worker. Works for any team or client account,
+ * including passwords the holder chose; the account goes back to a generated password and every
+ * login and token of it ends.
+ */
+async function recoverAccount(rt: Runtime, dir: string, username: string, projectSlug: string | undefined, only?: 'developer'): Promise<number> {
+    const developers = projectSlug ? [] : await d1Query<{ id: number; username: string; name: string }>(rt, dir, `SELECT id, username, name FROM developers WHERE username = ${sqlString(username)}`);
+    const clients =
+        only === 'developer'
+            ? []
+            : await d1Query<{ id: number; username: string; name: string; project_id: number; slug: string }>(
+                  rt,
+                  dir,
+                  `SELECT ca.id, ca.username, ca.name, ca.project_id, p.slug FROM client_accounts ca JOIN projects p ON p.id = ca.project_id WHERE ca.username = ${sqlString(username)}${
+                      projectSlug ? ` AND p.slug = ${sqlString(projectSlug)}` : ''
+                  }`,
+              );
+    const total = developers.length + clients.length;
+    if (total === 0) {
+        throw new CliError(`找不到帳號 ${username}${projectSlug ? `（專案 ${projectSlug}）` : ''}。`);
+    }
+    if (total > 1) {
+        throw new CliError(`有不只一個帳號叫 ${username}（${clients.map((row) => `專案 ${row.slug} 的客戶帳號`).join('、')}${developers.length > 0 ? '、團隊帳號' : ''}），請加 --project <slug> 指定客戶帳號。`);
+    }
+    const password = generatePassword();
+    const hash = hashPassword(password);
+    const now = new Date(rt.now()).toISOString();
+    if (developers.length === 1) {
+        const id = developers[0].id;
+        await d1Query(
+            rt,
+            dir,
+            [`UPDATE developers SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${id}`, ...revokeDeveloperSql(id)].join('; '),
+        );
+        rt.out(`已救回團隊帳號 ${developers[0].name}（${username}）：網頁登入、CLI／MCP 的 API token 全部失效。`);
+    } else {
+        const target = clients[0];
+        await d1Query(
+            rt,
+            dir,
+            [
+                `UPDATE client_accounts SET password_hash = ${sqlString(hash)}, password_set_by_self = 0, updated_at = ${sqlString(now)} WHERE id = ${target.id}`,
+                `UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL WHERE id = ${target.project_id} AND login_prefill_username = ${sqlString(username)}`,
+                ...clientRevokeSql(target.id),
+            ].join('; '),
+        );
+        rt.out(`已救回專案 ${target.slug} 的客戶帳號 ${target.name}（${username}）：這個帳號的登入全部失效。`);
+    }
+    rt.out(`帳號：${username}`);
+    rt.out(`密碼：${password}`);
+    rt.out('密碼只會顯示這一次。請交給本人，登入後到網頁「我的帳號」改成自己的密碼。');
+    return 0;
+}
+
+/** SQL that ends every API credential of a client account (none exist before client tokens are added). */
+function clientRevokeSql(_id: number): string[] {
+    return [];
+}
+
+/** `account recover <帳號> [--project slug]`: see recoverAccount. */
+export async function accountCommand(rt: Runtime, argv: string[]): Promise<number> {
+    const [action, ...rest] = argv;
+    if (action !== 'recover') {
+        throw new CliError('用法：feedback-desk account recover <帳號> [--project slug]');
+    }
+    const args = parse(rest, { dir: { type: 'string' }, project: { type: 'string' } });
+    const username = requirePositional(args, 0, '<帳號>').trim();
+    const dir = deployDir(rt, str(args, 'dir'));
+    readWranglerConfig(dir);
+    await ensureWranglerLogin(rt, dir);
+    return recoverAccount(rt, dir, username, str(args, 'project'));
 }

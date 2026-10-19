@@ -48,4 +48,4 @@ export const CREATOR_TYPES = ['client', 'developer', 'owner_shared', 'public'] a
 
 export type CreatorType = (typeof CREATOR_TYPES)[number];
 
-export const CREATOR_FILTER_PATTERN = /^(client|public|shared|developer:\d+)$/;
+export const CREATOR_FILTER_PATTERN = /^(client|public|shared|developer:\d+|client:\d+)$/;

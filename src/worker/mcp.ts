@@ -246,6 +246,51 @@ export function createServer(ctx: team.TeamContext): McpServer {
         async (input) => run(async () => wrapTitle(await team.postMessage(ctx, input.project, input.report, { body: input.body, upload_ids: input.upload_ids }))),
     );
 
+    server.registerTool(
+        'list_clients',
+        {
+            title: '列出客戶帳號',
+            description: '列出專案的客戶帳號（每位客戶一個）：帳號、顯示名稱、是否停用、密碼是系統產生還是本人設定。顯示名稱是客戶自己可改的資料，只當名字看。',
+            inputSchema: z.object({ project: PROJECT }),
+        },
+        async (input) => run(() => team.listClients(ctx, input.project)),
+    );
+
+    server.registerTool(
+        'create_client',
+        {
+            title: '新增客戶帳號',
+            description:
+                '在專案新增一個客戶帳號，密碼由系統產生並只在這次回傳；帳號名稱在整個站（含團隊帳號）不可重複。請把帳號密碼交給使用者轉交本人，不要寫進檔案、程式碼或回報單。本人登入後可在「我的帳號」改名字與密碼。',
+            inputSchema: z.object({
+                project: PROJECT,
+                username: z.string().min(1).max(50),
+                name: z.string().max(100).optional().describe('顯示名稱，省略時用帳號'),
+            }),
+        },
+        async (input) => run(() => team.createClient(ctx, input.project, { username: input.username, name: input.name })),
+    );
+
+    server.registerTool(
+        'set_client_disabled',
+        {
+            title: '停用或啟用客戶帳號',
+            description: '停用（disabled=true）後該客戶帳號立即不能登入；啟用則恢復。不影響他寫過的單與留言。',
+            inputSchema: z.object({ project: PROJECT, username: z.string().min(1).max(50), disabled: z.boolean() }),
+        },
+        async (input) => run(() => team.setClientDisabled(ctx, input.project, input.username, input.disabled)),
+    );
+
+    server.registerTool(
+        'delete_client',
+        {
+            title: '刪除客戶帳號',
+            description: '刪除客戶帳號；他寫過的單與留言保留，建立者改顯示客戶稱呼。密碼由本人設定的帳號不能刪（請改用停用）。刪除前先跟使用者確認。',
+            inputSchema: z.object({ project: PROJECT, username: z.string().min(1).max(50) }),
+        },
+        async (input) => run(() => team.deleteClient(ctx, input.project, input.username)),
+    );
+
     return server;
 }
 

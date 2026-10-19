@@ -186,6 +186,15 @@ api.post('/projects', async (c) => c.json(await team.createProject(ctx(c), await
 api.post('/projects/:slug/client-link', async (c) => c.json(await team.rotateClientLink(ctx(c), c.req.param('slug'))));
 api.post('/projects/:slug/owner-link', async (c) => c.json(await team.rotateOwnerLink(ctx(c), c.req.param('slug'))));
 api.post('/projects/:slug/client-account', async (c) => c.json(await team.setClientAccount(ctx(c), c.req.param('slug'), await body(c))));
+api.get('/projects/:slug/clients', async (c) => c.json(await team.listClients(ctx(c), c.req.param('slug'))));
+api.post('/projects/:slug/clients', async (c) => c.json(await team.createClient(ctx(c), c.req.param('slug'), await body(c)), 201));
+api.post('/projects/:slug/clients/:username/reset', async (c) => {
+    const input = await body<{ prefill?: boolean }>(c);
+    return c.json(await team.resetClient(ctx(c), c.req.param('slug'), c.req.param('username'), { prefill: input.prefill }));
+});
+api.post('/projects/:slug/clients/:username/disable', async (c) => c.json(await team.setClientDisabled(ctx(c), c.req.param('slug'), c.req.param('username'), true)));
+api.post('/projects/:slug/clients/:username/enable', async (c) => c.json(await team.setClientDisabled(ctx(c), c.req.param('slug'), c.req.param('username'), false)));
+api.delete('/projects/:slug/clients/:username', async (c) => c.json(await team.deleteClient(ctx(c), c.req.param('slug'), c.req.param('username'))));
 api.post('/projects/:slug/public-reporting', async (c) => c.json(await team.setPublicReporting(ctx(c), c.req.param('slug'), await body(c))));
 
 api.get('/projects/:slug/reports', async (c) => {

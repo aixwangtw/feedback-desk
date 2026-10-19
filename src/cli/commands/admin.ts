@@ -9,7 +9,7 @@ interface ProjectSummary {
     name: string;
     client_name: string | null;
     has_client_link: boolean;
-    client_username: string | null;
+    client_accounts: number;
     public_reporting_enabled: boolean;
     is_home_public_project: boolean;
     portal_url: string;
@@ -54,8 +54,8 @@ export async function project(rt: Runtime, argv: string[]): Promise<number> {
             }
             rt.out(
                 table(
-                    ['slug', '名稱', '客戶入口', '客戶帳號', '公開回報', '網址'],
-                    projects.map((p) => [p.slug, p.name, p.has_client_link ? '有' : '無', p.client_username ?? '', p.public_reporting_enabled ? (p.is_home_public_project ? '開（首頁）' : '開') : '關', p.portal_url]),
+                    ['slug', '名稱', '客戶入口', '客戶帳號數', '公開回報', '網址'],
+                    projects.map((p) => [p.slug, p.name, p.has_client_link ? '有' : '無', String(p.client_accounts ?? 0), p.public_reporting_enabled ? (p.is_home_public_project ? '開（首頁）' : '開') : '關', p.portal_url]),
                     60,
                 ),
             );
@@ -88,18 +88,96 @@ export async function project(rt: Runtime, argv: string[]): Promise<number> {
             });
             if (bool(args, 'json')) return printJson(rt, result);
             rt.out(`已設定 ${slug} 的客戶帳號（登入頁 ${result.login_url}）`);
-            rt.out(`帳號：${escapeInline(result.username)}`);
-            rt.out(`密碼：${result.password}`);
-            rt.out('密碼只會顯示這一次；舊的長效登入已全部失效。');
-            if (result.prefill) {
-                rt.out(result.prefill_active ? '登入頁會預填這組帳號密碼。' : '已記下預填值，但 FEEDBACK_LOGIN_PREFILL_ENABLED 沒開，登入頁不會預填。');
-            } else {
-                rt.out('登入頁不預填。');
-            }
+            printClientPassword(rt, result);
+            rt.out(`（這個指令保留相容用；每位客戶各開一個帳號請改用 ${CLI_COMMAND} client create ${slug} <帳號> --name 名字）`);
             return 0;
         }
         default:
             throw new CliError('用法：feedback-desk project create|list|client-link|owner-link|client-account');
+    }
+}
+
+interface ClientSummary {
+    id: number;
+    username: string;
+    name: string;
+    disabled: boolean;
+    password_set_by_self: boolean;
+    created_at: string;
+}
+
+interface ClientPassword {
+    username: string;
+    password: string;
+    prefill: boolean;
+    prefill_active: boolean;
+    login_url: string;
+}
+
+function printClientPassword(rt: Runtime, result: ClientPassword): void {
+    rt.out(`帳號：${escapeInline(result.username)}`);
+    rt.out(`密碼：${result.password}`);
+    rt.out('密碼只會顯示這一次；這個帳號先前的登入已全部失效。請交給本人，建議他登入後到「我的帳號」改成自己的密碼。');
+    if (result.prefill) {
+        rt.out(result.prefill_active ? '登入頁會預填這組帳號密碼。' : '已記下預填值，但 FEEDBACK_LOGIN_PREFILL_ENABLED 沒開，登入頁不會預填。');
+    }
+}
+
+/** Client accounts: one per client person, so each report and message shows who wrote it. */
+export async function client(rt: Runtime, argv: string[]): Promise<number> {
+    const [action, ...rest] = argv;
+    const args = parse(rest, { name: { type: 'string' }, prefill: { type: 'boolean' } });
+    const usage = '用法：feedback-desk client create|list|reset|disable|enable|delete <slug> [帳號]';
+    if (!action) {
+        throw new CliError(usage);
+    }
+    const api = apiFor(rt, str(args, 'url'));
+    const slug = requirePositional(args, 0, '<slug>');
+    const base = `/projects/${encodePath(slug)}/clients`;
+    switch (action) {
+        case 'list': {
+            const { clients } = await api.get<{ clients: ClientSummary[] }>(base);
+            if (bool(args, 'json')) return printJson(rt, clients);
+            if (clients.length === 0) {
+                rt.out(`這個專案還沒有客戶帳號：${CLI_COMMAND} client create ${slug} <帳號> --name 名字`);
+                return 0;
+            }
+            rt.out(
+                table(
+                    ['id', '帳號', '顯示名稱', '狀態', '密碼'],
+                    clients.map((item) => [String(item.id), escapeTerminal(item.username), escapeTerminal(item.name), item.disabled ? '已停用' : '啟用中', item.password_set_by_self ? '本人設定' : '系統產生']),
+                ),
+            );
+            return 0;
+        }
+        case 'create': {
+            const username = requirePositional(args, 1, '<帳號>');
+            const result = await api.post<ClientPassword>(base, { username, name: str(args, 'name'), prefill: bool(args, 'prefill') });
+            if (bool(args, 'json')) return printJson(rt, result);
+            rt.out(`已在 ${slug} 新增客戶帳號（登入頁 ${result.login_url}）`);
+            printClientPassword(rt, result);
+            return 0;
+        }
+        case 'reset': {
+            const username = requirePositional(args, 1, '<帳號>');
+            const result = await api.post<ClientPassword>(`${base}/${encodePath(username)}/reset`, { prefill: bool(args, 'prefill') });
+            if (bool(args, 'json')) return printJson(rt, result);
+            rt.out(`已重設 ${slug} 的客戶帳號密碼`);
+            printClientPassword(rt, result);
+            return 0;
+        }
+        case 'disable':
+        case 'enable':
+        case 'delete': {
+            const username = requirePositional(args, 1, '<帳號>');
+            const result =
+                action === 'delete' ? await api.delete<unknown>(`${base}/${encodePath(username)}`) : await api.post<unknown>(`${base}/${encodePath(username)}/${action}`);
+            if (bool(args, 'json')) return printJson(rt, result);
+            rt.out(action === 'delete' ? `已刪除客戶帳號 ${escapeTerminal(username)}；他寫過的單與留言保留。` : action === 'disable' ? `已停用客戶帳號 ${escapeTerminal(username)}，登入立即失效。` : `已重新啟用客戶帳號 ${escapeTerminal(username)}。`);
+            return 0;
+        }
+        default:
+            throw new CliError(usage);
     }
 }
 
@@ -128,7 +206,18 @@ export async function developer(rt: Runtime, argv: string[]): Promise<number> {
     if (action === 'list') {
         const { developers } = await api.get<{ developers: Array<{ id: number; username: string; name: string }> }>('/developers');
         if (bool(args, 'json')) return printJson(rt, developers);
-        rt.out(table(['id', '帳號', '顯示名稱', '狀態'], developers.map((d) => [String(d.id), d.username, d.name, (d as { disabled?: boolean }).disabled ? '已停用' : '啟用中'])));
+        rt.out(
+            table(
+                ['id', '帳號', '顯示名稱', '狀態', '密碼'],
+                developers.map((d) => [
+                    String(d.id),
+                    d.username,
+                    d.name,
+                    (d as { disabled?: boolean }).disabled ? '已停用' : '啟用中',
+                    (d as { password_set_by_self?: boolean }).password_set_by_self ? '本人設定' : '系統產生',
+                ]),
+            ),
+        );
         return 0;
     }
     if (action === 'disable' || action === 'enable' || action === 'delete') {

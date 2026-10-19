@@ -2,7 +2,7 @@ import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers';
 import { app } from '../../src/worker/index';
 import { hashPassword, randomString, sha256Hex } from '../../src/worker/lib/crypto';
-import type { Developer, Project, Report } from '../../src/worker/lib/models';
+import type { ClientAccount, Developer, Project, Report } from '../../src/worker/lib/models';
 import { createReport } from '../../src/worker/lib/reports';
 import { createToken } from '../../src/worker/lib/team';
 import type { Env } from '../../src/worker/env';
@@ -30,6 +30,7 @@ export interface SeededProject {
     project: Project;
     ownerToken: string;
     clientToken: string | null;
+    clientAccount: ClientAccount | null;
 }
 
 export async function seedProject(options: {
@@ -57,7 +58,7 @@ export async function seedProject(options: {
             await sha256Hex(ownerToken),
             clientToken ? await sha256Hex(clientToken) : null,
             options.clientUsername ?? null,
-            options.clientPassword ? await hashPassword(options.clientPassword) : null,
+            null,
             options.prefill ? options.clientUsername ?? null : null,
             options.prefill ? options.clientPassword ?? null : null,
             options.publicReporting ? 1 : 0,
@@ -65,7 +66,27 @@ export async function seedProject(options: {
             at,
         )
         .first<Project>();
-    return { project: project as Project, ownerToken, clientToken };
+    let clientAccount: ClientAccount | null = null;
+    if (options.clientUsername && options.clientPassword) {
+        clientAccount = (await seedClientAccount(project as Project, options.clientUsername, options.clientPassword, options.clientName ?? undefined)).account;
+    }
+    return { project: project as Project, ownerToken, clientToken, clientAccount };
+}
+
+export async function seedClientAccount(
+    project: Project,
+    username = unique('client'),
+    password = 'client-password-1234567',
+    name?: string,
+    options: { setBySelf?: boolean; createdAt?: string } = {},
+): Promise<{ account: ClientAccount; password: string }> {
+    const at = options.createdAt ?? new Date().toISOString();
+    const account = await env.DB.prepare(
+        'INSERT INTO client_accounts (project_id, username, name, password_hash, password_set_by_self, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    )
+        .bind(project.id, username, name ?? `客戶 ${username}`, await hashPassword(password), options.setBySelf ? 1 : 0, at, at)
+        .first<ClientAccount>();
+    return { account: account as ClientAccount, password };
 }
 
 export async function seedDeveloper(username = unique('dev'), password = 'correct-horse-battery-staple', name?: string): Promise<{ developer: Developer; password: string }> {

@@ -102,6 +102,8 @@ export interface LayoutProps {
     title: string;
     project?: { name: string; slug: string } | null;
     showLogout?: boolean;
+    /** Show the "my account" link (signed in with an account, not an entry link). */
+    passwordLink?: boolean;
     maxWidth?: string;
     headerAction?: Child;
     success?: string;
@@ -110,7 +112,7 @@ export interface LayoutProps {
     children?: Child;
 }
 
-export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
+export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, passwordLink, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
     <>
     {raw('<!DOCTYPE html>')}
     <html lang="zh-Hant">
@@ -135,6 +137,9 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, maxWidt
                     </a>
                     <div class="flex shrink-0 items-center gap-2">
                         {headerAction}
+                        {project && passwordLink ? (
+                            <a href={paths.account(project.slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-account-link>我的帳號</a>
+                        ) : null}
                         {project && showLogout ? (
                             <form method="post" action={paths.logout(project.slug)}>
                                 <button type="submit" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-logout>登出</button>

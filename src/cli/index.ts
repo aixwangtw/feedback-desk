@@ -1,7 +1,7 @@
 import { adjust, message, report, reports, status } from './commands/reports';
-import { developer, project, publicReporting } from './commands/admin';
+import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, token } from './commands/auth';
-import { bootstrap, deploy, init } from './commands/deploy';
+import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
 import { CLI_COMMAND, CliError, defaultRuntime, type Runtime } from './runtime';
 
 declare const __APP_VERSION__: string | undefined;
@@ -13,8 +13,11 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   init [--name feedback-desk] [--domain feedback.example.com] [--no-cron] [--force]
                                    產生或檢查 wrangler.jsonc
   deploy                           部署 Worker、建立 D1/R2、套用資料庫 migrations
-  bootstrap <帳號> [--name 顯示名稱] [--reset]
-                                   直接寫入 D1 建立第一個團隊帳號（或 --reset 重設密碼）
+  bootstrap <帳號> [--name 顯示名稱] [--set-password | --password-stdin]
+                                   直接寫入 D1 建立第一個團隊帳號；不加密碼參數就由系統產生
+  account recover <帳號> [--project slug]
+                                   忘記密碼：用你的 Cloudflare 權限直接寫 D1 救回任何團隊或客戶帳號
+                                   （含本人自設的密碼），所有登入與 token 失效
 
 登入與 AI 工具
   login [--url https://站台] [--expires 天數]
@@ -30,11 +33,16 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   project list
   project client-link <slug>       重發客戶私密入口（舊的失效）
   project owner-link <slug>        重發開發團隊私密入口（舊的失效）
+  client create <slug> <帳號> [--name 顯示名稱] [--prefill]
+                                   新增客戶帳號（每位客戶一個），密碼由系統產生
+  client list <slug>
+  client reset <slug> <帳號>       重設客戶帳號密碼（本人自設的密碼不能重設）
+  client disable|enable|delete <slug> <帳號>
   project client-account <slug> <帳號> [--prefill]
-                                   設定客戶帳號，密碼由系統產生
+                                   舊指令：帳號已存在就重設，否則新增；請改用 client create／reset
   public-reporting <slug> on|off [--force]
   developer create <帳號> [--name] 建立團隊個人帳號（密碼由系統產生）
-  developer reset <帳號>           重設團隊帳號密碼，並撤銷該帳號所有 API token
+  developer reset <帳號>           重設團隊帳號密碼並撤銷其 API token（本人自設的密碼不能重設）
   developer disable|enable|delete <帳號>
                                    停用（立即登出並撤銷 token）、重新啟用或刪除團隊帳號
   developer list
@@ -56,6 +64,8 @@ const COMMANDS: Record<string, Command> = {
     init,
     deploy,
     bootstrap,
+    account: accountCommand,
+    client,
     login,
     logout,
     mcp,

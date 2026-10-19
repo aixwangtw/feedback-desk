@@ -58,6 +58,7 @@ export interface PortalProps {
     /** Current page path with query, sent back by forms as `_back`. */
     backPath: string;
     success?: string;
+    passwordLink?: boolean;
     form?: PortalFormState;
 }
 
@@ -128,7 +129,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 
     return (
-        <Layout v={v} title={`問題清單｜${project.name}`} project={project} showLogout maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
+        <Layout v={v} title={`問題清單｜${project.name}`} project={project} showLogout passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
@@ -246,7 +247,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
                                     {sortHeader('title', '標題', 'whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
-                                    {isOwner ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th> : null}
+                                    <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                                     <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                                     <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
                                     {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
@@ -324,7 +325,7 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                 <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}{isOwner ? ` · 建立者：${row.creatorLabel}` : ''}</p>
+                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}{row.creatorLabel ? ` · 建立者：${row.creatorLabel}` : ''}</p>
                             <h2 id={`detail-report-title-${report.public_id}`} class="mt-1 break-words text-lg font-bold text-slate-950">{report.title}</h2>
                         </div>
                         <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>

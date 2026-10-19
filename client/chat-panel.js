@@ -7,7 +7,7 @@ import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '..
 
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
-const LIST_POLL_CLOSED_MS = 30000;
+const LIST_POLL_CLOSED_MS = 60000;
 // 預設上限；開啟對話後以伺服器回傳的該單上限為準（公開回報的單較少）。
 const DEFAULT_MAX_FILES = 5;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -222,6 +222,9 @@ if (root) {
             }
 
             const meta = el('div', 'mt-1 flex items-center gap-1.5 text-[10px] text-slate-400');
+            if (item.creator) {
+                meta.append(el('span', 'truncate', item.creator), el('span', null, '·'));
+            }
             meta.append(el('span', null, item.status));
             if (item.deleted) {
                 meta.append(el('span', 'rounded-full bg-slate-200 px-1.5 text-slate-600', '已刪除'));
@@ -615,7 +618,7 @@ if (root) {
         }
     });
 
-    // 面板開著：對話每 5 秒、清單每 10 秒刷新；關著：只每 30 秒更新右下角未讀數。分頁在背景時不刷新。
+    // 面板開著：對話每 5 秒、清單每 10 秒刷新；關著：只每 60 秒更新右下角未讀數。分頁在背景時不刷新。
     window.setInterval(() => {
         if (document.hidden) {
             return;

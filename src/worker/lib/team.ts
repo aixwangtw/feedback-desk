@@ -7,8 +7,20 @@ import { charLength, slugify } from '../../shared/text';
 import { nowIso } from '../../shared/time';
 import { config, type Env } from '../env';
 import { hashPassword, randomString, sha256Hex } from './crypto';
-import { attachmentsForReport, findDeveloper, findDeveloperByUsername, findProjectBySlug, listDevelopers, messagesForReport, placeholders } from './db';
-import type { Attachment, Developer, Project, Report } from './models';
+import {
+    attachmentsForReport,
+    findClientAccount,
+    findClientAccountInProject,
+    findDeveloper,
+    findDeveloperByUsername,
+    findProjectBySlug,
+    listClientAccounts,
+    listDevelopers,
+    messagesForReport,
+    placeholders,
+    usernameTaken,
+} from './db';
+import type { Attachment, ClientAccount, Developer, Project, Report } from './models';
 import {
     addMessage,
     changeStatus,
@@ -45,6 +57,22 @@ export interface TeamContext {
 }
 
 const GENERATED_PASSWORD_LENGTH = 24;
+
+/** Shown whenever someone other than the holder tries to replace a password the holder chose. */
+export const SELF_SET_PASSWORD_LOCKED =
+    '這個帳號的密碼是本人自己設定的，其他人不能重設或改掉。本人登入網頁後可以自己改；本人忘記密碼時，請掌握 Cloudflare 帳號的部署者在終端機執行 account recover。';
+
+/**
+ * Statements that end every API credential of a team account: its tokens, and CLI logins that
+ * were approved in the browser but have not picked up their token yet. Web logins end on their
+ * own because their cookies are bound to the password hash.
+ */
+export function revokeDeveloperCredentials(db: D1Database, developerId: number): D1PreparedStatement[] {
+    return [
+        db.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developerId),
+        db.prepare("UPDATE device_codes SET status = 'denied' WHERE developer_id = ? AND status = 'approved'").bind(developerId),
+    ];
+}
 
 export async function projectOrFail(env: Env, slug: string): Promise<Project> {
     const project = await findProjectBySlug(env.DB, slug);
@@ -119,6 +147,10 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
         conditions.push("creator_type = 'developer' AND creator_developer_id = ?");
         bindings.push(Number(creator.slice('developer:'.length)));
     }
+    if (creator.startsWith('client:')) {
+        conditions.push("creator_type = 'client' AND creator_client_account_id = ?");
+        bindings.push(Number(creator.slice('client:'.length)));
+    }
     if (!filters.includeDeleted) conditions.push('client_deleted_at IS NULL');
     if (filters.unread) conditions.push('unread_messages_count > 0');
     const includePublic = filters.includePublic === true || creator === 'public';
@@ -135,11 +167,13 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
                 ${latestMessageSql('r')} AS latest_message_at
             FROM reports r WHERE project_id = ?
         )
-        SELECT n.*, d.name AS developer_name FROM numbered n LEFT JOIN developers d ON d.id = n.creator_developer_id ${where}
+        SELECT n.*, d.name AS developer_name, ca.name AS client_account_name FROM numbered n
+        LEFT JOIN developers d ON d.id = n.creator_developer_id
+        LEFT JOIN client_accounts ca ON ca.id = n.creator_client_account_id ${where}
         ORDER BY created_at DESC, id DESC`,
     )
         .bind(project.id, ...bindings)
-        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; unread_messages_count: number; latest_message_at: string | null; developer_name: string | null }>();
+        .all<Report & { number: number; client_number: number | null; messages_count: number; attachments_count: number; unread_messages_count: number; latest_message_at: string | null; developer_name: string | null; client_account_name: string | null }>();
     return {
         project: project.slug,
         include_public: includePublic,
@@ -151,7 +185,7 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             status: report.status,
             status_label: statusLabel(report.status),
             creator_type: report.creator_type,
-            creator: creatorLabel(ctx.env, report, project, report.developer_name),
+            creator: creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name),
             source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
             title: report.title,
             messages_count: report.messages_count,
@@ -179,10 +213,11 @@ async function attachmentData(ctx: TeamContext, attachments: Attachment[]) {
 export async function getReport(ctx: TeamContext, slug: string, identifier: string, mode: 'auto' | 'public_id' | 'id' = 'auto') {
     const project = await projectOrFail(ctx.env, slug);
     const report = await resolveReport(ctx.env, project, identifier, mode);
-    const [attachments, messages, developer] = await Promise.all([
+    const [attachments, messages, developer, clientAccount] = await Promise.all([
         attachmentsForReport(ctx.env.DB, report.id),
         messagesForReport(ctx.env.DB, report.id),
         report.creator_developer_id ? findDeveloper(ctx.env.DB, report.creator_developer_id) : Promise.resolve(null),
+        report.creator_client_account_id ? findClientAccount(ctx.env.DB, report.creator_client_account_id) : Promise.resolve(null),
     ]);
     const labels = config(ctx.env).labels;
     return {
@@ -194,7 +229,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         status: report.status,
         status_label: statusLabel(report.status),
         creator_type: report.creator_type,
-        creator: creatorLabel(ctx.env, report, project, developer?.name ?? null),
+        creator: creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null),
         source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
         deleted_by_client: report.client_deleted_at !== null,
         created_at: report.created_at,
@@ -266,7 +301,7 @@ export async function writeAdjustment(
     await updateAdjustment(
         ctx.env,
         report,
-        { note: hasNote ? (input.note as string) : undefined, append: input.append ?? false, uploads, removeAttachmentIds: [] },
+        { note: hasNote ? (input.note as string) : undefined, append: input.append ?? false, uploads, removeAttachmentIds: [], author: { developerId: ctx.developer.id, clientAccountId: null } },
         ctx.now,
     );
     const count = await ctx.env.DB.prepare("SELECT COUNT(*) AS total FROM attachments WHERE report_id = ? AND kind = 'adjustment'").bind(report.id).first<{ total: number }>();
@@ -299,7 +334,7 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
     }
     const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
-    await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads }, ctx.now);
+    await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: { developerId: ctx.developer.id, clientAccountId: null } }, ctx.now);
     return { public_id: report.public_id, title: report.title, author, images_added: uploads.length };
 }
 
@@ -312,13 +347,13 @@ function projectLinks(ctx: TeamContext, project: Project, tokens: { client?: str
     };
 }
 
-function projectSummary(ctx: TeamContext, project: Project) {
+function projectSummary(ctx: TeamContext, project: Project & { client_account_count?: number }) {
     return {
         slug: project.slug,
         name: project.name,
         client_name: project.client_display_name,
         has_client_link: project.client_token_hash !== null,
-        client_username: project.client_username,
+        client_accounts: project.client_account_count ?? 0,
         public_reporting_enabled: project.public_reporting_enabled === 1,
         is_home_public_project: config(ctx.env).publicReporting.homeProject === project.slug,
         portal_url: absolute(ctx, paths.portal(project.slug)),
@@ -327,7 +362,9 @@ function projectSummary(ctx: TeamContext, project: Project) {
 }
 
 export async function listProjects(ctx: TeamContext) {
-    const { results } = await ctx.env.DB.prepare('SELECT * FROM projects ORDER BY created_at, id').all<Project>();
+    const { results } = await ctx.env.DB.prepare(
+        'SELECT p.*, (SELECT COUNT(*) FROM client_accounts ca WHERE ca.project_id = p.id) AS client_account_count FROM projects p ORDER BY p.created_at, p.id',
+    ).all<Project & { client_account_count: number }>();
     return { projects: results.map((project) => projectSummary(ctx, project)) };
 }
 
@@ -377,20 +414,63 @@ export function validateUsername(username: string): string {
     return trimmed;
 }
 
-/** Sets the project's client account with a generated password; the old password and its logins stop working. */
-export async function setClientAccount(ctx: TeamContext, slug: string, input: { username: string; prefill?: boolean }) {
-    const project = await projectOrFail(ctx.env, slug);
-    const username = validateUsername(input.username);
-    const password = randomString(GENERATED_PASSWORD_LENGTH);
-    const prefill = input.prefill === true;
-    await ctx.env.DB.prepare(
-        'UPDATE projects SET client_username = ?, client_password_hash = ?, login_prefill_username = ?, login_prefill_password = ?, updated_at = ? WHERE id = ?',
-    )
-        .bind(username, await hashPassword(password), prefill ? username : null, prefill ? password : null, nowIso(ctx.now), project.id)
-        .run();
+// ------------------------------------------------------------------ client accounts
+
+export const MAX_ACCOUNT_NAME = 100;
+
+export function validateAccountName(name: string): string {
+    const trimmed = (name ?? '').trim();
+    if (trimmed === '' || charLength(trimmed) > MAX_ACCOUNT_NAME) {
+        throw new ServiceError('invalid_name', `顯示名稱不可為空白，且不可超過 ${MAX_ACCOUNT_NAME} 字。`, 422);
+    }
+    return trimmed;
+}
+
+/** New login names may not repeat any team or client login name of the deployment (ignoring case). */
+async function assertUsernameFree(ctx: TeamContext, username: string): Promise<void> {
+    if (await usernameTaken(ctx.env.DB, username)) {
+        throw new ServiceError('username_taken', `帳號名稱「${username}」已經有人使用（團隊帳號與所有專案的客戶帳號共用同一組名稱，不分大小寫），請換一個。`, 409);
+    }
+}
+
+function clientAccountSummary(account: ClientAccount) {
+    return {
+        id: account.id,
+        username: account.username,
+        name: account.name,
+        disabled: account.disabled_at !== null,
+        password_set_by_self: account.password_set_by_self === 1,
+        created_at: account.created_at,
+    };
+}
+
+async function clientAccountOrFail(ctx: TeamContext, project: Project, username: string): Promise<ClientAccount> {
+    const account = await findClientAccountInProject(ctx.env.DB, project.id, validateUsername(username));
+    if (!account) {
+        throw new ServiceError('client_account_not_found', '這個專案找不到這個客戶帳號。', 404);
+    }
+    return account;
+}
+
+/** Statements that point the login page prefill at this account's new password, or clear a prefill that pointed at it. */
+function prefillStatements(ctx: TeamContext, project: Project, account: Pick<ClientAccount, 'username'>, password: string | null): D1PreparedStatement[] {
+    if (password !== null) {
+        return [ctx.env.DB.prepare('UPDATE projects SET login_prefill_username = ?, login_prefill_password = ?, updated_at = ? WHERE id = ?').bind(account.username, password, nowIso(ctx.now), project.id)];
+    }
+    return [
+        ctx.env.DB.prepare('UPDATE projects SET login_prefill_username = NULL, login_prefill_password = NULL, updated_at = ? WHERE id = ? AND login_prefill_username = ?').bind(
+            nowIso(ctx.now),
+            project.id,
+            account.username,
+        ),
+    ];
+}
+
+function clientPasswordResult(ctx: TeamContext, project: Project, account: ClientAccount, password: string, prefill: boolean) {
     return {
         project: project.slug,
-        username,
+        account: clientAccountSummary(account),
+        username: account.username,
         password,
         prefill,
         prefill_active: prefill && config(ctx.env).loginPrefill.enabled,
@@ -398,10 +478,98 @@ export async function setClientAccount(ctx: TeamContext, slug: string, input: { 
     };
 }
 
+export async function listClients(ctx: TeamContext, slug: string) {
+    const project = await projectOrFail(ctx.env, slug);
+    return { project: project.slug, clients: (await listClientAccounts(ctx.env.DB, project.id)).map(clientAccountSummary) };
+}
+
+/** A new client person on the project, with a generated password. */
+export async function createClient(ctx: TeamContext, slug: string, input: { username: string; name?: string; prefill?: boolean }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const username = validateUsername(input.username);
+    const name = input.name && input.name.trim() !== '' ? validateAccountName(input.name) : username;
+    await assertUsernameFree(ctx, username);
+    const password = randomString(GENERATED_PASSWORD_LENGTH);
+    const at = nowIso(ctx.now);
+    const prefill = input.prefill === true;
+    const [inserted] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('INSERT INTO client_accounts (project_id, username, name, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *').bind(
+            project.id,
+            username,
+            name,
+            await hashPassword(password),
+            at,
+            at,
+        ),
+        ...(prefill ? prefillStatements(ctx, project, { username }, password) : []),
+    ]);
+    return clientPasswordResult(ctx, project, inserted.results[0] as ClientAccount, password, prefill);
+}
+
+/**
+ * New generated password for a client account; its logins stop working. A password the holder chose
+ * is refused: only `account recover` (D1 directly) replaces it.
+ */
+export async function resetClient(ctx: TeamContext, slug: string, username: string, input: { prefill?: boolean } = {}) {
+    const project = await projectOrFail(ctx.env, slug);
+    const account = await clientAccountOrFail(ctx, project, username);
+    if (account.password_set_by_self === 1) {
+        throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
+    }
+    const password = randomString(GENERATED_PASSWORD_LENGTH);
+    const hash = await hashPassword(password);
+    const prefill = input.prefill === true;
+    const [updated] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE client_accounts SET password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(hash, nowIso(ctx.now), account.id),
+        ...prefillStatements(ctx, project, account, prefill ? password : null),
+    ]);
+    if ((updated.meta.changes ?? 0) === 0) {
+        throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
+    }
+    return clientPasswordResult(ctx, project, { ...account, password_hash: hash }, password, prefill);
+}
+
+/** Disabled client accounts cannot sign in; their logins stop working at once. */
+export async function setClientDisabled(ctx: TeamContext, slug: string, username: string, disabled: boolean) {
+    const project = await projectOrFail(ctx.env, slug);
+    const account = await clientAccountOrFail(ctx, project, username);
+    const at = nowIso(ctx.now);
+    await ctx.env.DB.prepare('UPDATE client_accounts SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? at : null, at, account.id).run();
+    return { project: project.slug, account: clientAccountSummary({ ...account, disabled_at: disabled ? at : null }) };
+}
+
+/** Deletes a client account; what it wrote stays and shows the client label as its writer. */
+export async function deleteClient(ctx: TeamContext, slug: string, username: string) {
+    const project = await projectOrFail(ctx.env, slug);
+    const account = await clientAccountOrFail(ctx, project, username);
+    // Deleting and re-creating the same login name would be a way around a password the holder chose.
+    if (account.password_set_by_self === 1) {
+        throw new ServiceError(
+            'password_set_by_self',
+            '這個帳號的密碼是本人自己設定的，其他人不能刪除它（刪掉再建同名帳號等於改掉本人的密碼）。不讓他登入請用停用；確定要刪除，請部署者先執行 account recover。',
+            409,
+        );
+    }
+    await ctx.env.DB.batch([ctx.env.DB.prepare('DELETE FROM client_accounts WHERE id = ?').bind(account.id), ...prefillStatements(ctx, project, account, null)]);
+    return { project: project.slug, deleted: account.username };
+}
+
+/**
+ * Older `project client-account` call: resets the account when the login name already exists in the
+ * project, otherwise adds it as a new client account.
+ */
+export async function setClientAccount(ctx: TeamContext, slug: string, input: { username: string; prefill?: boolean }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const username = validateUsername(input.username);
+    const existing = await findClientAccountInProject(ctx.env.DB, project.id, username);
+    return existing ? resetClient(ctx, slug, username, { prefill: input.prefill }) : createClient(ctx, slug, { username, prefill: input.prefill });
+}
+
 export async function setPublicReporting(ctx: TeamContext, slug: string, input: { enabled: boolean; force?: boolean }) {
     const project = await projectOrFail(ctx.env, slug);
+    const accounts = await ctx.env.DB.prepare('SELECT COUNT(*) AS total FROM client_accounts WHERE project_id = ?').bind(project.id).first<{ total: number }>();
     const clientAccess = Object.entries({
-        client_username: project.client_username,
+        client_accounts: (accounts?.total ?? 0) > 0 ? 'yes' : null,
         client_token_hash: project.client_token_hash,
         login_prefill_username: project.login_prefill_username,
         login_prefill_password: project.login_prefill_password,
@@ -428,7 +596,14 @@ export async function setPublicReporting(ctx: TeamContext, slug: string, input: 
 // ------------------------------------------------------------------ team accounts
 
 function developerSummary(developer: Developer) {
-    return { id: developer.id, username: developer.username, name: developer.name, disabled: developer.disabled_at !== null, created_at: developer.created_at };
+    return {
+        id: developer.id,
+        username: developer.username,
+        name: developer.name,
+        disabled: developer.disabled_at !== null,
+        password_set_by_self: developer.password_set_by_self === 1,
+        created_at: developer.created_at,
+    };
 }
 
 export async function listTeam(ctx: TeamContext) {
@@ -440,6 +615,9 @@ export async function createDeveloper(ctx: TeamContext, input: { username: strin
     if (await findDeveloperByUsername(ctx.env.DB, username)) {
         throw new ServiceError('developer_exists', '這個帳號已經存在；要重設密碼請用 developer reset。', 409);
     }
+    // Team accounts are checked before client accounts at login, so a team account with a client's
+    // login name would lock that client out.
+    await assertUsernameFree(ctx, username);
     const name = input.name && input.name.trim() !== '' ? input.name.trim() : username;
     if (charLength(name) > 100) {
         throw new ServiceError('invalid_name', '顯示名稱不可超過 100 字。', 422);
@@ -452,19 +630,31 @@ export async function createDeveloper(ctx: TeamContext, input: { username: strin
     return { developer: developerSummary(developer as Developer), password };
 }
 
-/** New generated password; every API token of the account is revoked too (a reset usually means a leaked credential). */
+/**
+ * New generated password; every API token of the account is revoked too (a reset usually means a
+ * leaked credential). A password the holder chose is refused: only `account recover` (D1 directly)
+ * replaces it.
+ */
 export async function resetDeveloper(ctx: TeamContext, input: { username: string; name?: string }) {
     const username = validateUsername(input.username);
     const developer = await findDeveloperByUsername(ctx.env.DB, username);
     if (!developer) {
         throw new ServiceError('developer_not_found', '找不到這個團隊帳號。', 404);
     }
+    if (developer.password_set_by_self === 1) {
+        throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
+    }
     const password = randomString(GENERATED_PASSWORD_LENGTH);
     const name = input.name && input.name.trim() !== '' ? input.name.trim() : developer.name;
-    const [, revoked] = await ctx.env.DB.batch([
-        ctx.env.DB.prepare('UPDATE developers SET name = ?, password_hash = ?, updated_at = ? WHERE id = ?').bind(name, await hashPassword(password), nowIso(ctx.now), developer.id),
-        ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id),
+    const hash = await hashPassword(password);
+    // The condition repeats the check so a password the holder sets meanwhile is never overwritten.
+    const [updated, revoked] = await ctx.env.DB.batch([
+        ctx.env.DB.prepare('UPDATE developers SET name = ?, password_hash = ?, updated_at = ? WHERE id = ? AND password_set_by_self = 0').bind(name, hash, nowIso(ctx.now), developer.id),
+        ...revokeDeveloperCredentials(ctx.env.DB, developer.id),
     ]);
+    if ((updated.meta.changes ?? 0) === 0) {
+        throw new ServiceError('password_set_by_self', SELF_SET_PASSWORD_LOCKED, 409);
+    }
     return { developer: developerSummary({ ...developer, name }), password, tokens_revoked: revoked.meta.changes ?? 0 };
 }
 
@@ -493,6 +683,14 @@ export async function setDeveloperDisabled(ctx: TeamContext, username: string, d
 /** Deletes the account and its tokens; reports it created keep existing and show the team label as creator. */
 export async function deleteDeveloper(ctx: TeamContext, username: string) {
     const developer = await otherDeveloper(ctx, username, '刪除');
+    // Deleting and re-creating the same username would be a way around a password the holder chose.
+    if (developer.password_set_by_self === 1) {
+        throw new ServiceError(
+            'password_set_by_self',
+            '這個帳號的密碼是本人自己設定的，其他人不能刪除它（刪掉再建同名帳號等於改掉本人的密碼）。不讓他登入請用 developer disable；確定要刪除，請部署者先執行 account recover。',
+            409,
+        );
+    }
     const [tokens] = await ctx.env.DB.batch([
         ctx.env.DB.prepare('DELETE FROM api_tokens WHERE developer_id = ?').bind(developer.id),
         ctx.env.DB.prepare('UPDATE reports SET creator_developer_id = NULL WHERE creator_developer_id = ?').bind(developer.id),

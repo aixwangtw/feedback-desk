@@ -225,7 +225,7 @@ describe('reports', () => {
         const client = await new Browser().asClient(seeded);
         const clientDialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=//evil.example`)).text();
         expect(clientDialogs).toContain(`id="client-delete-report-${report.public_id}"`);
-        expect(clientDialogs).not.toContain('建立者');
+        expect(clientDialogs).toContain('建立者：客戶');
         expect(clientDialogs).not.toContain('evil.example');
         expect((await new Browser().get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(302);
     });

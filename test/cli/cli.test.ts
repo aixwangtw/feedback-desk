@@ -26,7 +26,9 @@ function jsonResponse(data: unknown, status = 200): Response {
     return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 }
 
-function fakeRuntime(options: { handler?: Handler; run?: (command: string, args: string[], options?: RunOptions) => RunResult; env?: Record<string, string> } = {}) {
+function fakeRuntime(
+    options: { handler?: Handler; run?: (command: string, args: string[], options?: RunOptions) => RunResult; env?: Record<string, string>; stdin?: string; secrets?: Array<string | null> } = {},
+) {
     const home = mkdtempSync(join(tmpdir(), 'fd-cli-home-'));
     const cwd = mkdtempSync(join(tmpdir(), 'fd-cli-cwd-'));
     const out: string[] = [];
@@ -61,6 +63,8 @@ function fakeRuntime(options: { handler?: Handler; run?: (command: string, args:
             clock += ms;
         },
         now: () => clock,
+        readStdin: async () => options.stdin ?? '',
+        promptSecret: async () => (options.secrets && options.secrets.length > 0 ? (options.secrets.shift() as string | null) : null),
     };
     return { rt, out, err, calls, runs, home, cwd, text: () => out.join('\n'), errors: () => err.join('\n') };
 }
@@ -219,6 +223,84 @@ describe('deploy and bootstrap', () => {
         expect(fake.errors()).toContain('已經有團隊帳號');
         expect(await main(['bootstrap', 'alex', '--reset'], fake.rt)).toBe(0);
         expect(state.sql.some((sql) => sql.startsWith('UPDATE developers SET password_hash'))).toBe(true);
+    });
+
+    it('bootstraps with a password the deployer chose, refusing weak ones', async () => {
+        const state: WranglerState = { secrets: ['APP_SECRET'], developers: [], sql: [] };
+        const weak = fakeRuntime({ run: wranglerScript(state), stdin: 'short\n' });
+        await main(['init', '--name', 'fd-e2e-test'], weak.rt);
+        expect(await main(['bootstrap', 'alex', '--password-stdin'], weak.rt)).toBe(1);
+        expect(weak.errors()).toContain('至少要 16 個字');
+        expect(state.sql.some((sql) => sql.startsWith('INSERT'))).toBe(false);
+
+        const chosen = 'Vq7#mZp2!wLx9@Rt';
+        const piped = fakeRuntime({ run: wranglerScript(state), stdin: `${chosen}\n` });
+        piped.rt.cwd = weak.rt.cwd;
+        expect(await main(['bootstrap', 'alex', '--password-stdin'], piped.rt)).toBe(0);
+        expect(piped.text()).not.toContain(chosen);
+        const insert = state.sql.find((sql) => sql.startsWith('INSERT'))!;
+        expect(insert).toContain('password_set_by_self');
+        expect(insert).toMatch(/', 1, '/);
+        const [, iterations, salt, digest] = /'(pbkdf2_sha256\$[^']+)'/.exec(insert)![1].split('$');
+        expect(iterations).toBe('10000');
+        expect(pbkdf2Sync(chosen, Buffer.from(salt, 'base64'), 10000, 32, 'sha256').toString('base64')).toBe(digest);
+    });
+
+    it('asks twice without echo for --set-password and stops on a mismatch or without a terminal', async () => {
+        const state: WranglerState = { secrets: ['APP_SECRET'], developers: [], sql: [] };
+        const mismatch = fakeRuntime({ run: wranglerScript(state), secrets: ['Vq7#mZp2!wLx9@Rt', 'Vq7#mZp2!wLx9@Ru'] });
+        await main(['init', '--name', 'fd-e2e-test'], mismatch.rt);
+        expect(await main(['bootstrap', 'alex', '--set-password'], mismatch.rt)).toBe(1);
+        expect(mismatch.errors()).toContain('兩次輸入的密碼不一樣');
+        const noTty = fakeRuntime({ run: wranglerScript(state), secrets: [null] });
+        noTty.rt.cwd = mismatch.rt.cwd;
+        expect(await main(['bootstrap', 'alex', '--set-password'], noTty.rt)).toBe(1);
+        expect(noTty.errors()).toContain('--password-stdin');
+        expect(await main(['bootstrap', 'alex', '--reset', '--set-password'], noTty.rt)).toBe(1);
+        expect(state.sql).toEqual([]);
+    });
+
+    it('recovers a forgotten password of a team or client account straight through D1', async () => {
+        const sql: string[] = [];
+        let developers: Array<Record<string, unknown>> = [{ id: 3, username: 'alex', name: 'Alex' }];
+        let clients: Array<Record<string, unknown>> = [];
+        const run = (command: string, args: string[]): RunResult => {
+            const wargs = command === 'npx' ? args.slice(args.indexOf('wrangler') + 1) : args;
+            const joined = wargs.join(' ');
+            if (joined === 'whoami') return { code: 0, stdout: 'You are logged in with an OAuth Token', stderr: '' };
+            if (joined.startsWith('d1 execute DB --remote --json --command')) {
+                const statement = wargs[wargs.length - 1];
+                sql.push(statement);
+                const results = statement.startsWith('SELECT id, username, name FROM developers') ? developers : statement.startsWith('SELECT ca.id') ? clients : [];
+                return { code: 0, stdout: JSON.stringify([{ results, success: true }]), stderr: '' };
+            }
+            return { code: 1, stdout: '', stderr: `unexpected ${joined}` };
+        };
+        const fake = fakeRuntime({ run });
+        await main(['init', '--name', 'fd-e2e-test'], fake.rt);
+        expect(await main(['account', 'recover', 'alex'], fake.rt)).toBe(0);
+        const update = sql.find((statement) => statement.startsWith('UPDATE developers'))!;
+        expect(update).toContain('password_set_by_self = 0');
+        expect(update).toContain('DELETE FROM api_tokens WHERE developer_id = 3');
+        expect(update).toContain("UPDATE device_codes SET status = 'denied' WHERE developer_id = 3");
+        expect(/密碼：(\S+)/.exec(fake.text())![1]).toHaveLength(24);
+
+        developers = [];
+        clients = [
+            { id: 7, username: 'amy', name: '林小美', project_id: 1, slug: 'a' },
+            { id: 8, username: 'amy', name: 'Amy', project_id: 2, slug: 'b' },
+        ];
+        expect(await main(['account', 'recover', 'amy'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('--project');
+        clients = [clients[0]];
+        expect(await main(['account', 'recover', 'amy', '--project', 'a'], fake.rt)).toBe(0);
+        expect(sql.some((statement) => statement.includes("p.slug = 'a'"))).toBe(true);
+        const clientUpdate = sql.find((statement) => statement.startsWith('UPDATE client_accounts'))!;
+        expect(clientUpdate).toContain('password_set_by_self = 0');
+        expect(clientUpdate).toContain('WHERE id = 7');
+        expect(clientUpdate).toContain('login_prefill_password = NULL');
+        clients = [];
+        expect(await main(['account', 'recover', 'nobody'], fake.rt)).toBe(1);
     });
 
     it('hashes passwords in the format the Worker reads', () => {

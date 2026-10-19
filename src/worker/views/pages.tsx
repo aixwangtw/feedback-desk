@@ -279,7 +279,18 @@ export const AccountPage: FC<{
     nameOld?: string;
     success?: string;
 }> = ({ v, project, account, step, passwordErrors, nameErrors, nameOld, success }) => (
-    <Layout v={v} title={`我的帳號｜${project.name}`} project={project} showLogout success={success}>
+    <Layout
+        v={v}
+        title={`我的帳號｜${project.name}`}
+        project={project}
+        showLogout
+        success={success}
+        headerAction={
+            <a href={paths.portal(project.slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+                返回問題清單
+            </a>
+        }
+    >
         <div class="mx-auto grid max-w-md gap-6" data-account-page>
             <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                 <p class="text-sm font-semibold text-teal-700">{project.name}</p>

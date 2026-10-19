@@ -120,8 +120,9 @@ export async function verifyPassword(password: string, stored: string): Promise<
         return false;
     }
     const iterations = Number(parts[1]);
-    // Refuse absurd iteration counts that would blow the CPU budget.
-    if (!Number.isInteger(iterations) || iterations < 1000 || iterations > 200_000) {
+    // Refuse absurd counts: workerd refuses PBKDF2 above 100,000 iterations by default
+    // (DEFAULT_MAX_PBKDF2_ITERATIONS in workerd's limit-enforcer.h), and the CPU budget is 10 ms.
+    if (!Number.isInteger(iterations) || iterations < 1000 || iterations > 100_000) {
         return false;
     }
     try {

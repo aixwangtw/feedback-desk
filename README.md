@@ -1,5 +1,8 @@
 # Feedback Desk
 
+**feedback-desk：開源的客戶工單與 AI 交接系統。客戶開單，團隊與 AI Agent 處理到結案，多個 AI 可以認領、交接。**  
+Open-source client ticketing with AI agent handoff.
+
 A lightweight issue-reporting desk for talking to clients and teammates about problems in your system. Each project gets a private link or one login per client person for the people reporting issues, and a separate management view for your team. Reporters file issues with screenshots, both sides discuss them in a thread, and the team records an "adjustment note" when a fix is ready. Several people and AI tools (Claude Code, Codex or any MCP client) can share the work: every action records the account and the AI tool, and a report can be claimed and carries handoff notes for whoever continues. Built with Laravel 13, Blade, Tailwind 4 and Vite. Default UI language is Traditional Chinese; every role label is configurable. MIT licensed.
 
 ---

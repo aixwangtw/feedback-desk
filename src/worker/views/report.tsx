@@ -5,6 +5,7 @@ import { MAX_ADJUSTMENT_NOTE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
 import { ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
+import { RichText } from './rich-text';
 
 /** Read-only adjustment block shared by the client and the team. */
 export const AdjustmentBlock: FC<{
@@ -16,7 +17,7 @@ export const AdjustmentBlock: FC<{
     <div data-adjustment>
         <h2 class={`${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-950`}>調整說明</h2>
         {report.adjustment_note ? (
-            <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700" data-adjustment-note>{report.adjustment_note}</p>
+            <div class="mt-2" data-adjustment-note><RichText text={report.adjustment_note} compact={compact} /></div>
         ) : adjustmentAttachments.length === 0 ? (
             <p class="mt-2 text-sm text-slate-400">尚未填寫。</p>
         ) : null}
@@ -162,7 +163,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                             <StatusBadge status={report.status} />
                         </div>
 
-                        <p class="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-700">{report.description}</p>
+                        <div class="mt-5" data-report-description><RichText text={report.description} /></div>
 
                         {props.attachments.length > 0 ? (
                             <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">

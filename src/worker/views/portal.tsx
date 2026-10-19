@@ -4,6 +4,7 @@ import type { Attachment, Project, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock } from './report';
+import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
@@ -290,7 +291,7 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                         </div>
                         <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                     </div>
-                    <p class="whitespace-pre-line break-words text-sm leading-6 text-slate-700">{report.description}</p>
+                    <div data-report-description><RichText text={report.description} compact /></div>
                     {row.attachments.length > 0 ? (
                         <div class="flex flex-wrap gap-2">
                             {row.attachments.map((attachment) => (

@@ -28,17 +28,17 @@ export type TokenOwner = { kind: 'developer'; developer: Developer } | { kind: '
  * request comes from (the token's own tool for `mcp install` tokens, else the CLI's header).
  * Shared by the API and MCP. Disabled accounts and expired tokens resolve to nothing.
  */
-export async function tokenOwner(c: AppContext): Promise<{ owner: TokenOwner; tokenId: number; agent: string | null } | null> {
+export async function tokenOwner(c: AppContext): Promise<{ owner: TokenOwner; tokenId: number; agent: string | null; tokenAgent: string | null; mcpClient: string | null } | null> {
     const header = c.req.header('authorization') ?? '';
     const match = /^Bearer\s+(\S+)$/i.exec(header);
     if (!match) {
         return null;
     }
     const token = await c.env.DB.prepare(
-        'SELECT id, developer_id, client_account_id, agent, last_used_at FROM api_tokens WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > ?)',
+        'SELECT id, developer_id, client_account_id, agent, mcp_client, last_used_at FROM api_tokens WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > ?)',
     )
         .bind(await sha256Hex(match[1]), nowIso(c.get('now')))
-        .first<{ id: number; developer_id: number | null; client_account_id: number | null; agent: string | null; last_used_at: string | null }>();
+        .first<{ id: number; developer_id: number | null; client_account_id: number | null; agent: string | null; mcp_client: string | null; last_used_at: string | null }>();
     if (!token) {
         return null;
     }
@@ -61,7 +61,11 @@ export async function tokenOwner(c: AppContext): Promise<{ owner: TokenOwner; to
             c.env.DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').bind(nowIso(now), token.id).run().then(() => undefined, () => undefined),
         );
     }
-    return { owner, tokenId: token.id, agent: normalizeAgent(token.agent) ?? normalizeAgent(c.req.header(AGENT_HEADER)) };
+    const tokenAgent = normalizeAgent(token.agent);
+    const mcpClient = normalizeAgent(token.mcp_client);
+    // The API (CLI) uses the token's label or the CLI header; the name an MCP client reported is
+    // applied only on /mcp (index.tsx), so a token also used from a shell is not mislabelled.
+    return { owner, tokenId: token.id, agent: tokenAgent ?? normalizeAgent(c.req.header(AGENT_HEADER)), tokenAgent, mcpClient };
 }
 
 export const requireToken: MiddlewareHandler<AppEnv> = async (c, next) => {

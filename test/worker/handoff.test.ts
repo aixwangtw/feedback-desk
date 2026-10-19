@@ -176,7 +176,37 @@ describe('several people and AI tools on one report', () => {
         expect(clientPage).toContain('陳美華（Codex）');
     });
 
-    it('takes the AI tool from the CLI header only for known names', async () => {
+    it('labels any MCP client by the name it reports when connecting', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project);
+        const { developer } = await seedDeveloper(undefined, undefined, '林大同');
+        const token = await agentToken({ developerId: developer.id }, null);
+        const init = await mcpCall(token, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'hermes-agent', version: '1.0' } });
+        expect(init.status).toBe(200);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(await env.DB.prepare('SELECT mcp_client FROM api_tokens WHERE agent IS NULL ORDER BY id DESC LIMIT 1').first()).toEqual({ mcp_client: 'hermes-agent' });
+        expect((await tool(token, 'claim_report', { project: seeded.project.slug, report: report.public_id })).isError).toBe(false);
+        const read = await tool<{ claim: { by: string } }>(token, 'get_report', { project: seeded.project.slug, report: report.public_id });
+        expect(read.data.claim.by).toBe('林大同（hermes-agent）');
+        // A label given when the token was made wins over what the client reports.
+        const labelled = await agentToken({ developerId: developer.id }, 'OpenClaw');
+        await mcpCall(labelled, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'something-else', version: '1' } });
+        expect((await tool<{ took_over_from: string }>(labelled, 'claim_report', { project: seeded.project.slug, report: report.public_id, force: true })).data.took_over_from).toContain('林大同（hermes-agent）');
+        const claimed = await env.DB.prepare('SELECT claimed_agent FROM reports WHERE id = ?').bind(report.id).first();
+        expect(claimed).toEqual({ claimed_agent: 'OpenClaw' });
+        // The name a client reported over MCP does not override the CLI's own header.
+        const viaCli = await exports.default.fetch(
+            new Request(`${BASE}/api/v1/projects/${seeded.project.slug}/reports/${report.public_id}/messages`, {
+                method: 'POST',
+                headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'x-feedback-desk-agent': 'Grok Build', 'cf-connecting-ip': '10.3.3.3' },
+                body: JSON.stringify({ body: 'from a shell' }),
+            }),
+        );
+        expect(viaCli.status).toBe(200);
+        expect(await env.DB.prepare('SELECT author_agent FROM messages WHERE report_id = ? ORDER BY id DESC LIMIT 1').bind(report.id).first()).toEqual({ author_agent: 'Grok Build' });
+    });
+
+    it('cleans the AI tool name from the CLI header', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);
         const { developer } = await seedDeveloper();
@@ -190,8 +220,11 @@ describe('several people and AI tools on one report', () => {
                 }),
             );
         expect((await post('codex')).status).toBe(200);
-        expect((await post('<script>')).status).toBe(200);
+        expect((await post('Hermes Agent')).status).toBe(200);
+        expect((await post('<b>"x"</b>')).status).toBe(200);
+        expect((await post('<>"')).status).toBe(200);
         const agents = (await env.DB.prepare('SELECT author_agent FROM messages WHERE report_id = ? ORDER BY id').bind(report.id).all()).results;
-        expect(agents).toEqual([{ author_agent: 'Codex' }, { author_agent: null }]);
+        expect(agents).toEqual([{ author_agent: 'Codex' }, { author_agent: 'Hermes Agent' }, { author_agent: 'bx/b' }, { author_agent: null }]);
+        expect((await import('../../src/worker/lib/agents')).normalizeAgent('x（已核准 (Codex)）')).toBe('x已核准 Codex');
     });
 });

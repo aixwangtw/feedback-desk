@@ -233,7 +233,9 @@ export async function mcpCall(token: string | null, method: string, params: unkn
         'mcp-protocol-version': '2025-06-18',
     };
     if (token) headers.authorization = `Bearer ${token}`;
-    return exports.default.fetch(new Request(`${BASE}/mcp`, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }) }));
+    const body = JSON.stringify({ jsonrpc: '2.0', id, method, params });
+    headers['content-length'] = String(new TextEncoder().encode(body).byteLength);
+    return exports.default.fetch(new Request(`${BASE}/mcp`, { method: 'POST', headers, body }));
 }
 
 /** Parses a JSON-RPC response that may come back as JSON or as a single SSE event. */

@@ -124,12 +124,14 @@ export function apiFor(rt: Runtime, urlOption: string | undefined): ApiClient {
 
 export async function token(rt: Runtime, argv: string[]): Promise<number> {
     const [action, ...rest] = argv;
-    const args = parse(rest, { name: { type: 'string' }, expires: { type: 'string' } });
+    const args = parse(rest, { name: { type: 'string' }, expires: { type: 'string' }, agent: { type: 'string' } });
     const api = apiFor(rt, str(args, 'url'));
     if (action === 'create') {
+        const agent = str(args, 'agent');
         const created = await api.post<{ token: string; id: number; name: string; expires_at: string | null }>('/tokens', {
-            name: str(args, 'name') ?? 'cli',
+            name: str(args, 'name') ?? (agent ? `${agent} MCP` : 'cli'),
             expires_in_days: parseExpires(str(args, 'expires')),
+            ...(agent ? { agent } : {}),
         });
         if (bool(args, 'json')) {
             rt.out(JSON.stringify(created, null, 2));
@@ -266,10 +268,43 @@ function rememberToken(rt: Runtime, api: ApiClient, tool: Tool, tokenId: number)
     writeConfig(rt, config);
 }
 
+/**
+ * For any other MCP client (OpenClaw, Hermes Agent, Grok Build, …): a token labelled with the
+ * agent's name, kept in a file only this user can read, plus the URL and header to configure.
+ * Those clients read the header from their own config, usually with an environment variable.
+ */
+async function mcpToken(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, { agent: { type: 'string' } });
+    const agent = (str(args, 'agent') ?? '').trim();
+    if (agent === '') {
+        throw new CliError('請用 --agent 指定這個 token 給哪個 AI 用，例如 --agent "Hermes Agent"（畫面上會顯示「名字（Hermes Agent）」）。');
+    }
+    const api = apiFor(rt, str(args, 'url'));
+    await api.get('/me');
+    const created = await api.post<{ token: string; id: number }>('/tokens', { name: `${agent} MCP`, agent });
+    const dir = mcpDir(rt);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const file = join(dir, `${agent.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent'}-${created.id}.token`);
+    writePrivateFile(rt, file, `${created.token}\n`);
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify({ url: `${api.baseUrl}/mcp`, token_file: file, token_id: created.id, header: 'Authorization: Bearer <token 檔的內容>' }, null, 2));
+        return 0;
+    }
+    rt.out(`已為 ${escapeInline(agent)} 建立 token #${created.id}，存在 ${file}（只有你的帳號能讀）。`);
+    rt.out(`MCP 網址：${api.baseUrl}/mcp（Streamable HTTP）`);
+    rt.out('標頭：Authorization: Bearer <token 檔的內容>');
+    rt.out(`建議用環境變數交給 agent，不要把 token 直接寫進設定檔：export FEEDBACK_DESK_MCP_TOKEN="$(cat ${shellQuote(file)})"`);
+    rt.out('各 agent 的設定寫法見 README「其他 AI Agent 怎麼接」。不再使用時：token revoke ' + created.id);
+    return 0;
+}
+
 export async function mcp(rt: Runtime, argv: string[]): Promise<number> {
     const [action, ...rest] = argv;
+    if (action === 'token') {
+        return mcpToken(rt, rest);
+    }
     if (action !== 'install') {
-        throw new CliError('用法：feedback-desk mcp install [--claude] [--codex] [--scope user|local] [--url https://你的站]');
+        throw new CliError('用法：feedback-desk mcp install [--claude] [--codex] [--scope user|local] [--url https://你的站]，或 mcp token --agent 名稱（其他 MCP 用戶端）');
     }
     const args = parse(rest, { claude: { type: 'boolean' }, codex: { type: 'boolean' }, scope: { type: 'string' } });
     const scope = str(args, 'scope') ?? 'user';

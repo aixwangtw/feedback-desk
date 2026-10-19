@@ -3,6 +3,7 @@ import type { Env } from './env';
 import { Access } from './lib/access';
 import { pruneExpired } from './lib/rate-limit';
 import { pruneStaleUploads } from './lib/uploads';
+import { normalizeAgent } from './lib/agents';
 import { api, tokenOwner } from './routes/api';
 import { HttpError, viewContext, type AppEnv } from './routes/context';
 import { device } from './routes/device';
@@ -85,13 +86,51 @@ app.notFound((c) => {
     return c.html(<MessagePage v={viewContext(c)} status={404} title={ERROR_TEXT[404].title} body={ERROR_TEXT[404].body} />, 404);
 });
 
+/** Initialize requests are small; anything bigger (tool calls with images) is not parsed twice. */
+const MAX_INITIALIZE_BYTES = 16 * 1024;
+
+/** clientInfo.name of an MCP `initialize` request (also inside a JSON-RPC batch), cleaned; null otherwise. */
+async function initializeClientName(request: Request): Promise<string | null> {
+    if (!(request.headers.get('content-type') ?? '').includes('application/json')) {
+        return null;
+    }
+    const length = Number(request.headers.get('content-length') ?? '');
+    if (!Number.isInteger(length) || length <= 0 || length > MAX_INITIALIZE_BYTES) {
+        return null;
+    }
+    try {
+        const body = (await request.clone().json()) as unknown;
+        const messages = Array.isArray(body) ? body : [body];
+        for (const message of messages) {
+            const candidate = message as { method?: unknown; params?: { clientInfo?: { name?: unknown } } };
+            if (candidate?.method === 'initialize') {
+                return normalizeAgent(candidate.params?.clientInfo?.name);
+            }
+        }
+    } catch {
+        // Not JSON: the MCP handler answers it.
+    }
+    return null;
+}
+
 app.all('/mcp', async (c) => {
     const result = await tokenOwner(c);
     if (!result) {
         return c.json({ error: 'unauthorized', message: '需要有效的 API token（npx github:aixwangtw/feedback-desk login）。' }, 401, { 'WWW-Authenticate': 'Bearer' });
     }
+    // The client names itself (clientInfo.name) only in `initialize`; remember it on the token so the
+    // tool calls that follow, each a separate request, are labelled with it too.
+    const reported = c.req.method === 'POST' ? await initializeClientName(c.req.raw) : null;
+    const agent = result.tokenAgent ?? reported ?? result.mcpClient;
+    if (reported && !result.tokenAgent) {
+        if (reported !== result.mcpClient) {
+            c.executionCtx.waitUntil(
+                c.env.DB.prepare('UPDATE api_tokens SET mcp_client = ? WHERE id = ?').bind(reported, result.tokenId).run().then(() => undefined, () => undefined),
+            );
+        }
+    }
     const { handleMcp } = await import('./mcp');
-    const base = { env: c.env, origin: new URL(c.req.url).origin, now: c.get('now'), agent: result.agent };
+    const base = { env: c.env, origin: new URL(c.req.url).origin, now: c.get('now'), agent };
     return handleMcp(
         c.req.raw,
         c.env,

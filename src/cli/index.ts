@@ -25,7 +25,8 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   logout                           撤銷並刪除本機 token
   mcp install [--claude] [--codex] [--scope user|local]
                                    把 MCP server 設定寫入 Claude Code、Codex（token 放在只有你能讀的檔案）
-  token create [--expires 天數]|list|revoke <id>
+  mcp token --agent 名稱           給其他 MCP 用戶端（OpenClaw、Hermes Agent、Grok Build…）的 token 與連線資訊
+  token create [--expires 天數] [--agent 名稱]|list|revoke <id>
                                    管理 API token
 
 專案與帳號

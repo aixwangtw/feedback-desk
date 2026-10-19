@@ -354,6 +354,24 @@ describe('login', () => {
     });
 });
 
+describe('mcp token for other agents', () => {
+    it('makes a labelled token in a private file and prints how to connect', async () => {
+        const fake = signedIn(({ url, method }) => {
+            if (url.endsWith('/me')) return jsonResponse({ developer: { id: 1, username: 'alex', name: 'Alex' } });
+            if (url.endsWith('/tokens') && method === 'POST') return jsonResponse({ token: 'fdk_secret_value', id: 9 }, 201);
+            return jsonResponse({}, 404);
+        });
+        expect(await main(['mcp', 'token'], fake.rt)).toBe(1);
+        expect(await main(['mcp', 'token', '--agent', 'Hermes Agent'], fake.rt)).toBe(0);
+        expect(fake.calls[1].body).toEqual({ name: 'Hermes Agent MCP', agent: 'Hermes Agent' });
+        const file = join(fake.rt.env.FEEDBACK_DESK_CONFIG_DIR as string, 'mcp', 'hermes-agent-9.token');
+        expect(readFileSync(file, 'utf8').trim()).toBe('fdk_secret_value');
+        expect(statSync(file).mode & 0o777).toBe(0o600);
+        expect(fake.text()).toContain('https://desk.example.com/mcp');
+        expect(fake.text()).not.toContain('fdk_secret_value');
+    });
+});
+
 describe('handoff commands', () => {
     it('claims, takes over with --force, writes handoff notes and opens reports with images', async () => {
         const fake = signedIn(({ url }) => {

@@ -1,25 +1,44 @@
 /**
- * AI tools that work on reports. The name comes from the API token (`mcp install` makes one token
- * per tool) or, for the CLI, from the X-Feedback-Desk-Agent header the CLI sets when it runs
- * inside Claude Code or Codex. Only these values are stored, so the label cannot be made up.
+ * Which AI tool did something. Any MCP client or agent can work on reports; its name comes from,
+ * in order: the label given when the token was made (`mcp install`, `token create --agent`), the
+ * clientInfo.name the MCP client reported when it connected, or the X-Feedback-Desk-Agent header
+ * the CLI sends when it runs inside an agent. Names are self-reported, so they are labels, not proof.
  */
-export const AGENTS = ['Claude Code', 'Codex'] as const;
-export type Agent = (typeof AGENTS)[number];
-
 export const AGENT_HEADER = 'x-feedback-desk-agent';
 
-export function normalizeAgent(value: unknown): Agent | null {
+const MAX_AGENT_LENGTH = 40;
+
+/** Friendlier names for clientInfo.name values of well-known clients. */
+const KNOWN_CLIENTS: Record<string, string> = {
+    'claude-code': 'Claude Code',
+    claudecode: 'Claude Code',
+    claude: 'Claude Code',
+    codex: 'Codex',
+    'codex-mcp-client': 'Codex',
+};
+
+/**
+ * Cleans a self-reported tool name for storage and display: letters (any script), digits, spaces
+ * and . _ - / + only, at most 40 characters. No brackets, so a name cannot pose as part of the
+ * "名字（工具）" label. Empty results are null.
+ */
+export function normalizeAgent(value: unknown): string | null {
     if (typeof value !== 'string') {
         return null;
     }
-    const key = value.trim().toLowerCase().replace(/[\s_-]+/g, '');
-    if (key === 'claudecode' || key === 'claude') {
-        return 'Claude Code';
+    const known = KNOWN_CLIENTS[value.trim().toLowerCase().replace(/[\s_]+/g, '-')] ?? KNOWN_CLIENTS[value.trim().toLowerCase().replace(/[\s_-]+/g, '')];
+    if (known) {
+        return known;
     }
-    if (key === 'codex') {
-        return 'Codex';
+    const cleaned = value
+        .normalize('NFKC')
+        .replace(/[^\p{L}\p{N} ._\-/+]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (cleaned === '') {
+        return null;
     }
-    return null;
+    return [...cleaned].slice(0, MAX_AGENT_LENGTH).join('');
 }
 
 /** "王小明（Codex）", or just the name for people on the web. */

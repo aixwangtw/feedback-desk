@@ -356,7 +356,7 @@
                     </div>
                     <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                 </div>
-                <p class="whitespace-pre-line break-words text-sm leading-6 text-slate-700">{{ $report->description }}</p>
+                <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <div class="flex flex-wrap gap-2">
                         @foreach ($report->feedbackAttachments as $attachment)

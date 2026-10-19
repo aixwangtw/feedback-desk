@@ -4,7 +4,7 @@
 <div data-adjustment>
     <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整說明</h2>
     @if (filled($report->adjustment_note))
-        <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</p>
+        <div class="mt-2" data-adjustment-note>{{ \App\Support\FeedbackRichText::render($report->adjustment_note, $compact) }}</div>
     @elseif ($report->adjustmentAttachments->isEmpty())
         <p class="mt-2 text-sm text-slate-400">尚未填寫。</p>
     @endif

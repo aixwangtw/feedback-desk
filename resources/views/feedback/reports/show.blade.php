@@ -35,7 +35,7 @@
                     <x-feedback.status-badge :status="$report->status" />
                 </div>
 
-                <p class="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ $report->description }}</p>
+                <div class="mt-5" data-report-description>{{ \App\Support\FeedbackRichText::render($report->description) }}</div>
 
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">

@@ -56,7 +56,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
         );
     }
 
-    public function test_client_list_uses_client_unread_including_adjustment_updates(): void
+    public function test_client_list_unread_tier_counts_only_messages_not_adjustment_updates(): void
     {
         $this->report('剛建立還沒留言', now()->subMinutes(5));
         $readThread = $this->report('老師自己問過', now()->subMonth());
@@ -69,7 +69,8 @@ class FeedbackPortalDefaultSortTest extends TestCase
         $this->report('開發者自己的單', now(), ['creator_type' => FeedbackCreatorType::OwnerShared]);
         $this->actingAsClient();
 
-        $expected = ['開發者剛回覆', '調整說明更新但沒留言', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言'];
+        // 調整說明更新不算未讀，沒留言的單照建立時間排在最後段。
+        $expected = ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整說明更新但沒留言'];
         $this->assertSame($expected, $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()));
         $this->assertSame($expected, array_column($this->getJson(route('feedback.conversations.index', $this->project))->json('items'), 'title'));
     }

@@ -135,6 +135,16 @@ if (root) {
         });
     };
 
+    // 客戶端清單／看板上的「說明已更新」標籤：這張單已讀過（面板資料不再標示更新）就拿掉。
+    const syncAdjustmentTags = () => {
+        document.querySelectorAll('[data-adjustment-updated]').forEach((tag) => {
+            const item = state.items.find((candidate) => candidate.id === tag.dataset.adjustmentUpdated);
+            if (item && !item.adjustment_updated) {
+                tag.remove();
+            }
+        });
+    };
+
     // 開發者端清單上方「有 N 張單有未讀留言」提示與「只看未讀留言」篩選。
     const syncUnreadSummary = (count) => {
         const summary = document.querySelector('[data-unread-summary]');
@@ -171,6 +181,7 @@ if (root) {
             return;
         }
         syncPageBadges(unreadById(state.items));
+        syncAdjustmentTags();
         if (isOwnerViewer) {
             syncUnreadSummary(countUnreadReports(state.items));
         }
@@ -205,7 +216,8 @@ if (root) {
                 : `${item.preview_is_mine ? '你：' : ''}${item.preview}`;
             bottom.append(el('span', `min-w-0 flex-1 truncate text-xs ${item.preview === null ? 'italic text-slate-400' : (item.has_update ? 'text-slate-800' : 'text-slate-500')}`, previewText));
             if (item.adjustment_updated) {
-                bottom.append(el('span', 'shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white', '調整說明更新'));
+                // 調整說明更新不算未讀留言：低調的文字標籤，不用紅色數字。
+                bottom.append(el('span', 'shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-medium text-slate-500', '說明已更新'));
             }
             if (item.unread > 0) {
                 const badge = el('span', 'shrink-0 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[11px] font-bold leading-4 text-white', item.unread > 99 ? '99+' : item.unread);
@@ -246,7 +258,7 @@ if (root) {
             state.loaded = true;
             // 正在看的那張每次刷新都會標為已讀；清單若比它早一步取回，仍當作已讀。
             const openItem = state.items.find((item) => item.id === openId);
-            if (openItem && openItem.unread > 0) {
+            if (openItem && (openItem.unread > 0 || openItem.adjustment_updated)) {
                 openItem.unread = 0;
                 openItem.adjustment_updated = false;
                 openItem.has_update = false;
@@ -313,7 +325,7 @@ if (root) {
 
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
         // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
-        document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
+        document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge], [data-adjustment-updated="${CSS.escape(data.id)}"]`).forEach((badge) => badge.remove());
 
         const item = state.items.find((candidate) => candidate.id === data.id);
         if (item) {

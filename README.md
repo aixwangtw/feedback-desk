@@ -46,7 +46,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 - 三種狀態：待處理、待審核（開發團隊已改好並寫了調整說明）、已完成（客戶確認）。
 - 留言串與附圖；開發團隊可寫「調整說明」並附調整圖片。
 - 客戶刪除的問題只是隱藏，開發團隊仍看得到並可還原。
-- 未讀提示與右下角留言對話面板：面板關著時每 60 秒更新一次未讀數；開著時清單每 10 秒、對話每 5 秒更新。
+- 未讀提示與右下角留言對話面板：面板關著時每 60 秒更新一次未讀數；開著時清單每 10 秒、對話每 5 秒更新。紅色未讀數字只算對方的新留言；調整說明有更新時，客戶端在單旁顯示「說明已更新」小標籤，開啟該單後消失。
 - 每人一個帳號：同一個專案可以開多個客戶帳號，單、留言、附件都記錄是誰寫的，清單、單頁與對話面板顯示建立者名字，未讀也是每位客戶各自計算。每個人（團隊個人帳號與客戶帳號）都能在右上角「我的帳號」改自己的顯示名稱與密碼。
 - 多人、多個 AI 接手：開單、留言、調整說明、改狀態都記錄帳號與 AI 工具，畫面顯示「王小明（Codex）」。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
 - 首頁公開回報（選用）：陌生人不用登入就能對單一專案回報問題，拿到私密網址追蹤，見下方。
@@ -168,6 +168,7 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | `feedback:account-recover {username} {--project=}` | 忘記密碼：由能進主機的管理者救回任何團隊或客戶帳號（含本人自設的密碼），產生新的隨機密碼；客戶帳號名稱在多個專案重複時加 `--project`。 |
 | `feedback:account-password owner {--password=}` | 重設共用 owner 帳號密碼，雜湊寫入 `.env`，明文只顯示一次。 |
 | `feedback:adjust {project} {report} {--by-id} {--note=} {--append} {--image=*} {--as=} {--agent=} {--force}` | 用指令寫入問題的調整說明與圖片，不改動狀態。別人認領中要加 `--force`（記錄為接手）。 |
+| `feedback:message {project} {report} {--text=} {--file=*} {--as=} {--agent=}` | 以開發團隊身分在問題留言（可附圖，不改動狀態），完成後輸出留言 id；未給 `--text` 時從標準輸入讀取，客戶端會出現紅色未讀數字。 |
 | `feedback:reports {project} {--status=*} {--creator=} {--include-deleted} {--unread} {--json}` | 列出專案的問題，最新在前；可依狀態、建立者（`client`、`client:<id>`、`public`、`shared`、`developer:<id>`）篩選，並顯示誰認領中。 |
 | `feedback:report {project} {report} {--json}` | 讀取單張問題的完整內容（含認領、交接紀錄、最近動態），附件與調整附圖會印出檔案路徑。 |
 | `feedback:status {project} {report} {status} {--as=} {--agent=} {--force}` | 改變問題狀態，輸出前後狀態；狀態可用 `new`／`needs_input`／`completed` 或「待處理／待審核／已完成」。別人認領中要加 `--force`。 |

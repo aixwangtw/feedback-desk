@@ -177,7 +177,7 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->assertTrue($report->refresh()->owner_last_read_at->lessThan(now()->subMinutes(30)));
     }
 
-    public function test_adjustment_changes_show_a_new_reply_to_the_client_but_unchanged_saves_do_not(): void
+    public function test_adjustment_changes_show_an_updated_tag_to_the_client_but_never_a_red_unread_count(): void
     {
         $report = $this->reportReadAt(now()->subHour(), now()->subHour());
         $this->actingAsOwner();
@@ -193,8 +193,40 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->assertSame($changedAt->toDateTimeString(), $report->refresh()->adjustment_updated_at->toDateTimeString());
 
         $this->actingAsClient();
-        // 沒有留言、只有調整說明更新時，也會出現留言按鈕並以紅色 1 提示。
-        $this->get(route('feedback.portal', $this->project))->assertSee($this->messageButtonLabel($report, 0, 1), false);
+        // 沒有留言、只有調整說明更新時：不出現留言按鈕與紅色數字，改顯示低調的「說明已更新」標籤。
+        foreach (['list', 'board'] as $view) {
+            $html = $this->get(route('feedback.portal', [$this->project, 'view' => $view]))
+                ->assertOk()
+                ->assertDontSee('data-unread-badge', false)
+                ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false)
+                ->assertSee('說明已更新')
+                ->getContent();
+            // 只剩詳情視窗固定有的「開啟對話」按鈕，清單列／卡片上沒有留言按鈕。
+            $this->assertSame(1, substr_count($html, 'data-chat-open="'.$report->public_id.'" data-message-count'));
+        }
+        $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('unread_total'));
+
+        // 開啟這張單後標籤消失。
+        $this->travel(1)->minutes();
+        $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-adjustment-updated', false);
+
+        // 開發者端看不到這個標籤。
+        $this->actingAsOwner();
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-adjustment-updated', false);
+    }
+
+    public function test_adjustment_update_does_not_add_to_the_red_count_of_new_messages(): void
+    {
+        $report = $this->reportReadAt(now()->subHour(), now()->subHour());
+        $this->message($report, FeedbackAuthorType::Agent, now()->subMinutes(5));
+        $report->update(['adjustment_note' => '已調整', 'adjustment_updated_at' => now()->subMinutes(4)]);
+        $this->actingAsClient();
+
+        $this->get(route('feedback.portal', $this->project))
+            ->assertSee($this->messageButtonLabel($report, 1, 1), false)
+            ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false);
+        $this->assertSame(1, $this->getJson(route('feedback.conversations.index', $this->project))->json('items.0.unread'));
     }
 
     public function test_client_pages_never_show_owner_unread_data_or_honor_the_unread_filter(): void

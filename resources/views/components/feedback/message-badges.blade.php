@@ -1,15 +1,20 @@
 {{--
-    清單、看板與詳情視窗上的「留言」按鈕：有留言（或有未讀）才出現；右上角紅色圓形數字＝未讀數，沒有未讀就不顯示數字。
-    開發者端的未讀＝客戶新留言；客戶端的未讀＝開發者新留言，調整說明有更新再加 1。點按鈕直接開啟右下角面板中這張單的對話。
+    清單、看板與詳情視窗上的「留言」按鈕：有留言（或有未讀）才出現；右上角紅色圓形數字＝未讀留言數，沒有未讀就不顯示數字。
+    開發者端的未讀＝客戶新留言；客戶端的未讀＝開發者（含 AI）新留言。點按鈕直接開啟右下角面板中這張單的對話。
+    客戶端調整說明有更新時，按鈕旁另顯示低調的「說明已更新」文字標籤（不算未讀），開啟這張單後消失。
 --}}
 @props(['report', 'isOwner', 'label' => null])
 
 @php
     $total = (int) ($report->feedback_messages_count ?? 0);
     $unread = $report->unreadCountFor($isOwner);
+    $adjustmentUpdated = ! $isOwner && ! $label && $report->adjustmentIsNewForClient();
     $ariaLabel = "開啟「{$report->title}」的留言對話（".($total > 0 ? "共 {$total} 則留言" : '還沒有留言').($unread > 0 ? "，{$unread} 則未讀" : '').'）';
 @endphp
 
+@if ($adjustmentUpdated)
+    <span class="inline-flex shrink-0 items-center self-center whitespace-nowrap rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-slate-500" data-adjustment-updated="{{ $report->public_id }}" title="調整說明有更新，開啟這張單後就不再顯示">說明已更新</span>
+@endif
 @if ($total > 0 || $unread > 0 || $label)
     <button type="button" {{ $attributes->class([
         'relative inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg align-middle transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',

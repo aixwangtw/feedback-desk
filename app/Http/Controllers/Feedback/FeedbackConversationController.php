@@ -117,7 +117,7 @@ class FeedbackConversationController extends Controller
      */
     private function listItem(FeedbackProject $project, FeedbackReport $report, int $number, bool $isOwner): array
     {
-        // 與清單、看板上留言按鈕的紅色數字相同：客戶端的調整說明更新也算 1。
+        // 與清單、看板上留言按鈕的紅色數字相同，只算對方的新留言；客戶端的調整說明更新另用 adjustment_updated 標示，不算未讀。
         $unread = $report->unreadCountFor($isOwner);
         $adjustmentUpdated = ! $isOwner && $report->adjustmentIsNewForClient();
         $latestAt = $report->latest_message_at;

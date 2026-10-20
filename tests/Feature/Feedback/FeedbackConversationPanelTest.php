@@ -126,7 +126,7 @@ class FeedbackConversationPanelTest extends TestCase
         $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
 
         $this->assertSame(
-            ['開發者剛回覆', '調整說明更新但沒留言', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言'],
+            ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整說明更新但沒留言'],
             array_column($response->json('items'), 'title'),
         );
     }
@@ -150,9 +150,10 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertSame('AI 回覆', $response->json('items.0.preview'));
         $this->assertFalse($response->json('items.0.preview_is_mine'));
         $this->assertTrue($response->json('items.1.adjustment_updated'));
-        // 調整說明更新算 1 則未讀，與清單上留言按鈕的紅色數字一致。
-        $this->assertSame(1, $response->json('items.1.unread'));
-        $this->assertSame(3, $response->json('unread_total'));
+        // 調整說明更新不算未讀留言，只用 adjustment_updated 標示；浮動按鈕總數只算留言。
+        $this->assertSame(0, $response->json('items.1.unread'));
+        $this->assertTrue($response->json('items.1.has_update'));
+        $this->assertSame(2, $response->json('unread_total'));
         // 客戶端編號只算老師建立的單（含已刪除），與清單頁一致。
         $this->assertSame([3, 2], array_column($response->json('items'), 'number'));
         $this->assertNotNull($adjusted);
@@ -401,9 +402,10 @@ class FeedbackConversationPanelTest extends TestCase
         $this->actingAsClient();
         $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
         $this->assertStringContainsString('data-viewer="client"', $page);
-        // 客戶端：老師自己的留言不算未讀，調整說明更新算 1，紅色數字顯示 1。
-        $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言，1 則未讀/', $page);
-        $this->assertMatchesRegularExpression('/data-unread-badge\s+data-new-reply-badge\s*>1</', $page);
+        // 客戶端：老師自己的留言不算未讀，調整說明更新也不算，不顯示紅色數字，改顯示「說明已更新」標籤。
+        $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言）/', $page);
+        $this->assertStringNotContainsString('data-unread-badge', $page);
+        $this->assertStringContainsString('data-adjustment-updated="'.$report->public_id.'"', $page);
         $this->assertStringNotContainsString('有新回覆', $page);
         $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
         $this->assertStringContainsString('開啟對話', $dialog);

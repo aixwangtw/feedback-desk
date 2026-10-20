@@ -59,6 +59,7 @@ export interface PortalProps {
     backPath: string;
     success?: string;
     passwordLink?: boolean;
+    projects?: Array<{ name: string; slug: string }>;
     form?: PortalFormState;
 }
 
@@ -129,7 +130,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 
     return (
-        <Layout v={v} title={`問題清單｜${project.name}`} project={project} showLogout passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
+        <Layout v={v} title={`問題清單｜${project.name}`} project={project} projects={isOwner ? props.projects : undefined} showLogout passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>

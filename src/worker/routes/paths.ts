@@ -32,6 +32,9 @@ export const paths = {
     ownerAccess: (slug: string) => `/owner/${enc(slug)}/access`,
     ownerLogin: (slug: string) => `/owner/${enc(slug)}/login`,
     ownerIndex: (slug: string) => `/owner/${enc(slug)}`,
+    ownerGlobalLogin: () => '/owner/login',
+    ownerGlobalLogout: () => '/owner/logout',
+    ownerProjects: () => '/owner/projects',
     device: () => '/device',
 };
 

@@ -38,6 +38,8 @@ interface AuthCookie {
     r: Array<[number, number]>;
     /** Sign-in for the CLI authorization page (outside any project): a team account, or a client account when k is 'c'. */
     t?: { i: number; f: string; e: number; k?: 'c' };
+    /** Global signed-in developer/team account (owner on every project). */
+    g?: { i: number; f: string; e: number };
     /** Page to return to after logging in. */
     i?: string;
 }
@@ -105,6 +107,7 @@ export class Access {
                 p: stored && typeof stored.p === 'object' && stored.p !== null ? stored.p : {},
                 r: Array.isArray(stored?.r) ? stored.r.filter((entry) => Array.isArray(entry) && entry[1] > this.nowSeconds) : [],
                 t: stored?.t,
+                g: stored?.g,
                 i: typeof stored?.i === 'string' ? stored.i : undefined,
             };
         }
@@ -113,7 +116,7 @@ export class Access {
 
     private saveAuth(cookie: AuthCookie): void {
         this.roleCache.clear();
-        const empty = Object.keys(cookie.p).length === 0 && cookie.r.length === 0 && !cookie.t && !cookie.i;
+        const empty = Object.keys(cookie.p).length === 0 && cookie.r.length === 0 && !cookie.t && !cookie.g && !cookie.i;
         if (empty) {
             this.jar.forget(AUTH_COOKIE);
         } else {
@@ -182,8 +185,39 @@ export class Access {
         return this.grant(project, 'owner', source);
     }
 
-    grantDeveloper(project: Project, developer: Developer): Promise<void> {
-        return this.grant(project, 'owner', 'developer', developer);
+    async grantDeveloper(project: Project, developer: Developer): Promise<void> {
+        await Promise.all([
+            this.grant(project, 'owner', 'developer', developer),
+            this.grantGlobalDeveloper(developer),
+        ]);
+    }
+
+    async grantGlobalDeveloper(developer: Developer): Promise<void> {
+        const cookie = await this.auth();
+        const fingerprint = await hmac(this.env.APP_SECRET, `global-developer|${developer.id}|${developer.password_hash}`);
+        cookie.g = { i: developer.id, f: fingerprint, e: this.nowSeconds + REMEMBER_DAYS * DAY };
+        this.developerCache.set(developer.id, Promise.resolve(developer));
+        this.saveAuth(cookie);
+    }
+
+    async globalDeveloper(): Promise<Developer | null> {
+        const cookie = await this.auth();
+        const g = cookie.g;
+        if (!g || typeof g.e !== 'number' || g.e < this.nowSeconds || typeof g.f !== 'string' || typeof g.i !== 'number') {
+            return null;
+        }
+        const developer = await this.developer(g.i);
+        if (!developer || developer.disabled_at) {
+            return null;
+        }
+        const expected = await hmac(this.env.APP_SECRET, `global-developer|${developer.id}|${developer.password_hash}`);
+        return timingSafeEqualString(expected, g.f) ? developer : null;
+    }
+
+    async revokeGlobalDeveloper(): Promise<void> {
+        const cookie = await this.auth();
+        delete cookie.g;
+        this.saveAuth(cookie);
     }
 
     /** Client entry link login. */
@@ -209,10 +243,11 @@ export class Access {
         this.saveAuth(cookie);
     }
 
-    /** Remove every owner/client grant for the project. */
+    /** Remove every owner/client grant for the project, and global developer session. */
     async revoke(project: Project): Promise<void> {
         const cookie = await this.auth();
         delete cookie.p[String(project.id)];
+        delete cookie.g;
         this.saveAuth(cookie);
     }
 
@@ -220,6 +255,18 @@ export class Access {
         const cookie = await this.auth();
         const entry = cookie.p[String(project.id)]?.[role === 'owner' ? 'o' : 'c'];
         if (!entry || typeof entry.e !== 'number' || entry.e < this.nowSeconds || typeof entry.f !== 'string') {
+            if (role === 'owner') {
+                const globalDev = await this.globalDeveloper();
+                if (globalDev) {
+                    const globalEntry: GrantEntry = {
+                        s: 'developer',
+                        f: cookie.g!.f,
+                        e: cookie.g!.e,
+                        d: globalDev.id,
+                    };
+                    return { entry: globalEntry, developer: globalDev, account: null };
+                }
+            }
             return null;
         }
         let developer: Developer | null = null;
@@ -247,7 +294,23 @@ export class Access {
         } else {
             expected = await this.fingerprint(project, role, entry.s);
         }
-        return expected !== null && timingSafeEqualString(expected, entry.f) ? { entry, developer, account } : null;
+        const matches = expected !== null && timingSafeEqualString(expected, entry.f);
+        if (matches) {
+            return { entry, developer, account };
+        }
+        if (role === 'owner') {
+            const globalDev = await this.globalDeveloper();
+            if (globalDev) {
+                const globalEntry: GrantEntry = {
+                    s: 'developer',
+                    f: cookie.g!.f,
+                    e: cookie.g!.e,
+                    d: globalDev.id,
+                };
+                return { entry: globalEntry, developer: globalDev, account: null };
+            }
+        }
+        return null;
     }
 
     private async validEntry(project: Project, role: Role): Promise<GrantEntry | null> {
@@ -340,6 +403,9 @@ export class Access {
         }
         if (cookie.t && cookie.t.i === developer.id && cookie.t.k !== 'c') {
             cookie.t.f = await hmac(this.env.APP_SECRET, `team|${developer.id}|${developer.password_hash}`);
+        }
+        if (cookie.g && cookie.g.i === developer.id) {
+            cookie.g.f = await hmac(this.env.APP_SECRET, `global-developer|${developer.id}|${developer.password_hash}`);
         }
         this.developerCache.set(developer.id, Promise.resolve(developer));
         this.saveAuth(cookie);

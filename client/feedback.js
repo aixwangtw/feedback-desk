@@ -47,6 +47,12 @@ document.addEventListener('change', (event) => {
     if (event.target.matches('[data-image-input]')) {
         renderImagePreviews(event.target);
     }
+    if (event.target.matches('[data-project-switcher]')) {
+        const url = event.target.value;
+        if (url) {
+            window.location.href = url;
+        }
+    }
 });
 
 

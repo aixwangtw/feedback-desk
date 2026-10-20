@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx';
-import type { Project, Report } from '../lib/models';
+import type { Developer, Project, Report } from '../lib/models';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
 import { ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
@@ -360,3 +360,92 @@ export const AccountPage: FC<{
         </div>
     </Layout>
 );
+
+export const GlobalLoginPage: FC<{
+    v: ViewContext;
+    username: string;
+    error?: string;
+    success?: string;
+}> = ({ v, username, error, success }) => {
+    const labels = v.cfg.labels;
+    return (
+        <Layout v={v} title={`${labels.owner}統一登入`}>
+            <section class="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+                    <span class="size-2 rounded-full bg-teal-600"></span>
+                    統一管理入口
+                </div>
+                <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-950">{labels.owner}登入</h1>
+                <p class="mt-2 text-sm leading-6 text-slate-600">登入後即可直接管理所有專案，不需重複登入。</p>
+
+                <form method="post" action={paths.ownerGlobalLogin()} class="mt-6 grid gap-5">
+                    {error ? <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{error}</div> : null}
+                    {success ? <div role="status" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{success}</div> : null}
+                    <div>
+                        <label for="username" class="mb-2 block text-sm font-semibold text-slate-800">帳號</label>
+                        <input id="username" name="username" value={username} required maxlength={50} autocomplete="username" autocapitalize="none" autofocus class={INPUT} placeholder="例如：admin" />
+                    </div>
+                    <div>
+                        <label for="password" class="mb-2 block text-sm font-semibold text-slate-800">密碼</label>
+                        <input id="password" name="password" type="password" required maxlength={200} autocomplete="current-password" class={INPUT} />
+                    </div>
+                    <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">登入系統</button>
+                </form>
+            </section>
+        </Layout>
+    );
+};
+
+export const ProjectsOverviewPage: FC<{
+    v: ViewContext;
+    developer: Developer;
+    projects: Project[];
+    success?: string;
+}> = ({ v, developer, projects, success }) => {
+    const labels = v.cfg.labels;
+    return (
+        <Layout v={v} title="專案總覽" showLogout logoutUrl={paths.ownerGlobalLogout()} success={success} maxWidth="max-w-5xl">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+                        {labels.owner}：{developer.name} ({developer.username})
+                    </div>
+                    <h1 class="mt-2 text-3xl font-bold tracking-tight text-slate-950">專案總覽</h1>
+                    <p class="mt-1 text-sm text-slate-600">選擇要前往的專案後台，已登入狀態下切換專案不需重新驗證身分。</p>
+                </div>
+            </div>
+
+            <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {projects.map((p) => (
+                    <div class="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-teal-300 hover:shadow-md">
+                        <div>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="rounded-lg bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700">
+                                    {p.slug}
+                                </span>
+                            </div>
+                            <h2 class="mt-3 text-xl font-bold text-slate-900">{p.name}</h2>
+                        </div>
+                        <div class="mt-6 flex flex-col gap-2 pt-4 border-t border-slate-100">
+                            <a
+                                href={paths.ownerIndex(p.slug)}
+                                class="inline-flex min-h-10 items-center justify-center rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800"
+                            >
+                                進入管理後台 →
+                            </a>
+                            <a
+                                href={paths.portal(p.slug)}
+                                target="_blank"
+                                rel="noreferrer"
+                                class="inline-flex min-h-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                                開啟客戶端入口 ↗
+                            </a>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Layout>
+    );
+};
+

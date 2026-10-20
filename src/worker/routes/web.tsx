@@ -3,7 +3,7 @@ import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared
 import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
-import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, messagesForReport, placeholders } from '../lib/db';
+import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
 import { isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
@@ -51,7 +51,7 @@ import {
 } from '../lib/uploads';
 import { formatAbsolute, nowIso } from '../../shared/time';
 import { messagePreview, shortTime } from '../../shared/conversation';
-import { HomePage, HONEYPOT_FIELD, LoginPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
+import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, type PortalFormState, type PortalRow } from '../views/portal';
 import { Activity, ConversationFragment, ReportPage } from '../views/report';
 import { isSafeLocalPath } from '../lib/access';
@@ -385,6 +385,89 @@ web.post('/p/:slug/logout', async (c) => {
     return c.redirect(paths.login(project.slug), 302);
 });
 
+// ---------------------------------------------------------------- global owner login & projects
+
+web.get('/login', (c) => c.redirect(paths.ownerGlobalLogin(), 302));
+
+web.get('/owner', async (c) => {
+    const access = c.get('access');
+    const developer = await access.globalDeveloper();
+    if (developer) {
+        return c.redirect(paths.ownerProjects(), 302);
+    }
+    return c.redirect(paths.ownerGlobalLogin(), 302);
+});
+
+web.get('/owner/login', async (c) => {
+    const access = c.get('access');
+    const developer = await access.globalDeveloper();
+    if (developer) {
+        return c.redirect(paths.ownerProjects(), 302);
+    }
+    const flash = await access.flash();
+    return c.html(<GlobalLoginPage v={viewContext(c)} username="" success={flash.success} />);
+});
+
+web.post('/owner/login', async (c) => {
+    const access = c.get('access');
+    const form = await readForm(c);
+    const username = field(form, 'username');
+    const password = form.get('password') ?? '';
+
+    const rerender = (error: string, status: 422 = 422) =>
+        c.html(<GlobalLoginPage v={viewContext(c)} username={username} error={error} />, status);
+
+    if (username === '') {
+        return rerender('帳號 為必填。');
+    }
+    if (charLength(username) > 50) {
+        return rerender('帳號 不能超過 50 個字元。');
+    }
+    if (password === '') {
+        return rerender('密碼 為必填。');
+    }
+    if (charLength(password) > 200) {
+        return rerender('密碼 不能超過 200 個字元。');
+    }
+
+    const limits = loginLimits(username, clientIp(c.req.raw));
+    await checkLoginRateLimit(c, limits);
+
+    const developer = await findDeveloperByUsername(c.env.DB, username);
+    const usable = developer && !developer.disabled_at && developer.password_hash !== '';
+    const matches = await verifyPassword(password, usable ? developer.password_hash : DUMMY_PASSWORD_HASH);
+    if (!usable || !matches) {
+        await hit(c.env.DB, limits, c.get('now'));
+        return rerender('帳號或密碼錯誤。');
+    }
+
+    await clear(c.env.DB, limits[0], c.get('now'));
+    await access.grantGlobalDeveloper(developer);
+
+    const projects = await listProjects(c.env.DB);
+    const fallback = projects.length === 1 ? paths.ownerIndex(projects[0].slug) : paths.ownerProjects();
+    return c.redirect(await access.pullIntendedUrl(fallback), 302);
+});
+
+web.post('/owner/logout', async (c) => {
+    const access = c.get('access');
+    await access.revokeGlobalDeveloper();
+    access.setFlash({ success: '已登出。' });
+    return c.redirect(paths.ownerGlobalLogin(), 302);
+});
+
+web.get('/owner/projects', async (c) => {
+    const access = c.get('access');
+    const developer = await access.globalDeveloper();
+    if (!developer) {
+        await access.setIntendedUrl(paths.ownerProjects());
+        return c.redirect(paths.ownerGlobalLogin(), 302);
+    }
+    const projects = await listProjects(c.env.DB);
+    const flash = await access.flash();
+    return c.html(<ProjectsOverviewPage v={viewContext(c)} developer={developer} projects={projects} success={flash.success} />);
+});
+
 web.get('/owner/:slug', async (c) => {
     const project = await projectOr404(c);
     const access = c.get('access');
@@ -544,11 +627,13 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         };
     });
     const flash = form ? {} : await access.flash();
+    const allProjects = isOwner ? await listProjects(c.env.DB) : undefined;
 
     return c.html(
         <PortalPage
             v={viewContext(c)}
             project={project}
+            projects={allProjects}
             isOwner={isOwner}
             rows={rows}
             totalCount={(total.results[0] as { total: number }).total}

@@ -37,7 +37,9 @@ execFileSync(join(root, 'node_modules', '.bin', 'tailwindcss'), ['-i', join(root
 });
 
 writeFileSync(join(dist, 'public', 'robots.txt'), 'User-agent: *\nDisallow:\n');
-copyFileSync(join(root, 'client', 'favicon.ico'), join(dist, 'public', 'favicon.ico'));
+for (const icon of ['favicon.ico', 'favicon.svg', 'favicon-32.png', 'apple-touch-icon.png']) {
+    copyFileSync(join(root, 'client', icon), join(dist, 'public', icon));
+}
 
 const assetVersion = createHash('sha256')
     .update(readFileSync(join(assets, 'app.css')))

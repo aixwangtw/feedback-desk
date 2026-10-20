@@ -6,3 +6,10 @@ dist/
 *.log
 .DS_Store
 *.tgz
+.env
+.phpunit.result.cache
+bootstrap/
+database/
+public/
+storage/
+vendor/

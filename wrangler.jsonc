@@ -1,0 +1,43 @@
+// Feedback Desk 的 Cloudflare Workers 設定（由 npx --allow-git=all github:aixwangtw/feedback-desk init 產生）。
+// D1 與 R2 不寫 ID：第一次 deploy 時 wrangler 會依名稱自動建立。
+{
+    "name": "feedback-desk",
+    "main": ".feedback-desk/worker/index.js",
+    "compatibility_date": "2026-10-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "workers_dev": true,
+    // 自訂網域：
+    // "routes": [{ "pattern": "feedback.example.com", "custom_domain": true }],
+    // 套件已預先打包好 Worker；wrangler 直接上傳 .feedback-desk/worker 裡的模組。
+    "no_bundle": true,
+    "find_additional_modules": true,
+    "base_dir": ".feedback-desk/worker",
+    "rules": [{ "type": "ESModule", "globs": ["**/*.js"], "fallthrough": false }],
+    "assets": { "directory": ".feedback-desk/public", "binding": "ASSETS" },
+    "d1_databases": [
+        { "binding": "DB", "database_name": "feedback-desk-db", "migrations_dir": ".feedback-desk/migrations" }
+    ],
+    "r2_buckets": [{ "binding": "FILES", "bucket_name": "feedback-desk-files" }],
+    // 每天清一次沒用到的暫存上傳檔與過期的限流紀錄（免費方案每個帳號可有 5 個 Cron Trigger）。
+    "triggers": { "crons": ["17 3 * * *"] },
+    // 介面用語與首頁文案；改完重新執行 npx --allow-git=all github:aixwangtw/feedback-desk deploy。
+    "vars": {
+        "FEEDBACK_LABEL_CLIENT": "客戶",
+        "FEEDBACK_LABEL_OWNER": "開發團隊",
+        "FEEDBACK_PORTAL_TITLE": "問題回報追蹤",
+        "FEEDBACK_HOME_TITLE": "問題回報",
+        "FEEDBACK_HOME_EYEBROW": "Feedback Desk",
+        "FEEDBACK_HOME_HEADING": "問題回報",
+        "FEEDBACK_UTC_OFFSET": "+08:00",
+        "FEEDBACK_TIMEZONE_NAME": "台北時間",
+        "FEEDBACK_LOGIN_PREFILL_ENABLED": "false",
+        // 首頁公開回報：填專案 slug，並用 npx --allow-git=all github:aixwangtw/feedback-desk public-reporting <slug> on 開啟。
+        "FEEDBACK_HOME_PUBLIC_PROJECT": "",
+        "FEEDBACK_PUBLIC_INTRO": "",
+        "FEEDBACK_PUBLIC_GITHUB_URL": "",
+        "FEEDBACK_PUBLIC_BLOG_URL": "",
+        "FEEDBACK_PUBLIC_NOTICE": "",
+        // Turnstile：兩個都設才啟用；secret 請用 npx wrangler secret put FEEDBACK_TURNSTILE_SECRET_KEY。
+        "FEEDBACK_TURNSTILE_SITE_KEY": ""
+    }
+}

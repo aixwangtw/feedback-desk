@@ -4,6 +4,11 @@ export async function findProjectBySlug(db: D1Database, slug: string): Promise<P
     return db.prepare('SELECT * FROM projects WHERE slug = ?').bind(slug).first<Project>();
 }
 
+export async function listProjects(db: D1Database): Promise<Project[]> {
+    const { results } = await db.prepare('SELECT * FROM projects ORDER BY name, id').all<Project>();
+    return results;
+}
+
 export async function findDeveloper(db: D1Database, id: number): Promise<Developer | null> {
     return db.prepare('SELECT * FROM developers WHERE id = ?').bind(id).first<Developer>();
 }

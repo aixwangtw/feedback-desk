@@ -101,7 +101,9 @@ export interface LayoutProps {
     v: ViewContext;
     title: string;
     project?: { name: string; slug: string } | null;
+    projects?: Array<{ name: string; slug: string }>;
     showLogout?: boolean;
+    logoutUrl?: string;
     /** Show the "my account" link (signed in with an account, not an entry link). */
     passwordLink?: boolean;
     maxWidth?: string;
@@ -112,7 +114,7 @@ export interface LayoutProps {
     children?: Child;
 }
 
-export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, passwordLink, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
+export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogout, logoutUrl, passwordLink, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
     <>
     {raw('<!DOCTYPE html>')}
     <html lang="zh-Hant">
@@ -129,19 +131,41 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, showLogout, passwor
 
             <header class="relative border-b border-slate-200/80 bg-white/80 backdrop-blur">
                 <div class={`mx-auto flex ${maxWidth} items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8`}>
-                    <a href={project ? paths.portal(project.slug) : '/'} class="flex min-w-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
-                        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-sm font-bold text-white shadow-sm">回</span>
-                        <span class="min-w-0">
-                            <span class="block truncate text-sm font-semibold text-slate-950">{project?.name ?? v.cfg.home.title}</span>
-                        </span>
-                    </a>
+                    <div class="flex min-w-0 items-center gap-3">
+                        <a href={project ? paths.portal(project.slug) : '/'} class="flex shrink-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">
+                            <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-sm font-bold text-white shadow-sm">回</span>
+                        </a>
+                        {projects && projects.length > 1 ? (
+                            <div class="flex min-w-0 items-center gap-2">
+                                <label for="project-switcher" class="sr-only">切換專案</label>
+                                <select
+                                    id="project-switcher"
+                                    data-project-switcher
+                                    class="block max-w-[15rem] sm:max-w-xs truncate rounded-lg border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm font-bold text-slate-900 shadow-sm transition hover:border-slate-400 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10 cursor-pointer"
+                                >
+                                    {projects.map((p) => (
+                                        <option value={paths.portal(p.slug)} selected={p.slug === project?.slug}>
+                                            📁 {p.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <a href={paths.ownerProjects()} class="hidden sm:inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-teal-700 transition" title="專案總覽">
+                                    專案總覽
+                                </a>
+                            </div>
+                        ) : (
+                            <a href={project ? paths.portal(project.slug) : '/'} class="min-w-0">
+                                <span class="block truncate text-sm font-semibold text-slate-950">{project?.name ?? v.cfg.home.title}</span>
+                            </a>
+                        )}
+                    </div>
                     <div class="flex shrink-0 items-center gap-2">
                         {headerAction}
                         {project && passwordLink ? (
                             <a href={paths.account(project.slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-account-link>我的帳號</a>
                         ) : null}
-                        {project && showLogout ? (
-                            <form method="post" action={paths.logout(project.slug)}>
+                        {(project || logoutUrl) && showLogout ? (
+                            <form method="post" action={logoutUrl ?? (project ? paths.logout(project.slug) : paths.ownerGlobalLogout())}>
                                 <button type="submit" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-logout>登出</button>
                             </form>
                         ) : null}

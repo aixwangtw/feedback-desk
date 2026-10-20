@@ -24,6 +24,21 @@ class FeedbackPortalController extends Controller
 
     public function index(PublicReporting $publicReporting, FeedbackAccess $access): View
     {
+        if ($access->hasGlobalOwner()) {
+            $projects = FeedbackProject::query()
+                ->withCount([
+                    'feedbackReports as total_reports_count',
+                    'feedbackReports as unread_reports_count' => fn ($query) => $query->unreadByOwner(),
+                ])
+                ->orderBy('name')
+                ->get();
+
+            return view('feedback.projects-dashboard', [
+                'projects' => $projects,
+                'developer' => $access->currentDeveloper(),
+            ]);
+        }
+
         $project = $publicReporting->project();
         if ($project === null) {
             return view('feedback.home');

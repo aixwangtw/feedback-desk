@@ -90,7 +90,7 @@ class FeedbackLoginController extends Controller
             $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
         }
 
-        return redirect()->intended(route('feedback.portal', $feedbackProject));
+        return redirect()->intended(route('feedback.portal', $feedbackProject, false));
     }
 
     /**
@@ -129,13 +129,88 @@ class FeedbackLoginController extends Controller
         }
     }
 
+    public function showUnified(FeedbackAccess $access): View|RedirectResponse
+    {
+        if ($access->hasGlobalOwner()) {
+            $firstProject = FeedbackProject::orderBy('name')->first();
+            if ($firstProject !== null) {
+                return redirect()->intended(route('feedback.portal', $firstProject));
+            }
+
+            return redirect()->intended(route('feedback.home'));
+        }
+
+        $prefillEnabled = (bool) config('feedback.login_prefill.enabled');
+
+        return view('feedback.auth.unified-login', [
+            'prefillUsername' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.username') : '',
+            'prefillPassword' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.password') : '',
+        ]);
+    }
+
+    public function storeUnified(Request $request, FeedbackAccess $access): RedirectResponse
+    {
+        $credentials = $request->validate([
+            'username' => ['required', 'string', 'max:50'],
+            'password' => ['required', 'string', 'max:200'],
+        ], attributes: ['username' => '帳號', 'password' => '密碼']);
+
+        $limits = $this->rateLimits($request);
+        $this->ensureNotRateLimited($limits);
+
+        [$role, $account] = $this->authenticateGlobal($credentials['username'], $credentials['password']);
+
+        if ($role === null) {
+            foreach ($limits as $limit) {
+                RateLimiter::hit($limit['key'], $limit['decay']);
+            }
+
+            throw ValidationException::withMessages(['username' => '帳號或密碼錯誤。']);
+        }
+
+        RateLimiter::clear($limits[0]['key']);
+
+        $request->session()->regenerate();
+
+        if ($account instanceof FeedbackDeveloper) {
+            $access->grantGlobalDeveloper($account);
+        } elseif ($account instanceof FeedbackClientAccount) {
+            $access->grantClientAccount($account->feedbackProject, $account);
+
+            return redirect()->intended(route('feedback.portal', $account->feedbackProject));
+        } else {
+            $access->grantGlobalOwner();
+        }
+
+        if ($request->session()->has('url.intended')) {
+            return redirect()->intended();
+        }
+
+        $firstProject = FeedbackProject::orderBy('name')->first();
+        if ($firstProject !== null) {
+            return redirect()->route('feedback.portal', $firstProject);
+        }
+
+        return redirect()->route('feedback.home');
+    }
+
     public function destroy(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
     {
         $access->revoke($feedbackProject);
+        $access->revokeGlobal();
         $request->session()->regenerate(true);
         $request->session()->regenerateToken();
 
         return redirect()->route('feedback.login', $feedbackProject)->with('success', '已登出。');
+    }
+
+    public function destroyUnified(Request $request, FeedbackAccess $access): RedirectResponse
+    {
+        $access->revokeGlobal();
+        $request->session()->regenerate(true);
+        $request->session()->regenerateToken();
+
+        return redirect()->route('feedback.login.unified')->with('success', '已登出。');
     }
 
     /**
@@ -159,6 +234,36 @@ class FeedbackLoginController extends Controller
             $role = FeedbackAccess::ROLE_OWNER;
             $hash = $account->password_hash;
         } elseif ($account = $project->clientAccounts()->where('username', $username)->whereNull('disabled_at')->first()) {
+            $role = FeedbackAccess::ROLE_CLIENT;
+            $hash = $account->password_hash;
+        }
+
+        $hasUsableHash = is_string($hash) && $hash !== '';
+        $matches = Hash::check($password, $hasUsableHash ? $hash : self::DUMMY_HASH);
+
+        return $hasUsableHash && $matches ? [$role, $account] : [null, null];
+    }
+
+    /**
+     * 全域管理者登入驗證：比對共用 owner 帳號與開發者個人帳號。若為單一專案客戶帳號則一併支援導向。
+     *
+     * @return array{0: FeedbackAccess::ROLE_*|null, 1: FeedbackDeveloper|FeedbackClientAccount|null}
+     */
+    private function authenticateGlobal(string $username, string $password): array
+    {
+        $account = null;
+        $role = null;
+        $hash = null;
+
+        $sharedOwnerUsername = (string) config('feedback.accounts.owner.username');
+
+        if ($sharedOwnerUsername !== '' && hash_equals($sharedOwnerUsername, $username)) {
+            $role = FeedbackAccess::ROLE_OWNER;
+            $hash = config('feedback.accounts.owner.password_hash');
+        } elseif ($account = FeedbackDeveloper::where('username', $username)->first()) {
+            $role = FeedbackAccess::ROLE_OWNER;
+            $hash = $account->password_hash;
+        } elseif ($account = FeedbackClientAccount::where('username', $username)->whereNull('disabled_at')->first()) {
             $role = FeedbackAccess::ROLE_CLIENT;
             $hash = $account->password_hash;
         }

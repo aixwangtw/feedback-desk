@@ -60,6 +60,8 @@ class FeedbackAccess
         private CookieJar $cookies,
     ) {}
 
+    public const COOKIE_GLOBAL_KEY = '_global';
+
     public function grantOwner(FeedbackProject $project, string $source = self::SOURCE_LINK): void
     {
         $this->session->put($this->ownerKey($project), true);
@@ -77,6 +79,66 @@ class FeedbackAccess
         $this->session->put($this->developerKey($project), $developer->id);
         $this->session->put($this->developerFingerprintKey($project), $this->accountFingerprint($developer));
         $this->rememberRole($project, self::ROLE_OWNER, self::SOURCE_DEVELOPER, $developer);
+    }
+
+    /**
+     * 全域管理者授權：開發者個人帳號在所有專案皆通行。
+     */
+    public function grantGlobalDeveloper(FeedbackDeveloper $developer): void
+    {
+        $this->session->put('feedback.global_owner', true);
+        $this->session->put('feedback.global_developer_id', $developer->id);
+        $this->session->put('feedback.global_developer_fp', $this->accountFingerprint($developer));
+        $this->session->forget('feedback.global_owner_fp');
+
+        $entries = $this->cookieEntries();
+        $entries[self::COOKIE_GLOBAL_KEY][self::ROLE_OWNER] = [
+            'source' => self::SOURCE_DEVELOPER,
+            'developer_id' => $developer->id,
+            'fingerprint' => $this->globalDeveloperFingerprint($developer),
+            'expires_at' => now()->addDays(self::COOKIE_DAYS)->getTimestamp(),
+        ];
+        $this->queueCookie($entries);
+    }
+
+    /**
+     * 全域管理者授權：共用 owner 帳號在所有專案皆通行。
+     */
+    public function grantGlobalOwner(string $source = self::SOURCE_PASSWORD): void
+    {
+        $fingerprint = $this->globalOwnerFingerprint();
+        if ($fingerprint === null) {
+            return;
+        }
+
+        $this->session->put('feedback.global_owner', true);
+        $this->session->forget(['feedback.global_developer_id', 'feedback.global_developer_fp']);
+        $this->session->put('feedback.global_owner_fp', $fingerprint);
+
+        $entries = $this->cookieEntries();
+        $entries[self::COOKIE_GLOBAL_KEY][self::ROLE_OWNER] = [
+            'source' => $source,
+            'fingerprint' => $fingerprint,
+            'expires_at' => now()->addDays(self::COOKIE_DAYS)->getTimestamp(),
+        ];
+        $this->queueCookie($entries);
+    }
+
+    /**
+     * 撤銷全域管理者授權。
+     */
+    public function revokeGlobal(): void
+    {
+        $this->session->forget([
+            'feedback.global_owner',
+            'feedback.global_developer_id',
+            'feedback.global_developer_fp',
+            'feedback.global_owner_fp',
+        ]);
+
+        $entries = $this->cookieEntries();
+        unset($entries[self::COOKIE_GLOBAL_KEY]);
+        $this->queueCookie($entries);
     }
 
     /**
@@ -159,21 +221,44 @@ class FeedbackAccess
 
     public function isOwner(FeedbackProject $project): bool
     {
-        return $this->hasRole($project, self::ROLE_OWNER, $this->ownerKey($project));
+        if ($this->hasRole($project, self::ROLE_OWNER, $this->ownerKey($project))) {
+            return true;
+        }
+
+        if ($this->hasGlobalOwner()) {
+            $this->session->put($this->ownerKey($project), true);
+            $globalDevId = $this->session->get('feedback.global_developer_id');
+            if (is_int($globalDevId)) {
+                $this->session->put($this->developerKey($project), $globalDevId);
+                $this->session->put($this->developerFingerprintKey($project), $this->session->get('feedback.global_developer_fp'));
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
-    /**
-     * 目前登入的開發者個人帳號；共用 admin 或開發者連結登入時為 null。
-     */
-    public function currentDeveloper(FeedbackProject $project): ?FeedbackDeveloper
+    public function currentDeveloper(?FeedbackProject $project = null): ?FeedbackDeveloper
     {
-        if (! $this->isOwner($project)) {
+        if ($project !== null && ! $this->isOwner($project)) {
             return null;
         }
 
-        $developerId = $this->session->get($this->developerKey($project));
+        if ($project !== null) {
+            $developerId = $this->session->get($this->developerKey($project));
 
-        return is_int($developerId) ? $this->developer($developerId) : null;
+            return is_int($developerId) ? $this->developer($developerId) : null;
+        }
+
+        if ($this->hasGlobalOwner()) {
+            $developerId = $this->session->get('feedback.global_developer_id');
+            if (is_int($developerId)) {
+                return $this->developer($developerId);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -401,6 +486,123 @@ class FeedbackAccess
     {
         $this->developers = [];
         $this->clientAccounts = [];
+    }
+
+    public function hasGlobalOwner(): bool
+    {
+        if ($this->session->get('feedback.global_owner', false) && $this->sessionGrantIsCurrentGlobal()) {
+            return true;
+        }
+
+        $entries = $this->cookieEntries();
+        $entry = $entries[self::COOKIE_GLOBAL_KEY][self::ROLE_OWNER] ?? null;
+        if (is_array($entry) && $this->resolveGlobalEntry($entry)) {
+            return true;
+        }
+
+        // 若工作階段已有任一專案的開發者帳號登入，自動升級為全域管理者工作階段，避免切換專案時被擋
+        $developers = $this->session->get('feedback.developer');
+        if (is_array($developers)) {
+            foreach ($developers as $projectId => $developerId) {
+                if (is_int($developerId)) {
+                    $dev = $this->developer($developerId);
+                    $fp = $this->session->get("feedback.developer_fp.{$projectId}");
+                    if ($dev !== null && is_string($fp) && hash_equals($this->accountFingerprint($dev), $fp)) {
+                        $this->session->put('feedback.global_owner', true);
+                        $this->session->put('feedback.global_developer_id', $dev->id);
+                        $this->session->put('feedback.global_developer_fp', $this->accountFingerprint($dev));
+                        $this->session->forget('feedback.global_owner_fp');
+
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private function sessionGrantIsCurrentGlobal(): bool
+    {
+        $developerId = $this->session->get('feedback.global_developer_id');
+        if ($developerId !== null) {
+            $developer = is_int($developerId) ? $this->developer($developerId) : null;
+            $fingerprint = $this->session->get('feedback.global_developer_fp');
+            if ($developer !== null && is_string($fingerprint) && hash_equals($this->accountFingerprint($developer), $fingerprint)) {
+                return true;
+            }
+
+            $this->session->forget(['feedback.global_owner', 'feedback.global_developer_id', 'feedback.global_developer_fp']);
+
+            return false;
+        }
+
+        $ownerFp = $this->session->get('feedback.global_owner_fp');
+        $expectedFp = $this->globalOwnerFingerprint();
+        if (is_string($ownerFp) && $expectedFp !== null && hash_equals($expectedFp, $ownerFp)) {
+            return true;
+        }
+
+        $this->session->forget(['feedback.global_owner', 'feedback.global_owner_fp']);
+
+        return false;
+    }
+
+    /**
+     * @param  array{source?: mixed, fingerprint?: mixed, expires_at?: mixed, developer_id?: mixed}  $entry
+     */
+    private function resolveGlobalEntry(array $entry): bool
+    {
+        if (! is_int($entry['expires_at'] ?? null) || $entry['expires_at'] < now()->getTimestamp() || ! is_string($entry['fingerprint'] ?? null)) {
+            return false;
+        }
+
+        $source = (string) ($entry['source'] ?? '');
+        $fingerprint = $entry['fingerprint'];
+
+        if ($source === self::SOURCE_DEVELOPER) {
+            $developer = is_int($entry['developer_id'] ?? null) ? $this->developer($entry['developer_id']) : null;
+            if ($developer !== null && hash_equals($this->globalDeveloperFingerprint($developer), $fingerprint)) {
+                $this->session->put('feedback.global_owner', true);
+                $this->session->put('feedback.global_developer_id', $developer->id);
+                $this->session->put('feedback.global_developer_fp', $this->accountFingerprint($developer));
+                $this->session->forget('feedback.global_owner_fp');
+
+                return true;
+            }
+
+            return false;
+        }
+
+        if ($source === self::SOURCE_PASSWORD) {
+            $expected = $this->globalOwnerFingerprint();
+            if ($expected !== null && hash_equals($expected, $fingerprint)) {
+                $this->session->put('feedback.global_owner', true);
+                $this->session->forget(['feedback.global_developer_id', 'feedback.global_developer_fp']);
+                $this->session->put('feedback.global_owner_fp', $expected);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    private function globalDeveloperFingerprint(FeedbackDeveloper $developer): string
+    {
+        return hash_hmac('sha256', "global|".self::ROLE_OWNER.'|'.self::SOURCE_DEVELOPER."|{$developer->id}|{$developer->password_hash}", (string) config('app.key'));
+    }
+
+    private function globalOwnerFingerprint(): ?string
+    {
+        $hash = config('feedback.accounts.owner.password_hash');
+        if (! is_string($hash) || $hash === '') {
+            return null;
+        }
+
+        return hash_hmac('sha256', "global|".self::ROLE_OWNER.'|'.self::SOURCE_PASSWORD."|{$hash}", (string) config('app.key'));
     }
 
     private function hasRole(FeedbackProject $project, string $role, string $sessionKey): bool

@@ -25,6 +25,13 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 $statelessMiddleware = [EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class, ShareErrorsFromSession::class];
 
 $feedbackRoutes = function () use ($statelessMiddleware): void {
+    Route::get('/login', [FeedbackLoginController::class, 'showUnified'])
+        ->name('feedback.login.unified');
+    Route::post('/login', [FeedbackLoginController::class, 'storeUnified'])
+        ->name('feedback.login.unified.store');
+    Route::post('/logout', [FeedbackLoginController::class, 'destroyUnified'])
+        ->name('feedback.logout.unified');
+
     Route::get('/p/{feedbackProject:slug}/access', [FeedbackClientController::class, 'authenticate'])
         ->middleware('throttle:10,1')
         ->name('feedback.client.authenticate');

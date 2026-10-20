@@ -415,3 +415,25 @@ function updateStatusSummary(counts) {
         count.textContent = String(counts[count.dataset.kanbanTotalCount] ?? 0);
     });
 }
+
+document.addEventListener('click', (event) => {
+    const projectLink = event.target.closest('[data-project-link], [data-project-switcher] a');
+    if (projectLink) {
+        projectLink.closest('details')?.removeAttribute('open');
+        if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) {
+            const href = projectLink.getAttribute('href');
+            if (href && href !== '#' && !href.startsWith('javascript:')) {
+                window.location.assign(href);
+            }
+        }
+
+        return;
+    }
+
+    document.querySelectorAll('[data-project-switcher][open]').forEach((details) => {
+        if (!details.contains(event.target)) {
+            details.removeAttribute('open');
+        }
+    });
+});
+

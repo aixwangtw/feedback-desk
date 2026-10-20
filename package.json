@@ -1,7 +1,7 @@
 {
   "name": "feedback-desk",
   "version": "0.1.0",
-  "description": "Issue-reporting desk for clients and teams, running on Cloudflare Workers free plan. CLI deploys it and lets AI agents work on reports.",
+  "description": "Lightweight open-source project communication and task tracking on the Cloudflare Workers free plan, with AI agent handoff. CLI deploys it and lets AI agents work on reports.",
   "license": "MIT",
   "type": "module",
   "bin": {

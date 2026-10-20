@@ -7,7 +7,7 @@ import { CLI_COMMAND, CliError, defaultRuntime, type Runtime } from './runtime';
 declare const __APP_VERSION__: string | undefined;
 const VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
 
-export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方案架設客戶工單與 AI 交接系統，並讓 AI agent 處理回報單。
+export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方案架設輕量專案溝通、任務追蹤系統，讓 AI agent 處理回報單並互相交接。
 
 部署（在要放設定檔的資料夾執行）
   init [--name feedback-desk] [--domain feedback.example.com] [--no-cron] [--force]

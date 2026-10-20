@@ -1,7 +1,7 @@
 # Feedback Desk
 
-**feedback-desk：開源的客戶工單與 AI 交接系統。客戶開單，團隊與 AI Agent 處理到結案，多個 AI 可以認領、交接。**  
-Open-source client ticketing with AI agent handoff.
+**feedback-desk：開源的輕量專案溝通、任務追蹤系統，也讓 AI 互相交接。客戶開單，團隊與 AI Agent 處理到結案，多個 AI 可以認領、交接。**  
+Lightweight open-source project communication and task tracking, with AI agent handoff.
 
 Feedback Desk is an issue-reporting desk for talking with clients and teammates about changes to your system. Each project gets a private link or one login per client person for the people who report issues, and a separate view for your team. Reporters file issues with screenshots and discuss them in a thread; when a change is ready, the team writes an adjustment note with images and marks the issue for review, and the client closes it after checking. AI agents such as Claude Code and Codex can do the team side through MCP or the CLI: read reports, make the change, write the adjustment note, and set the status. Several people and AI tools can share the work: every action records the account and the AI tool, and a report can be claimed and carries handoff notes for whoever continues. It runs on your own Cloudflare account within the Workers free plan (Hono, D1, R2), and one CLI deploys it, manages accounts, and connects the AI tools. The UI is in Traditional Chinese, and role labels are configurable. MIT licensed.
 

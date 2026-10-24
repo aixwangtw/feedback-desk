@@ -25,6 +25,11 @@ class ResolveFeedbackReportTest extends TestCase
 
         $this->app->bind(FeedbackCodingAgent::class, fn () => new class implements FeedbackCodingAgent
         {
+            public function name(): string
+            {
+                return 'Codex';
+            }
+
             public function resolve(FeedbackReport $report, FeedbackAutomationRun $run): FeedbackCodingResult
             {
                 return new FeedbackCodingResult(
@@ -57,6 +62,11 @@ class ResolveFeedbackReportTest extends TestCase
 
         $this->app->bind(FeedbackCodingAgent::class, fn () => new class implements FeedbackCodingAgent
         {
+            public function name(): string
+            {
+                return 'Codex';
+            }
+
             public function resolve(FeedbackReport $report, FeedbackAutomationRun $run): FeedbackCodingResult
             {
                 return new FeedbackCodingResult(
@@ -88,6 +98,11 @@ class ResolveFeedbackReportTest extends TestCase
 
         $this->app->bind(FeedbackCodingAgent::class, fn () => new class implements FeedbackCodingAgent
         {
+            public function name(): string
+            {
+                return 'Codex';
+            }
+
             public function resolve(FeedbackReport $report, FeedbackAutomationRun $run): FeedbackCodingResult
             {
                 return new FeedbackCodingResult(FeedbackAutomationStatus::Failed, '無法修正。');

@@ -52,7 +52,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 - 首頁公開回報（選用）：陌生人不用登入就能對單一專案回報問題，拿到私密網址追蹤，見下方。
 - 登入失敗次數限制、私密連結可隨時重發使整批舊登入失效。
 - 稱呼與首頁文案可用 `.env` 改成自己的用語。
-- 實驗功能：自動處理（codex CLI），見下方。
+- 實驗功能：自動處理（codex 或 Claude Code CLI，用 `.env` 切換），見下方。
 
 ## 三種身分與存取方式
 
@@ -138,7 +138,13 @@ php artisan feedback:developer amy --name="王小明"     # 團隊個人帳號
 | `FEEDBACK_TURNSTILE_SITE_KEY` / `FEEDBACK_TURNSTILE_SECRET_KEY` | 空 | Cloudflare Turnstile 人機驗證，兩個都設才啟用；啟用後伺服器端會呼叫 siteverify 驗證，驗證失敗或連不上都不收單。 |
 | `FEEDBACK_AUTOMATION_ENABLED` | `false` | 實驗功能總開關，見下方。 |
 | `FEEDBACK_WORKSPACE_ROOT` | 空 | 自動處理允許的 repository 根目錄。 |
+| `FEEDBACK_AUTOMATION_DRIVER` | `codex` | 自動處理使用的 CLI：`codex` 或 `claude`；其他值會直接報錯。 |
 | `FEEDBACK_CODEX_BINARY` | `codex` | codex CLI 執行檔。 |
+| `FEEDBACK_CLAUDE_BINARY` | `claude` | Claude Code CLI 執行檔（driver 為 `claude` 時使用）。 |
+| `FEEDBACK_CLAUDE_MODEL` | 空 | 指定模型；空白就不帶 `--model`，用 CLI 預設。 |
+| `FEEDBACK_CLAUDE_MAX_TURNS` | `60` | 單次最多幾個 agent 回合。 |
+| `FEEDBACK_CLAUDE_ALLOWED_TOOLS` | `Read,Edit,Write,Glob,Grep` | 免詢問可用的工具，逗號分隔。預設不含 Bash。 |
+| `FEEDBACK_CLAUDE_OAUTH_TOKEN` | 空 | `claude setup-token` 產生的 token；空白則用 worker 使用者自己的登入。 |
 | `FEEDBACK_AUTOMATION_QUEUE` | `feedback-automation` | 自動處理使用的 queue 名稱。 |
 | `FEEDBACK_AUTOMATION_TIMEOUT` | `3000` | 單次自動處理逾時秒數。 |
 
@@ -307,11 +313,26 @@ php artisan feedback:release my-project 0199c3a1-... --as=amy
 php artisan queue:work --queue=default
 ```
 
-「自動處理」是實驗功能：開啟後，新問題會排入 `FEEDBACK_AUTOMATION_QUEUE`，由本機的 [codex CLI](https://github.com/openai/codex) 在指定的 repository 內嘗試處理並回寫結果。需要同時滿足：`FEEDBACK_AUTOMATION_ENABLED=true`、`FEEDBACK_WORKSPACE_ROOT` 指向允許的根目錄、專案用 `--automation --repository=...` 建立，並另外啟動專用 worker：
+「自動處理」是實驗功能：開啟後，新問題會排入 `FEEDBACK_AUTOMATION_QUEUE`，由本機的 [codex CLI](https://github.com/openai/codex)（預設）或 [Claude Code CLI](https://code.claude.com/docs/en/headless) 在指定的 repository 內嘗試處理並回寫結果。需要同時滿足：`FEEDBACK_AUTOMATION_ENABLED=true`、`FEEDBACK_WORKSPACE_ROOT` 指向允許的根目錄、專案用 `--automation --repository=...` 建立，並另外啟動專用 worker：
 
 ```bash
 php artisan queue:work --queue=feedback-automation --timeout=3100
 ```
+
+### 改用 Claude Code
+
+在 `.env` 設 `FEEDBACK_AUTOMATION_DRIVER=claude`，並重啟 worker（`php artisan queue:restart`）。留言與動態上的工具名稱會顯示「Claude Code」。它以 `claude -p` 非互動模式執行，權限模式為 `dontAsk`：只有 `FEEDBACK_CLAUDE_ALLOWED_TOOLS` 列出的工具能用，其餘一律拒絕；另外明列拒絕 `git commit`、`git push`。附圖所在目錄會加入可讀取範圍，並在提示詞列出路徑讓它用 Read 查看。每次執行的完整輸出（含 `total_cost_usd` 費用欄位）存在該次的 trace 檔。
+
+認證有兩種方式，擇一：
+
+1. 在 worker 的執行使用者下，先手動執行一次 `claude` 並登入。
+2. 用 `claude setup-token` 產生長效 token，填進 `FEEDBACK_CLAUDE_OAUTH_TOKEN`；程式只在子程序的環境變數 `CLAUDE_CODE_OAUTH_TOKEN` 傳遞，不寫進 trace。
+
+安全提醒：
+
+- worker 請用低權限的專用使用者，只給它目標 repository 的寫入權，不要用能碰到正式機密或部署金鑰的帳號。
+- 預設不給 Bash，所以它不能自己跑測試，會在回報的「驗證」寫明未執行。需要跑測試時再把 `Bash(php artisan test *)` 這類規則加進 `FEEDBACK_CLAUDE_ALLOWED_TOOLS`，並且只在隔離的環境這樣做。
+- 拒絕 `Bash(git push *)` 這類規則不是安全邊界：官方 permissions 文件指出限制 Bash 參數的規則很脆弱，換個寫法的同義指令就比對不到。真正的邊界是工具白名單、低權限使用者，以及不要在 worker 上放可推送的 Git 憑證。
 
 它會讓外部輸入的文字驅動程式碼修改，介面與行為都可能變動，請先在隔離環境評估，不建議直接用在正式程式碼庫。
 

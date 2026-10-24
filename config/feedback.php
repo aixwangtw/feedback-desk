@@ -85,7 +85,13 @@ return [
     'automation' => [
         'enabled' => filter_var(env('FEEDBACK_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
         'workspace_root' => env('FEEDBACK_WORKSPACE_ROOT'),
+        'driver' => env('FEEDBACK_AUTOMATION_DRIVER', 'codex'),
         'codex_binary' => env('FEEDBACK_CODEX_BINARY', 'codex'),
+        'claude_binary' => env('FEEDBACK_CLAUDE_BINARY', 'claude'),
+        'claude_model' => env('FEEDBACK_CLAUDE_MODEL'),
+        'claude_max_turns' => (int) env('FEEDBACK_CLAUDE_MAX_TURNS', 60),
+        'claude_allowed_tools' => env('FEEDBACK_CLAUDE_ALLOWED_TOOLS', 'Read,Edit,Write,Glob,Grep'),
+        'claude_oauth_token' => env('FEEDBACK_CLAUDE_OAUTH_TOKEN'),
         'queue' => env('FEEDBACK_AUTOMATION_QUEUE', 'feedback-automation'),
         'timeout' => (int) env('FEEDBACK_AUTOMATION_TIMEOUT', 3000),
     ],

@@ -77,7 +77,7 @@ class ResolveFeedbackReport implements ShouldQueue
             $this->report->feedbackMessages()->create([
                 'author_type' => FeedbackAuthorType::Agent,
                 'author_name' => 'Vibe coding',
-                'author_agent' => 'Codex',
+                'author_agent' => $this->agentName(),
                 'body' => $message,
             ]);
             $this->report->recordEvent('message', $this->actor());
@@ -104,7 +104,12 @@ class ResolveFeedbackReport implements ShouldQueue
      */
     private function actor(): FeedbackActor
     {
-        return new FeedbackActor('Vibe coding', true, agent: 'Codex');
+        return new FeedbackActor('Vibe coding', true, agent: $this->agentName());
+    }
+
+    private function agentName(): string
+    {
+        return app(FeedbackCodingAgent::class)->name();
     }
 
     /** @return list<WithoutOverlapping> */
@@ -130,7 +135,7 @@ class ResolveFeedbackReport implements ShouldQueue
             $this->report->feedbackMessages()->create([
                 'author_type' => FeedbackAuthorType::Agent,
                 'author_name' => 'Vibe coding',
-                'author_agent' => 'Codex',
+                'author_agent' => $this->agentName(),
                 'body' => '自動處理未完成：'.$summary,
             ]);
             $this->report->recordEvent('message', $this->actor());

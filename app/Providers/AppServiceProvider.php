@@ -4,12 +4,14 @@ namespace App\Providers;
 
 use App\Contracts\FeedbackCodingAgent;
 use App\Models\FeedbackReport;
+use App\Services\ClaudeCodeFeedbackCodingAgent;
 use App\Services\CodexFeedbackCodingAgent;
 use App\Support\FeedbackAccess;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -18,7 +20,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(FeedbackCodingAgent::class, CodexFeedbackCodingAgent::class);
+        $this->app->bind(FeedbackCodingAgent::class, fn (): FeedbackCodingAgent => match ($driver = config('feedback.automation.driver')) {
+            'codex' => $this->app->make(CodexFeedbackCodingAgent::class),
+            'claude' => $this->app->make(ClaudeCodeFeedbackCodingAgent::class),
+            default => throw new InvalidArgumentException('不支援的自動處理驅動：'.(is_scalar($driver) ? $driver : gettype($driver)).'（可用值：codex、claude）。'),
+        });
     }
 
     /**

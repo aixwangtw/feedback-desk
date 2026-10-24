@@ -107,9 +107,16 @@ class ResolveFeedbackReport implements ShouldQueue
         return new FeedbackActor('Vibe coding', true, agent: $this->agentName());
     }
 
+    /**
+     * 驅動設定錯誤時解析實作會丟例外；failed() 仍要能留下失敗留言，所以退回設定值。
+     */
     private function agentName(): string
     {
-        return app(FeedbackCodingAgent::class)->name();
+        try {
+            return app(FeedbackCodingAgent::class)->name();
+        } catch (Throwable) {
+            return (string) config('feedback.automation.driver');
+        }
     }
 
     /** @return list<WithoutOverlapping> */

@@ -11,11 +11,14 @@ use App\Models\FeedbackReport;
 use App\Services\ClaudeCodeFeedbackCodingAgent;
 use App\Services\CodexFeedbackCodingAgent;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
 use RuntimeException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException as SymfonyProcessTimedOutException;
+use Symfony\Component\Process\Process as SymfonyProcess;
 use Tests\TestCase;
 
 class ClaudeCodeFeedbackCodingAgentTest extends TestCase
@@ -60,7 +63,11 @@ class ClaudeCodeFeedbackCodingAgentTest extends TestCase
     /** @param array<string, mixed> $body */
     private function fakeClaude(array $body, int $exitCode = 0): void
     {
-        Process::fake(['*' => Process::result(json_encode($body), 'warn', $exitCode)]);
+        $output = json_encode(['type' => 'system', 'subtype' => 'init'])."\n"
+            .json_encode(['type' => 'assistant', 'message' => ['content' => []]])."\n"
+            .json_encode(['type' => 'result'] + $body)."\n";
+
+        Process::fake(['*' => Process::result($output, 'warn', $exitCode)]);
     }
 
     public function test_it_runs_claude_with_expected_command_stdin_and_parses_structured_output(): void
@@ -89,11 +96,12 @@ class ClaudeCodeFeedbackCodingAgentTest extends TestCase
 
             return $command[0] === 'claude'
                 && $command[1] === '-p'
-                && array_slice($command, 3, 2) === ['--output-format', 'json']
-                && $command[5] === '--json-schema'
-                && json_decode($command[6], true)['required'] === ['outcome', 'summary', 'tests']
-                && array_slice($command, 7, 4) === ['--permission-mode', 'dontAsk', '--allowedTools', 'Read,Edit,Write,Glob,Grep']
-                && array_slice($command, 11, 3) === ['--disallowedTools', 'Bash(git commit *)', 'Bash(git push *)']
+                && array_slice($command, 3, 3) === ['--output-format', 'stream-json', '--verbose']
+                && $command[6] === '--json-schema'
+                && json_decode($command[7], true)['required'] === ['outcome', 'summary', 'tests']
+                && array_slice($command, 8, 4) === ['--restricted', '--tools', 'Read,Edit,Write,Glob,Grep', '--strict-mcp-config']
+                && array_slice($command, 12, 4) === ['--permission-mode', 'dontAsk', '--allowedTools', 'Read,Edit,Write,Glob,Grep']
+                && array_slice($command, 16, 7) === ['--disallowedTools', 'Bash(git commit *)', 'Bash(git push *)', 'Read(.env)', 'Read(.env.*)', 'Read(!.env.example)', 'Edit(/'.$imageDirectory.'/**)']
                 && in_array('--no-session-persistence', $command, true)
                 && array_slice($command, -6) === ['--max-turns', '60', '--model', 'sonnet', '--add-dir', $imageDirectory]
                 && str_contains($process->input, $report->title)
@@ -149,6 +157,60 @@ class ClaudeCodeFeedbackCodingAgentTest extends TestCase
         $this->expectExceptionMessage('Claude Code 執行失敗（exit code 2）。');
 
         (new ClaudeCodeFeedbackCodingAgent)->resolve($report, $run);
+    }
+
+    public function test_non_zero_exit_code_reports_result_subtype(): void
+    {
+        [$report, $run] = $this->reportAndRun();
+        $this->fakeClaude(['is_error' => true, 'subtype' => 'error_max_turns'], 1);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Claude Code 執行失敗（exit code 1，error_max_turns）。');
+
+        (new ClaudeCodeFeedbackCodingAgent)->resolve($report, $run);
+    }
+
+    public function test_output_without_result_event_throws(): void
+    {
+        [$report, $run] = $this->reportAndRun();
+        Process::fake(['*' => Process::result('not json', '', 0)]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Claude Code 未回傳可解析的 JSON 結果。');
+
+        (new ClaudeCodeFeedbackCodingAgent)->resolve($report, $run);
+    }
+
+    public function test_bash_rules_in_allowed_tools_enable_the_bash_tool(): void
+    {
+        config(['feedback.automation.claude_allowed_tools' => 'Read,Edit, Write,Glob,Grep,Bash(php artisan test *),Bash(npm run test:unit *),mcp__x__y']);
+        [$report, $run] = $this->reportAndRun();
+        $this->fakeClaude(['is_error' => false, 'structured_output' => ['outcome' => 'completed', 'summary' => 'ok', 'tests' => []]]);
+
+        (new ClaudeCodeFeedbackCodingAgent)->resolve($report, $run);
+
+        Process::assertRan(function (PendingProcess $process): bool {
+            $toolsIndex = array_search('--tools', $process->command, true);
+
+            return $process->command[$toolsIndex + 1] === 'Read,Edit,Write,Glob,Grep,Bash'
+                && ! in_array('--add-dir', $process->command, true);
+        });
+    }
+
+    public function test_timeout_is_reported_without_the_command_line(): void
+    {
+        [$report, $run] = $this->reportAndRun();
+        Process::fake(fn () => throw new ProcessTimedOutException(
+            new SymfonyProcessTimedOutException(new SymfonyProcess(['claude', '-p', 'secret prompt']), SymfonyProcessTimedOutException::TYPE_GENERAL),
+            Process::result(),
+        ));
+
+        try {
+            (new ClaudeCodeFeedbackCodingAgent)->resolve($report, $run);
+            $this->fail('應該要丟出逾時例外。');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Claude Code 執行逾時，已中止。', $exception->getMessage());
+        }
     }
 
     public function test_unknown_outcome_becomes_failed(): void

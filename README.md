@@ -321,7 +321,15 @@ php artisan queue:work --queue=feedback-automation --timeout=3100
 
 ### 改用 Claude Code
 
-在 `.env` 設 `FEEDBACK_AUTOMATION_DRIVER=claude`，並重啟 worker（`php artisan queue:restart`）。留言與動態上的工具名稱會顯示「Claude Code」。它以 `claude -p` 非互動模式執行，權限模式為 `dontAsk`：只有 `FEEDBACK_CLAUDE_ALLOWED_TOOLS` 列出的工具能用，其餘一律拒絕；另外明列拒絕 `git commit`、`git push`。附圖所在目錄會加入可讀取範圍，並在提示詞列出路徑讓它用 Read 查看。每次執行的完整輸出（含 `total_cost_usd` 費用欄位）存在該次的 trace 檔。
+在 `.env` 設 `FEEDBACK_AUTOMATION_DRIVER=claude`，並重啟 worker（`php artisan queue:restart`）。留言與動態上的工具名稱會顯示「Claude Code」。需要 Claude Code v2.1.248 以上。
+
+它以 `claude -p` 非互動模式執行，回報內容從標準輸入傳入，並加上這些限制：
+
+- 權限模式 `dontAsk`：只有 `FEEDBACK_CLAUDE_ALLOWED_TOOLS` 列出的工具免詢問，其餘一律拒絕；清單外的內建工具（Bash、WebFetch、子代理等）直接不提供。
+- `--restricted`：讀寫檔案只限 repository 與這張回報的附圖資料夾，不讀 worker 使用者與 repository 的 Claude Code 設定（因此 repository 裡的 hooks 不會執行），`--strict-mcp-config` 也讓 `.mcp.json` 的 MCP server 不會啟動。
+- 拒絕讀寫 `.env` 與 `.env.*`（`.env.example` 除外），附圖資料夾只能讀、不能改。另外明列拒絕 `git commit`、`git push`。
+
+附圖路徑會列在提示詞裡讓它用 Read 查看。每次執行的完整事件紀錄（stream-json，含每次工具呼叫、被拒的操作與 `total_cost_usd` 費用）存在該次的 trace 檔。
 
 認證有兩種方式，擇一：
 
@@ -331,7 +339,7 @@ php artisan queue:work --queue=feedback-automation --timeout=3100
 安全提醒：
 
 - worker 請用低權限的專用使用者，只給它目標 repository 的寫入權，不要用能碰到正式機密或部署金鑰的帳號。
-- 預設不給 Bash，所以它不能自己跑測試，會在回報的「驗證」寫明未執行。需要跑測試時再把 `Bash(php artisan test *)` 這類規則加進 `FEEDBACK_CLAUDE_ALLOWED_TOOLS`，並且只在隔離的環境這樣做。
+- 預設不給 Bash，所以它不能自己跑測試，會在回報的「驗證」寫明未執行，處理結果也常是「需要補充」而非「已完成」。需要跑測試時再把 `Bash(php artisan test *)` 這類規則加進 `FEEDBACK_CLAUDE_ALLOWED_TOOLS`（有 Bash 規則才會提供 Bash），並且只在隔離的環境這樣做：測試程式本身可以讀寫任何 worker 使用者碰得到的檔案，上面的檔案限制管不到它。
 - 拒絕 `Bash(git push *)` 這類規則不是安全邊界：官方 permissions 文件指出限制 Bash 參數的規則很脆弱，換個寫法的同義指令就比對不到。真正的邊界是工具白名單、低權限使用者，以及不要在 worker 上放可推送的 Git 憑證。
 
 它會讓外部輸入的文字驅動程式碼修改，介面與行為都可能變動，請先在隔離環境評估，不建議直接用在正式程式碼庫。

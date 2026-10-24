@@ -115,4 +115,19 @@ class ResolveFeedbackReportTest extends TestCase
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
         $this->assertSame(FeedbackAutomationStatus::Failed, $run->refresh()->status);
     }
+
+    public function test_failed_still_records_a_message_when_the_driver_setting_is_invalid(): void
+    {
+        $project = FeedbackProject::factory()->create(['automation_enabled' => true]);
+        $report = FeedbackReport::factory()->for($project)->create();
+        $run = FeedbackAutomationRun::factory()->for($report)->create();
+        config(['feedback.automation.driver' => 'gemini']);
+
+        (new ResolveFeedbackReport($report, $run))->failed(new \InvalidArgumentException('不支援的自動處理驅動：gemini'));
+
+        $this->assertSame(FeedbackAutomationStatus::Failed, $run->refresh()->status);
+        $message = $report->feedbackMessages()->sole();
+        $this->assertSame('gemini', $message->author_agent);
+        $this->assertStringContainsString('不支援的自動處理驅動', $message->body);
+    }
 }

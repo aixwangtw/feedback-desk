@@ -26,6 +26,8 @@ export interface RowContext {
     slug: string;
     isOwner: boolean;
     backPath: string;
+    /** 有設定開單分類的站：列表多一欄分類。 */
+    showCategory?: boolean;
 }
 
 function time(v: ViewContext, at: string, relative = false): string {
@@ -85,6 +87,9 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     html += '</td>';
     html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'min-w-0 flex-1 sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs')}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
+    if (ctx.showCategory) {
+        html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${esc(report.category || '未分類')}</td>`;
+    }
     html += '<td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">';
     if (row.attachments.length > 0) {
         html += '<div class="flex flex-wrap gap-1 sm:justify-center">';

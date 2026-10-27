@@ -79,4 +79,42 @@ describe('guest client entry', () => {
         expect((await new Browser(undefined, vars).get(`/p/${other.project.slug}`)).status).toBe(302);
         expect((await new Browser().get(`/p/${slug}`)).status).toBe(302);
     });
+
+    it('shows a category column and filters by category, including uncategorized', async () => {
+        const { seeded, slug, browser, vars } = await guestSetup();
+        const visitor = browser();
+        await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '排版單', 'issues[0][description]': 'd', 'issues[0][category]': '經典排版' });
+        await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '程式單', 'issues[0][description]': 'd', 'issues[0][category]': '程式使用問題' });
+        await seedReport(seeded.project, { title: '舊單' });
+        const html = async (query: string, as = visitor) => (await as.get(`/p/${slug}${query}`)).text();
+
+        const all = await html('');
+        expect(all).toContain('data-category-filter');
+        expect(all).toContain('data-report-category');
+        expect(all).toContain('排版單');
+        expect(all).toContain('舊單');
+
+        const classic = await html('?category=' + encodeURIComponent('經典排版'));
+        expect(classic).toContain('排版單');
+        expect(classic).not.toContain('程式單');
+        expect(classic).not.toContain('舊單');
+
+        const none = await html('?category=_none');
+        expect(none).toContain('舊單');
+        expect(none).not.toContain('排版單');
+
+        const owner = new Browser(undefined, vars);
+        expect((await owner.get(`/owner/${slug}/access?token=${seeded.ownerToken}`)).status).toBe(302);
+        const ownerNone = await html('?category=_none', owner);
+        expect(ownerNone).toContain('data-category-filter');
+        expect(ownerNone).toContain('舊單');
+        expect(ownerNone).not.toContain('排版單');
+    });
+
+    it('sites without categories have no category column or filter', async () => {
+        const { slug, browser } = await guestSetup({ FEEDBACK_REPORT_CATEGORIES: '' });
+        const html = await (await browser().get(`/p/${slug}`)).text();
+        expect(html).not.toContain('data-category-filter');
+        expect(html).not.toContain('data-report-category');
+    });
 });

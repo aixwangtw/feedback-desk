@@ -45,6 +45,8 @@ export interface PortalProps {
     sort: string;
     direction: 'asc' | 'desc';
     selectedStatus: ReportStatus | null;
+    /** 分類篩選；'' 為全部，'_none' 為未分類。 */
+    selectedCategory?: string;
     keyword: string;
     viewMode: 'list' | 'board';
     deletedFilter: 'only' | 'hide' | null;
@@ -93,6 +95,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
         view: viewMode,
         q: keyword,
         status: selectedStatus,
+        category: props.selectedCategory ? props.selectedCategory : null,
         deleted: isOwner ? deletedFilter : null,
         creator: isOwner ? creator : null,
         unread: unreadOnly ? 1 : null,
@@ -110,7 +113,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     };
     const sortUrl = (column: string): string => portalUrl({ sort: column, direction: sort === column && direction === 'asc' ? 'desc' : 'asc' }, ['page']);
     const statusUrl = (status: ReportStatus): string =>
-        `${paths.portal(slug)}?${query({ status, creator: isOwner ? creator : null, unread: unreadOnly ? 1 : null, view: viewMode === 'board' ? 'board' : null, q: keyword })}`;
+        `${paths.portal(slug)}?${query({ status, category: props.selectedCategory ? props.selectedCategory : null, creator: isOwner ? creator : null, unread: unreadOnly ? 1 : null, view: viewMode === 'board' ? 'board' : null, q: keyword })}`;
     const sortMark = (column: string): string => (sort === column ? (direction === 'asc' ? '↑' : '↓') : '');
     const ariaSort = (column: string): string => (sort === column ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
     const form = props.form;
@@ -119,9 +122,10 @@ export const PortalPage: FC<PortalProps> = (props) => {
     for (const row of rows) {
         pageStatusCounts[row.report.status] = (pageStatusCounts[row.report.status] ?? 0) + 1;
     }
-    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
+    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedCategory ?? '') !== '' || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
-    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath };
+    const showCategory = v.cfg.reportCategories.length > 0;
+    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
     const clientRender = rows.length > SERVER_ROW_LIMIT;
     const sortHeader = (column: string, label: string, thClass: string) => (
@@ -202,6 +206,17 @@ export const PortalPage: FC<PortalProps> = (props) => {
                             ))}
                         </select>
                     </label>
+                    {showCategory ? (
+                        <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">分類
+                            <select name="category" data-auto-submit data-category-filter class={FILTER_SELECT}>
+                                <option value="">全部</option>
+                                {v.cfg.reportCategories.map((option) => (
+                                    <option value={option} selected={props.selectedCategory === option}>{option}</option>
+                                ))}
+                                <option value="_none" selected={props.selectedCategory === '_none'}>未分類</option>
+                            </select>
+                        </label>
+                    ) : null}
                     {isOwner ? (
                         <>
                             <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">建立者
@@ -252,6 +267,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     {sortHeader('title', '標題', 'whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
                                     <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
+                                    {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
                                     <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                                     <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
                                     {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
@@ -261,7 +277,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                             </thead>
                             <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                                 {rows.length === 0 ? (
-                                    <tr class="block sm:table-row"><td colspan={9} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                                    <tr class="block sm:table-row"><td colspan={showCategory ? 10 : 9} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                                 ) : (
                                     clientRender ? null : raw(rows.map((row) => listRowHtml(rowContext, row)).join(''))
                                 )}

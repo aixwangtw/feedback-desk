@@ -24,9 +24,9 @@ function dialogsSrc(slug: string, publicId: string, backPath: string): string {
     return `${paths.reportDialogs(slug, publicId)}?back=${encodeURIComponent(backPath)}`;
 }
 
-export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
+export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; showCategory?: boolean; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
-export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachmentUrl }) => {
+export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCategory, attachmentUrl }) => {
     const report = row.report;
     const deleted = report.client_deleted_at !== null;
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
@@ -59,6 +59,9 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, attachm
                 </form>
             </td>
             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
+            {showCategory ? (
+                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{report.category || '未分類'}</td>
+            ) : null}
             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                 {row.attachments.length > 0 ? (
                     <div class="flex flex-wrap gap-1 sm:justify-center">

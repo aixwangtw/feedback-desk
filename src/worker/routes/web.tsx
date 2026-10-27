@@ -65,6 +65,9 @@ export const web = new Hono<AppEnv>();
 
 const PER_PAGE = 50;
 /** Column sorts; anything else (including the old latest_message_at links) is the default 'conversation' order. */
+/** 分類篩選的「未分類」：沒有分類的舊單。 */
+const UNCATEGORIZED = '_none';
+
 const SORTS = ['title', 'status', 'created_at', 'latest_activity_at'] as const;
 
 async function projectOr404(c: AppContext): Promise<Project> {
@@ -514,6 +517,9 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const direction: 'asc' | 'desc' = c.req.query('direction') === 'asc' ? 'asc' : 'desc';
     const statusInput = c.req.query('status') ?? '';
     const selectedStatus: ReportStatus | null = isStatus(statusInput) ? statusInput : null;
+    const categories = config(c.env).reportCategories;
+    const categoryInput = c.req.query('category') ?? '';
+    const selectedCategory = categories.length > 0 && (categoryInput === UNCATEGORIZED || categories.includes(categoryInput)) ? categoryInput : '';
     const keyword = charSlice((c.req.query('q') ?? '').trim(), 100);
     const viewMode: 'list' | 'board' = c.req.query('view') === 'board' ? 'board' : 'list';
     const deletedInput = c.req.query('deleted') ?? '';
@@ -565,6 +571,12 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     if (selectedStatus) {
         filters.push('status = ?');
         bindings.push(selectedStatus);
+    }
+    if (selectedCategory === UNCATEGORIZED) {
+        filters.push("(category IS NULL OR category = '')");
+    } else if (selectedCategory !== '') {
+        filters.push('category = ?');
+        bindings.push(selectedCategory);
     }
     if (keyword !== '') {
         filters.push("(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");
@@ -638,7 +650,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         return {
             report,
             number: report.seq,
-            creatorLabel: withCategory(withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent), report.category),
+            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent),
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
             unread: report.unread_count,
@@ -661,6 +673,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             sort={sort}
             direction={direction}
             selectedStatus={selectedStatus}
+            selectedCategory={selectedCategory}
             keyword={keyword}
             viewMode={viewMode}
             deletedFilter={deletedFilter}
@@ -678,11 +691,6 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         />,
         status,
     );
-}
-
-/** 列表的建立者後面接上分類，讓清單與看板一眼看出分類。 */
-function withCategory(label: string, category: string | null): string {
-    return category ? `${label} · ${category}` : label;
 }
 
 web.get('/p/:slug', async (c) => {

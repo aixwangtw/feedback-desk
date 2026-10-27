@@ -20,12 +20,13 @@ export interface PortalRowsPayload {
     slug: string;
     isOwner: boolean;
     backPath: string;
+    showCategory: boolean;
     now: number;
     labels: { client: string };
     utcOffsetMinutes: number;
     timezoneName: string;
     rows: Array<{
-        report: Pick<Report, 'public_id' | 'title' | 'status' | 'adjustment_note' | 'client_deleted_at' | 'latest_activity_at' | 'created_at'>;
+        report: Pick<Report, 'public_id' | 'title' | 'category' | 'status' | 'adjustment_note' | 'client_deleted_at' | 'latest_activity_at' | 'created_at'>;
         number: number;
         creatorLabel: string;
         attachments: CompactAttachment[];
@@ -42,6 +43,7 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
         slug: ctx.slug,
         isOwner: ctx.isOwner,
         backPath: ctx.backPath,
+        showCategory: ctx.showCategory === true,
         now: ctx.v.now,
         labels: { client: ctx.v.cfg.labels.client },
         utcOffsetMinutes: ctx.v.cfg.utcOffsetMinutes,
@@ -50,6 +52,7 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             report: {
                 public_id: row.report.public_id,
                 title: row.report.title,
+                category: row.report.category,
                 status: row.report.status,
                 adjustment_note: row.report.adjustment_note,
                 client_deleted_at: row.report.client_deleted_at,
@@ -74,7 +77,7 @@ export function payloadScript(payload: PortalRowsPayload): string {
 
 function contextFrom(payload: PortalRowsPayload): RowContext {
     const cfg = { labels: payload.labels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
-    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath };
+    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory };
 }
 
 function toRows(payload: PortalRowsPayload): PortalRow[] {

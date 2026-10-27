@@ -32,6 +32,17 @@ const cases: Array<[string, PortalRow]> = [
 ];
 
 describe('string-rendered rows match the JSX reference', () => {
+    it('category column matches the JSX reference (with and without a category)', () => {
+        const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };
+        const attachmentUrl = (report: Report, item: Attachment) => paths.attachment('demo', report.public_id, item.id);
+        for (const portalRow of [row({ category: '經典排版' }), row({})]) {
+            const ctx = { v, slug: 'demo', isOwner: false, backPath: '/p/demo', showCategory: true };
+            const html = listRowHtml(ctx, portalRow);
+            expect(html).toBe(String(<ListRow v={v} row={portalRow} slug="demo" isOwner={false} backPath="/p/demo" showCategory attachmentUrl={attachmentUrl} />));
+            expect(html).toContain(portalRow.report.category ?? '未分類');
+        }
+    });
+
     const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };
     const backPath = '/p/demo?status=new&q=a"b';
     const attachmentUrl = (report: Report, item: Attachment) => paths.attachment('demo', report.public_id, item.id);

@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createToken } from '../../src/worker/lib/team';
+import { WORK_RULE } from '../../src/shared/work-rule';
 import { api, BASE, Browser, mcpCall, PNG_BYTES, rpcResult, seedClientAccount, seedDeveloper, seedProject, seedReport, unique, workerEnv } from './helpers';
 
 type ToolResult = { content: Array<{ type: string; text?: string }>; isError?: boolean };
@@ -183,6 +184,10 @@ describe('several people and AI tools on one report', () => {
         const token = await agentToken({ developerId: developer.id }, null);
         const init = await mcpCall(token, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'hermes-agent', version: '1.0' } });
         expect(init.status).toBe(200);
+        const initText = await init.clone().text();
+        expect(initText).toContain(WORK_RULE);
+        const listed = await rpcResult<{ tools: Array<{ name: string; description: string }> }>(await mcpCall(token, 'tools/list'));
+        expect(listed.tools.find((t) => t.name === 'set_status')?.description).toContain(WORK_RULE);
         await new Promise((resolve) => setTimeout(resolve, 50));
         expect(await env.DB.prepare('SELECT mcp_client FROM api_tokens WHERE agent IS NULL ORDER BY id DESC LIMIT 1').first()).toEqual({ mcp_client: 'hermes-agent' });
         expect((await tool(token, 'claim_report', { project: seeded.project.slug, report: report.public_id })).isError).toBe(false);

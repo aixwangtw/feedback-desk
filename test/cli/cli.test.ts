@@ -504,6 +504,16 @@ describe('report commands', () => {
         expect(await main(['status', 'demo', '3', 'doing'], fake.rt)).toBe(1);
     });
 
+    it('status reminds an AI not to mark a report completed, but still updates it', async () => {
+        const done = () => jsonResponse({ title: '標題', previous: { status: 'needs_input', label: '待審核' }, current: { status: 'completed', label: '已完成' } });
+        const byAgent = signedIn(done, { FEEDBACK_DESK_AGENT: 'Codex' });
+        expect(await main(['status', 'demo', '3', 'completed'], byAgent.rt)).toBe(0);
+        expect(byAgent.errors()).toContain('AI 不應直接把單改成已完成');
+        const byPerson = signedIn(done);
+        expect(await main(['status', 'demo', '3', 'completed'], byPerson.rt)).toBe(0);
+        expect(byPerson.errors()).not.toContain('AI 不應直接把單改成已完成');
+    });
+
     it('turns API errors and expired tokens into readable messages', async () => {
         const notFound = signedIn(() => jsonResponse({ error: 'report_not_found', message: '這個專案裡找不到該回饋單' }, 404));
         expect(await main(['report', 'demo', '9'], notFound.rt)).toBe(1);

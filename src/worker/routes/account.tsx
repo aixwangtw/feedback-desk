@@ -51,7 +51,7 @@ async function accountFor(c: AppContext, project: Project): Promise<Account | nu
     if (developer && !developer.disabled_at) {
         return { kind: 'developer', developer };
     }
-    if (await access.isOwner(project)) {
+    if ((await access.isOwner(project)) || (await access.isGuest(project))) {
         return null;
     }
     const client = await access.currentClientAccount(project);

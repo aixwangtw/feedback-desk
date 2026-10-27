@@ -446,6 +446,9 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `FEEDBACK_LOGIN_PREFILL_ENABLED` | `false` | 登入頁是否預填帳密。關閉時任何登入頁都不會輸出帳密。 |
 | `FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME` / `FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD` | 空 | 開啟預填時 `/owner/{slug}/login` 預填的帳密，只適合示範站。客戶登入頁的預填值來自 `client create --prefill`；本人改成自己的密碼後預填會清除。 |
 | `FEEDBACK_HOME_PUBLIC_PROJECT` | 空 | 首頁公開回報要收進哪個專案（slug）。 |
+| `FEEDBACK_GUEST_CLIENT_PROJECT` | 空 | 免登入的專案（slug）：不用登入就能開單、查看、留言，沿用公開回報的限流。 |
+| `FEEDBACK_GUEST_CLIENT_ACCOUNT` | 空 | 免登入訪客使用的客戶帳號（username），單會記在這個帳號名下；訪客不能改這個帳號的設定。 |
+| `FEEDBACK_REPORT_CATEGORIES` | 空 | 開單分類，逗號分隔（例如 `程式使用問題,經典排版,其他`）；空的就不分類。 |
 | `FEEDBACK_PUBLIC_INTRO` / `FEEDBACK_PUBLIC_NOTICE` | 空 | 公開回報表單上方的說明、一行提示。 |
 | `FEEDBACK_PUBLIC_GITHUB_URL` / `FEEDBACK_PUBLIC_BLOG_URL` | 空 | 公開首頁的連結，只接受 `https://`。 |
 | `FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE` / `_PER_HOUR` | `3` / `20` | 公開送單每個 IP 的上限。 |

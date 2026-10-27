@@ -5,6 +5,7 @@ import { paths } from '../routes/paths';
 import { ChatButton, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
+import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
@@ -29,7 +30,7 @@ export interface PortalFormState {
     /** Which form failed validation. */
     bag: 'default' | 'editReport';
     errors: string[];
-    issues?: Array<{ title: string; description: string }>;
+    issues?: Array<{ title: string; description: string; category?: string }>;
     editing?: { publicId: string; title: string; description: string; remove: string[] };
 }
 
@@ -59,6 +60,8 @@ export interface PortalProps {
     backPath: string;
     success?: string;
     passwordLink?: boolean;
+    /** 免登入訪客：不顯示登出，表單加防機器人欄位。 */
+    guest?: boolean;
     projects?: Array<{ name: string; slug: string }>;
     form?: PortalFormState;
 }
@@ -130,7 +133,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 
     return (
-        <Layout v={v} title={`問題清單｜${project.name}`} project={project} projects={isOwner ? props.projects : undefined} showLogout passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
+        <Layout v={v} title={`問題清單｜${project.name}`} project={project} projects={isOwner ? props.projects : undefined} showLogout={!props.guest} passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
@@ -308,7 +311,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     ))}
             </div>
 
-            <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} />
+            <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} categories={v.cfg.reportCategories} guest={props.guest === true} turnstileSiteKey={props.guest && v.cfg.publicReporting.turnstileSiteKey !== '' && v.cfg.publicReporting.turnstileSecretKey !== '' ? v.cfg.publicReporting.turnstileSiteKey : ''} />
         </Layout>
     );
 };
@@ -430,13 +433,24 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
     );
 };
 
-const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: string; description?: string }> = ({ slug, index, number, title, description }) => (
+const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: string; description?: string; category?: string; categories: string[] }> = ({ slug, index, number, title, description, category, categories }) => (
     <fieldset class="min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" data-issue-row>
         <div class="flex items-center justify-between gap-3">
             <legend class="text-sm font-bold text-slate-900">問題 <span data-issue-number>{number}</span></legend>
             <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
         </div>
         <div class="mt-4 grid gap-4">
+            {categories.length > 0 ? (
+                <div>
+                    <label for={`issue-category-${index}`} class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
+                    <select id={`issue-category-${index}`} name={`issues[${index}][category]`} required class={INPUT} data-issue-category>
+                        <option value="">請選擇分類</option>
+                        {categories.map((option) => (
+                            <option value={option} selected={option === category}>{option}</option>
+                        ))}
+                    </select>
+                </div>
+            ) : null}
             <div>
                 <label for={`issue-title-${index}`} class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                 <input id={`issue-title-${index}`} name={`issues[${index}][title]`} value={title ?? ''} required maxlength={160} placeholder="例如：答案儲存後重新整理會消失" class={INPUT} />
@@ -454,7 +468,7 @@ const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: s
     </fieldset>
 );
 
-const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Array<{ title: string; description: string }> }> = ({ slug, form, issueRows }) => {
+const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Array<{ title: string; description: string; category?: string }>; categories: string[]; guest: boolean; turnstileSiteKey: string }> = ({ slug, form, issueRows, categories, guest, turnstileSiteKey }) => {
     const errors = form?.bag === 'default' ? form.errors : [];
     return (
         <dialog id="new-issues" class="m-auto w-[calc(100vw-2rem)] max-w-3xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="new-issues-title" data-issue-entry data-open-on-load={errors.length > 0 ? '' : undefined}>
@@ -470,9 +484,21 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
                 <ErrorList errors={errors} class="mt-5" heading="請修正以下內容：" />
 
                 <form method="post" action={paths.reportsStore(slug)} class="mt-5 grid min-w-0 gap-5" data-issue-form data-upload-form>
+                    {guest ? (
+                        <div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden">
+                            <label for={HONEYPOT_FIELD}>Website</label>
+                            <input id={HONEYPOT_FIELD} name={HONEYPOT_FIELD} type="text" tabindex={-1} autocomplete="off" />
+                        </div>
+                    ) : null}
+                    {turnstileSiteKey !== '' ? (
+                        <>
+                            <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-turnstile></div>
+                            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                        </>
+                    ) : null}
                     <div class="grid min-w-0 gap-5" data-issue-list>
                         {issueRows.map((issue, index) => (
-                            <IssueFieldset slug={slug} index={String(index)} number={String(index + 1)} title={issue.title} description={issue.description} />
+                            <IssueFieldset slug={slug} index={String(index)} number={String(index + 1)} title={issue.title} description={issue.description} category={issue.category} categories={categories} />
                         ))}
                     </div>
 
@@ -486,7 +512,7 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
                 </form>
 
                 <template data-issue-template>
-                    <IssueFieldset slug={slug} index="__INDEX__" number="" />
+                    <IssueFieldset slug={slug} index="__INDEX__" number="" categories={categories} />
                 </template>
             </div>
         </dialog>

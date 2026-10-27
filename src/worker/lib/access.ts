@@ -89,6 +89,7 @@ export class Access {
     private readonly roleCache = new Map<string, Promise<boolean>>();
     private readonly developerCache = new Map<number, Promise<Developer | null>>();
     private readonly accountCache = new Map<number, Promise<ClientAccount | null>>();
+    private readonly guestCache = new Map<number, Promise<ClientAccount | null>>();
     private readonly nowSeconds: number;
 
     constructor(
@@ -331,8 +332,27 @@ export class Access {
         return this.hasRole(project, 'owner');
     }
 
-    isClient(project: Project): Promise<boolean> {
-        return this.hasRole(project, 'client');
+    async isClient(project: Project): Promise<boolean> {
+        return (await this.hasRole(project, 'client')) || (await this.guestClientAccount(project)) !== null;
+    }
+
+    /** The client account the guest entry uses on this project; null when guest mode is off, the account is missing or disabled. */
+    guestClientAccount(project: Project): Promise<ClientAccount | null> {
+        const guest = config(this.env).guestClient;
+        if (guest.project === '' || guest.account === '' || guest.project !== project.slug) {
+            return Promise.resolve(null);
+        }
+        let account = this.guestCache.get(project.id);
+        if (!account) {
+            account = findClientAccountInProject(this.env.DB, project.id, guest.account).then((found) => (found && !found.disabled_at ? found : null));
+            this.guestCache.set(project.id, account);
+        }
+        return account;
+    }
+
+    /** Not signed in, using the project through the guest entry as its configured client account. */
+    async isGuest(project: Project): Promise<boolean> {
+        return (await this.guestClientAccount(project)) !== null && !(await this.isOwner(project)) && !(await this.hasRole(project, 'client'));
     }
 
     async canManage(project: Project): Promise<boolean> {
@@ -355,6 +375,9 @@ export class Access {
 
     /** Signed in with an account that has a password (not an entry link), so "change password" applies. */
     async hasPasswordAccount(project: Project): Promise<boolean> {
+        if (await this.isGuest(project)) {
+            return false;
+        }
         const developer = await this.currentDeveloper(project);
         if (developer && !developer.disabled_at) {
             return true;
@@ -365,7 +388,10 @@ export class Access {
     /** The client account signed in on this project; null for the client entry link or no client login. */
     async currentClientAccount(project: Project): Promise<ClientAccount | null> {
         const grant = await this.validGrant(project, 'client');
-        return grant && grant.entry.s === 'password' ? grant.account : null;
+        if (grant) {
+            return grant.entry.s === 'password' ? grant.account : null;
+        }
+        return (await this.isOwner(project)) ? null : this.guestClientAccount(project);
     }
 
     /**

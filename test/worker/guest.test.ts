@@ -1,0 +1,82 @@
+import { env } from 'cloudflare:workers';
+import { describe, expect, it } from 'vitest';
+import type { Report } from '../../src/worker/lib/models';
+import { Browser, seedClientAccount, seedProject, seedReport, unique } from './helpers';
+
+const CATEGORIES = '程式使用問題,經典排版,其他';
+
+async function guestSetup(vars: Record<string, string> = {}) {
+    const seeded = await seedProject({ client: false });
+    const username = unique('guest');
+    const { account } = await seedClientAccount(seeded.project, username, 'guest-password-1234567', '張子元');
+    const allVars = { FEEDBACK_GUEST_CLIENT_PROJECT: seeded.project.slug, FEEDBACK_GUEST_CLIENT_ACCOUNT: username, FEEDBACK_REPORT_CATEGORIES: CATEGORIES, ...vars };
+    const browser = () => new Browser(`10.2.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`, allVars);
+    return { seeded, slug: seeded.project.slug, account, browser, vars: allVars };
+}
+
+function issue(category: string | null = '經典排版', extra: Record<string, string> = {}): Record<string, string> {
+    return { 'issues[0][title]': '段落沒有換行', 'issues[0][description]': '第二段黏在一起。', ...(category === null ? {} : { 'issues[0][category]': category }), ...extra };
+}
+
+async function reportsOf(projectId: number): Promise<Report[]> {
+    return (await env.DB.prepare('SELECT * FROM reports WHERE project_id = ? ORDER BY id').bind(projectId).all<Report>()).results;
+}
+
+describe('guest client entry', () => {
+    it('opens the portal without login and shows the category options', async () => {
+        const { slug, browser } = await guestSetup();
+        const response = await browser().get(`/p/${slug}`);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        expect(html).toContain('data-issue-category');
+        expect(html).toContain('經典排版');
+        expect(html).not.toContain('data-logout');
+        expect(html).not.toContain('data-account-link');
+    });
+
+    it('creates reports as the configured client account with the chosen category', async () => {
+        const { seeded, slug, account, browser } = await guestSetup();
+        const visitor = browser();
+        expect((await visitor.post(`/p/${slug}/reports`, issue())).status).toBe(302);
+        const [report] = await reportsOf(seeded.project.id);
+        expect(report.creator_type).toBe('client');
+        expect(report.creator_client_account_id).toBe(account.id);
+        expect(report.category).toBe('經典排版');
+        const page = await (await visitor.get(`/p/${slug}/reports/${report.public_id}`)).text();
+        expect(page).toContain('data-report-category');
+        expect(page).toContain('張子元');
+    });
+
+    it('rejects a missing or unknown category and the honeypot', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        expect((await browser().post(`/p/${slug}/reports`, issue(null))).status).toBe(422);
+        expect((await browser().post(`/p/${slug}/reports`, issue('亂填'))).status).toBe(422);
+        expect((await browser().post(`/p/${slug}/reports`, issue('其他', { contact_website: 'spam' }))).status).toBe(422);
+        expect(await reportsOf(seeded.project.id)).toHaveLength(0);
+    });
+
+    it('throttles guest submissions and messages per IP', async () => {
+        const { seeded, slug, browser } = await guestSetup({ FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE: '2', FEEDBACK_PUBLIC_MESSAGE_THROTTLE_PER_MINUTE: '1' });
+        const visitor = browser();
+        expect((await visitor.post(`/p/${slug}/reports`, issue())).status).toBe(302);
+        expect((await visitor.post(`/p/${slug}/reports`, issue())).status).toBe(302);
+        expect((await visitor.post(`/p/${slug}/reports`, issue())).status).toBe(429);
+        const { report } = await seedReport(seeded.project);
+        expect((await visitor.post(`/p/${slug}/reports/${report.public_id}/messages`, { body: '補充' })).status).toBe(302);
+        expect((await visitor.post(`/p/${slug}/reports/${report.public_id}/messages`, { body: '再補充' })).status).toBe(429);
+    });
+
+    it('does not let guests change the account', async () => {
+        const { slug, browser } = await guestSetup();
+        const response = await browser().post(`/p/${slug}/account/verify`, { current_password: 'guest-password-1234567' });
+        expect([302, 403]).toContain(response.status);
+        expect(response.status === 302 ? response.headers.get('location') ?? '' : '').not.toContain('/account/password');
+    });
+
+    it('keeps other projects and unconfigured sites behind login', async () => {
+        const { slug, vars } = await guestSetup();
+        const other = await seedProject();
+        expect((await new Browser(undefined, vars).get(`/p/${other.project.slug}`)).status).toBe(302);
+        expect((await new Browser().get(`/p/${slug}`)).status).toBe(302);
+    });
+});

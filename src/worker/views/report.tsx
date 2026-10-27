@@ -304,6 +304,11 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                         建立者：{props.creatorLabel}
                                     </p>
                                 ) : null}
+                                {report.category ? (
+                                    <p class="mt-1 text-xs text-slate-500" data-report-category>
+                                        分類：<span class="font-semibold text-teal-700">{report.category}</span>
+                                    </p>
+                                ) : null}
                                 {isOwner && report.client_deleted_at ? (
                                     <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{labels.client}已刪除</span>

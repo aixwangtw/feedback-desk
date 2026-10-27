@@ -177,6 +177,25 @@ function publicSubmitLimits(c: AppContext): Limit[] {
     ];
 }
 
+/** 免登入入口沿用公開回報的限流設定，計數與公開回報分開。 */
+function guestSubmitLimits(c: AppContext): Limit[] {
+    const cfg = config(c.env).publicReporting;
+    const ip = clientIp(c.req.raw);
+    return [
+        { key: `guest-submit-minute|${ip}`, max: cfg.perMinute, period: 60 },
+        { key: `guest-submit-hour|${ip}`, max: cfg.perHour, period: 3600 },
+    ];
+}
+
+function guestMessageLimits(c: AppContext): Limit[] {
+    const cfg = config(c.env).publicReporting;
+    const ip = clientIp(c.req.raw);
+    return [
+        { key: `guest-message-minute|${ip}`, max: cfg.messagePerMinute, period: 60 },
+        { key: `guest-message-hour|${ip}`, max: cfg.messagePerHour, period: 3600 },
+    ];
+}
+
 web.post('/public-reports', async (c) => {
     const project = await publicProject(c);
     if (!project) {
@@ -619,7 +638,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         return {
             report,
             number: report.seq,
-            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent),
+            creatorLabel: withCategory(withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent), report.category),
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
             unread: report.unread_count,
@@ -654,10 +673,16 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             backPath={form ? paths.portal(project.slug) : currentPathWithQuery(c)}
             success={flash.success}
             passwordLink={await access.hasPasswordAccount(project)}
+            guest={await access.isGuest(project)}
             form={form}
         />,
         status,
     );
+}
+
+/** 列表的建立者後面接上分類，讓清單與看板一眼看出分類。 */
+function withCategory(label: string, category: string | null): string {
+    return category ? `${label} · ${category}` : label;
 }
 
 web.get('/p/:slug', async (c) => {
@@ -671,23 +696,24 @@ web.get('/p/:slug', async (c) => {
 interface IssueInput {
     title: string;
     description: string;
+    category: string;
     uploadIds: string[];
 }
 
 function parseIssues(form: URLSearchParams): IssueInput[] {
     const issues = new Map<string, IssueInput>();
     for (const [key, value] of form.entries()) {
-        const match = /^issues\[([^\]]+)\]\[(title|description|upload_ids)\](\[\])?$/.exec(key);
+        const match = /^issues\[([^\]]+)\]\[(title|description|category|upload_ids)\](\[\])?$/.exec(key);
         if (!match) {
             continue;
         }
-        const issue = issues.get(match[1]) ?? { title: '', description: '', uploadIds: [] };
+        const issue = issues.get(match[1]) ?? { title: '', description: '', category: '', uploadIds: [] };
         if (match[2] === 'upload_ids') {
             if (value.trim() !== '') {
                 issue.uploadIds.push(value.trim());
             }
         } else {
-            issue[match[2] as 'title' | 'description'] = value.trim();
+            issue[match[2] as 'title' | 'description' | 'category'] = value.trim();
         }
         issues.set(match[1], issue);
     }
@@ -701,9 +727,20 @@ web.post('/p/:slug/reports', async (c) => {
     if (!(await access.canManage(project))) {
         return deny(c, project);
     }
+    const isGuest = await access.isGuest(project);
+    if (isGuest) {
+        const retryAfter = await attempt(c.env.DB, guestSubmitLimits(c), c.get('now'));
+        if (retryAfter !== null) {
+            abort(429, '', { 'Retry-After': String(retryAfter) });
+        }
+    }
     const form = await readForm(c);
     const issues = parseIssues(form);
     const errors: string[] = [];
+    const categories = config(c.env).reportCategories;
+    if (isGuest && field(form, HONEYPOT_FIELD) !== '') {
+        errors.push('送出失敗，請重新整理頁面後再試。');
+    }
     if (issues.length === 0) {
         errors.push('問題 為必填。');
     } else if (issues.length > 20) {
@@ -713,6 +750,9 @@ web.post('/p/:slug/reports', async (c) => {
     for (const issue of issues.slice(0, 20)) {
         validateText(errors, issue.title, '問題標題', MAX_TITLE);
         validateText(errors, issue.description, '問題說明', MAX_DESCRIPTION);
+        if (categories.length > 0 && !categories.includes(issue.category)) {
+            errors.push(issue.category === '' ? '分類 為必填。' : '選擇的分類無效。');
+        }
         if (issue.uploadIds.length > MAX_SCREENSHOTS) {
             errors.push(`截圖 最多只能有 ${MAX_SCREENSHOTS} 項。`);
         }
@@ -731,13 +771,19 @@ web.post('/p/:slug/reports', async (c) => {
             errors.push(STALE_UPLOAD_MESSAGE);
         }
     }
+    if (errors.length === 0 && isGuest && turnstileEnabled(c.env)) {
+        const passed = await verifyTurnstile(c.env, form.get(TURNSTILE_FIELD), clientIp(c.req.raw));
+        if (!passed) {
+            errors.push('人機驗證沒有通過，請重新驗證後再送出。');
+        }
+    }
     if (errors.length > 0) {
-        return renderPortal(c, project, { bag: 'default', errors: [...new Set(errors)], issues: issues.map(({ title, description }) => ({ title, description })) }, 422);
+        return renderPortal(c, project, { bag: 'default', errors: [...new Set(errors)], issues: issues.map(({ title, description, category }) => ({ title, description, category })) }, 422);
     }
     const creator = await access.creatorFor(project);
     const author = await access.author(project);
     for (let i = 0; i < issues.length; i++) {
-        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, uploads: claimed[i] ?? [], author }, creator, c.get('now'));
+        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, category: categories.length > 0 ? issues[i].category : null, uploads: claimed[i] ?? [], author }, creator, c.get('now'));
         await access.grantReporter(report);
     }
     access.setFlash({ success: `已新增 ${issues.length} 個問題。` });
@@ -1333,6 +1379,12 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
         abort(404);
     }
     const isOwner = await access.isOwner(project);
+    if (await access.isGuest(project)) {
+        const retryAfter = await attempt(c.env.DB, guestMessageLimits(c), c.get('now'));
+        if (retryAfter !== null) {
+            abort(429, '', { 'Retry-After': String(retryAfter) });
+        }
+    }
     const isPublicReporter = isPublicReport(report) && !isOwner;
     if (isPublicReporter && project.public_reporting_enabled !== 1) {
         abort(403, '這個專案已停止收件，這張單只能查看。');

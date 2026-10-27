@@ -29,7 +29,7 @@ export function eventStatement(db: D1Database, report: { id: number } | { public
 export async function createReport(
     env: Env,
     project: Project,
-    data: { title: string; description: string; reporter_name?: string | null; uploads: Upload[]; author?: Author },
+    data: { title: string; description: string; reporter_name?: string | null; category?: string | null; uploads: Upload[]; author?: Author },
     creator: Creator,
     now = Date.now(),
 ): Promise<{ report: Report; reporterToken: string }> {
@@ -40,14 +40,15 @@ export async function createReport(
     const results = await db.batch([
         db
             .prepare(
-                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
+                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, category, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
             )
             .bind(
                 project.id,
                 publicId,
                 await sha256Hex(reporterToken),
                 data.reporter_name ?? null,
+                data.category ?? null,
                 creator.creator_type,
                 creator.creator_developer_id,
                 creator.creator_client_account_id ?? null,

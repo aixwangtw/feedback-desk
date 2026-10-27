@@ -54,6 +54,8 @@ export interface Report {
     public_id: string;
     reporter_token_hash: string;
     reporter_name: string | null;
+    /** 開單分類；沒設定分類的站為 null。 */
+    category: string | null;
     creator_type: CreatorType;
     creator_developer_id: number | null;
     /** The client account that created it; null for the client entry link and public reports. */

@@ -33,6 +33,10 @@ export interface FeedbackConfig {
         turnstileSiteKey: string;
         turnstileSecretKey: string;
     };
+    /** 免登入客戶入口：project 指定的專案不用登入，訪客以 account（username）這個客戶帳號身分使用。 */
+    guestClient: { project: string; account: string };
+    /** 開單分類選項；空陣列表示不分類。 */
+    reportCategories: string[];
     utcOffsetMinutes: number;
     timezoneName: string;
 }
@@ -103,6 +107,11 @@ export function config(env: Env): FeedbackConfig {
             turnstileSiteKey: str(env, 'FEEDBACK_TURNSTILE_SITE_KEY'),
             turnstileSecretKey: str(env, 'FEEDBACK_TURNSTILE_SECRET_KEY'),
         },
+        guestClient: { project: str(env, 'FEEDBACK_GUEST_CLIENT_PROJECT'), account: str(env, 'FEEDBACK_GUEST_CLIENT_ACCOUNT') },
+        reportCategories: str(env, 'FEEDBACK_REPORT_CATEGORIES')
+            .split(',')
+            .map((category) => category.trim())
+            .filter((category) => category !== ''),
         utcOffsetMinutes: parseUtcOffset(str(env, 'FEEDBACK_UTC_OFFSET', '+08:00')),
         timezoneName: str(env, 'FEEDBACK_TIMEZONE_NAME', '台北時間'),
     };

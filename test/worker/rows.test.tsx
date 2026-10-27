@@ -13,7 +13,7 @@ function attachment(id: number, kind: 'feedback' | 'adjustment', name: string): 
 
 function row(overrides: Partial<Report>, attachments: Attachment[] = [], adjustments: Attachment[] = [], badges: Partial<Pick<PortalRow, 'unread' | 'messagesCount'>> = {}): PortalRow {
     const report: Report = {
-        id: 1, project_id: 1, public_id: '0199c3a1-0000-4000-8000-000000000001', reporter_token_hash: '', reporter_name: null, creator_type: 'client', creator_developer_id: null, creator_client_account_id: null, creator_agent: null, claimed_by_developer_id: null, claimed_agent: null, claimed_at: null,
+        id: 1, project_id: 1, public_id: '0199c3a1-0000-4000-8000-000000000001', reporter_token_hash: '', reporter_name: null, category: null, creator_type: 'client', creator_developer_id: null, creator_client_account_id: null, creator_agent: null, claimed_by_developer_id: null, claimed_agent: null, claimed_at: null,
         title: '標題 <b>"引號" & \'單引號\'</b>', description: 'd', adjustment_note: null, page_url: null, status: 'needs_input', completed_at: null, client_deleted_at: null,
         latest_activity_at: '2026-10-14T02:30:00.000Z', owner_last_read_at: null, client_last_read_at: null, adjustment_updated_at: null,
         created_at: '2026-10-13T02:30:00.000Z', updated_at: '', ...overrides,

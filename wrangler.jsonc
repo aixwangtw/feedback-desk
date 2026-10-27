@@ -33,6 +33,9 @@
         "FEEDBACK_LOGIN_PREFILL_ENABLED": "false",
         // 首頁公開回報：填專案 slug，並用 npx --allow-git=all github:aixwangtw/feedback-desk public-reporting <slug> on 開啟。
         "FEEDBACK_HOME_PUBLIC_PROJECT": "",
+        "FEEDBACK_GUEST_CLIENT_PROJECT": "",
+        "FEEDBACK_GUEST_CLIENT_ACCOUNT": "",
+        "FEEDBACK_REPORT_CATEGORIES": "",
         "FEEDBACK_PUBLIC_INTRO": "",
         "FEEDBACK_PUBLIC_GITHUB_URL": "",
         "FEEDBACK_PUBLIC_BLOG_URL": "",

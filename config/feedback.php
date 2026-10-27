@@ -61,6 +61,20 @@ return [
      * `php artisan feedback:public-reporting {project} on`. The links and the notice stay
      * hidden while their values are empty.
      */
+    /*
+     * 免登入客戶入口：`project` 指定的專案不用登入，訪客直接以 `account` 這個客戶帳號（username）開單、查看、留言。
+     * 帳號設定頁不開放給訪客。兩者沒設定或帳號停用時，所有專案照常需要登入。
+     */
+    'guest_client' => [
+        'project' => env('FEEDBACK_GUEST_CLIENT_PROJECT'),
+        'account' => env('FEEDBACK_GUEST_CLIENT_ACCOUNT'),
+    ],
+
+    /*
+     * 開單分類選項，逗號分隔。沒設定時開單不顯示分類。
+     */
+    'report_categories' => array_values(array_filter(array_map('trim', explode(',', (string) env('FEEDBACK_REPORT_CATEGORIES', ''))), fn (string $category): bool => $category !== '')),
+
     'public_reporting' => [
         'home_project' => env('FEEDBACK_HOME_PUBLIC_PROJECT'),
         'intro' => env('FEEDBACK_PUBLIC_INTRO'),

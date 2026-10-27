@@ -63,7 +63,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
         ->middleware('throttle:120,1')
         ->name('feedback.conversations.show');
     Route::post('/p/{feedbackProject:slug}/reports', [FeedbackReportController::class, 'store'])
-        ->middleware('throttle:10,1')
+        ->middleware(['throttle:10,1', 'throttle:feedback-guest-submit'])
         ->name('feedback.reports.store');
 
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'show'])
@@ -82,7 +82,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/activity', [FeedbackReportController::class, 'activity'])
         ->name('feedback.reports.activity');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
-        ->middleware(['throttle:30,1', 'throttle:feedback-public-message'])
+        ->middleware(['throttle:30,1', 'throttle:feedback-public-message', 'throttle:feedback-guest-message'])
         ->name('feedback.messages.store');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/claim', [FeedbackClaimController::class, 'update'])
         ->middleware('throttle:30,1')

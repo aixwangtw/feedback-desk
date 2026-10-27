@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
     'public_id',
     'reporter_token_hash',
     'reporter_name',
+    'category',
     'creator_type',
     'creator_developer_id',
     'creator_client_account_id',

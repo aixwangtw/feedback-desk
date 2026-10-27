@@ -42,6 +42,8 @@
             ? ($direction === 'asc' ? 'ascending' : 'descending')
             : 'none';
         $issueRows = old('issues', [['title' => '', 'description' => '']]);
+        $reportCategories = \App\Http\Requests\Feedback\StoreFeedbackReportRequest::categories();
+        $isGuest = app(\App\Support\FeedbackAccess::class)->isGuest($project);
         $editingReport = old('editing_report');
         $boardStatuses = \App\Enums\FeedbackReportStatus::cases();
         $pageStatusCounts = $reports->getCollection()->countBy(fn ($report) => $report->status->value);
@@ -197,7 +199,7 @@
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}@if (filled($report->category))<span class="mt-0.5 block text-[11px] font-semibold text-teal-700" data-report-category>{{ $report->category }}</span>@endif</td>
                             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
                                     <div class="flex flex-wrap gap-1 sm:justify-center">
@@ -279,7 +281,7 @@
                                     <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span></p>
+                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@if (filled($report->category))<span class="ml-1.5 font-semibold text-teal-700" data-report-category>· {{ $report->category }}</span>@endif</p>
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
@@ -507,6 +509,16 @@
 
         <form method="POST" action="{{ route('feedback.reports.store', $project) }}" enctype="multipart/form-data" class="mt-5 grid min-w-0 gap-5" data-issue-form>
             @csrf
+            @if ($isGuest)
+                <div aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden">
+                    <label for="{{ \App\Http\Requests\Feedback\StorePublicFeedbackReportRequest::HONEYPOT_FIELD }}">Website</label>
+                    <input id="{{ \App\Http\Requests\Feedback\StorePublicFeedbackReportRequest::HONEYPOT_FIELD }}" name="{{ \App\Http\Requests\Feedback\StorePublicFeedbackReportRequest::HONEYPOT_FIELD }}" type="text" tabindex="-1" autocomplete="off">
+                </div>
+                @if (app(\App\Support\PublicReporting::class)->turnstileEnabled())
+                    <div class="cf-turnstile" data-sitekey="{{ config('feedback.public_reporting.turnstile.site_key') }}" data-turnstile></div>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                @endif
+            @endif
             <div class="grid min-w-0 gap-5" data-issue-list>
                 @foreach ($issueRows as $index => $issue)
                     <fieldset class="min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" data-issue-row>
@@ -515,6 +527,17 @@
                             <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
                         </div>
                         <div class="mt-4 grid gap-4">
+                            @if ($reportCategories !== [])
+                                <div>
+                                    <label for="issue-category-{{ $index }}" class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
+                                    <select id="issue-category-{{ $index }}" name="issues[{{ $index }}][category]" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-issue-category>
+                                        <option value="">請選擇分類</option>
+                                        @foreach ($reportCategories as $reportCategory)
+                                            <option value="{{ $reportCategory }}" @selected(($issue['category'] ?? '') === $reportCategory)>{{ $reportCategory }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            @endif
                             <div>
                                 <label for="issue-title-{{ $index }}" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                                 <input id="issue-title-{{ $index }}" name="issues[{{ $index }}][title]" value="{{ $issue['title'] ?? '' }}" required maxlength="160" placeholder="例如：答案儲存後重新整理會消失" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">
@@ -549,6 +572,9 @@
                     <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
                 </div>
                 <div class="mt-4 grid gap-4">
+                    @if ($reportCategories !== [])
+                        <div><label for="issue-category-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label><select id="issue-category-__INDEX__" name="issues[__INDEX__][category]" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-issue-category><option value="">請選擇分類</option>@foreach ($reportCategories as $reportCategory)<option value="{{ $reportCategory }}">{{ $reportCategory }}</option>@endforeach</select></div>
+                    @endif
                     <div><label for="issue-title-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label><input id="issue-title-__INDEX__" name="issues[__INDEX__][title]" required maxlength="160" placeholder="例如：答案儲存後重新整理會消失" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></div>
                     <div><label for="issue-description-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題說明 <span class="text-rose-600">*</span></label><textarea id="issue-description-__INDEX__" name="issues[__INDEX__][description]" required maxlength="10000" rows="4" placeholder="請說明操作步驟、預期結果與實際結果。" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></textarea></div>
                     <div>

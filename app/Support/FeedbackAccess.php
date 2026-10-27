@@ -54,6 +54,11 @@ class FeedbackAccess
      */
     private array $clientAccounts = [];
 
+    /**
+     * @var array<int, FeedbackClientAccount|null>
+     */
+    private array $guestAccounts = [];
+
     public function __construct(
         private Session $session,
         private Request $request,
@@ -270,6 +275,10 @@ class FeedbackAccess
             return null;
         }
 
+        if ($this->isGuest($project)) {
+            return $this->guestClientAccount($project);
+        }
+
         $accountId = $this->session->get($this->clientAccountKey($project));
 
         return is_int($accountId) ? $this->clientAccount($accountId) : null;
@@ -280,6 +289,10 @@ class FeedbackAccess
      */
     public function currentAccount(FeedbackProject $project): FeedbackDeveloper|FeedbackClientAccount|null
     {
+        if ($this->isGuest($project)) {
+            return null;
+        }
+
         return $this->currentDeveloper($project) ?? $this->currentClientAccount($project);
     }
 
@@ -331,7 +344,40 @@ class FeedbackAccess
 
     public function isClient(FeedbackProject $project): bool
     {
-        return $this->hasRole($project, self::ROLE_CLIENT, $this->clientKey($project));
+        return $this->hasRole($project, self::ROLE_CLIENT, $this->clientKey($project))
+            || $this->guestClientAccount($project) !== null;
+    }
+
+    /**
+     * 沒有登入、透過免登入入口以指定客戶帳號身分使用這個專案。
+     */
+    public function isGuest(FeedbackProject $project): bool
+    {
+        return $this->guestClientAccount($project) !== null
+            && ! $this->isOwner($project)
+            && ! $this->hasRole($project, self::ROLE_CLIENT, $this->clientKey($project));
+    }
+
+    /**
+     * 免登入入口使用的客戶帳號；這個專案沒有開免登入、帳號不存在或已停用時為 null。
+     */
+    public function guestClientAccount(FeedbackProject $project): ?FeedbackClientAccount
+    {
+        $slug = config('feedback.guest_client.project');
+        $username = config('feedback.guest_client.account');
+        if (! is_string($slug) || $slug === '' || $slug !== $project->slug || ! is_string($username) || $username === '') {
+            return null;
+        }
+
+        if (! array_key_exists($project->id, $this->guestAccounts)) {
+            $account = FeedbackClientAccount::query()
+                ->where('feedback_project_id', $project->id)
+                ->where('username', $username)
+                ->first();
+            $this->guestAccounts[$project->id] = $account !== null && ! $account->isDisabled() ? $account : null;
+        }
+
+        return $this->guestAccounts[$project->id];
     }
 
     public function canManage(FeedbackProject $project): bool
@@ -592,7 +638,7 @@ class FeedbackAccess
 
     private function globalDeveloperFingerprint(FeedbackDeveloper $developer): string
     {
-        return hash_hmac('sha256', "global|".self::ROLE_OWNER.'|'.self::SOURCE_DEVELOPER."|{$developer->id}|{$developer->password_hash}", (string) config('app.key'));
+        return hash_hmac('sha256', 'global|'.self::ROLE_OWNER.'|'.self::SOURCE_DEVELOPER."|{$developer->id}|{$developer->password_hash}", (string) config('app.key'));
     }
 
     private function globalOwnerFingerprint(): ?string
@@ -602,7 +648,7 @@ class FeedbackAccess
             return null;
         }
 
-        return hash_hmac('sha256', "global|".self::ROLE_OWNER.'|'.self::SOURCE_PASSWORD."|{$hash}", (string) config('app.key'));
+        return hash_hmac('sha256', 'global|'.self::ROLE_OWNER.'|'.self::SOURCE_PASSWORD."|{$hash}", (string) config('app.key'));
     }
 
     private function hasRole(FeedbackProject $project, string $role, string $sessionKey): bool

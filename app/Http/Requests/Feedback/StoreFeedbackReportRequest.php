@@ -4,10 +4,14 @@ namespace App\Http\Requests\Feedback;
 
 use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackProject;
+use App\Services\TurnstileVerifier;
 use App\Support\FeedbackAccess;
+use App\Support\PublicReporting;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\File;
+use Illuminate\Validation\Validator;
 
 class StoreFeedbackReportRequest extends FormRequest
 {
@@ -36,6 +40,9 @@ class StoreFeedbackReportRequest extends FormRequest
             'issues' => ['required', 'array', 'min:1', 'max:20'],
             'issues.*.title' => ['required', 'string', 'max:160'],
             'issues.*.description' => ['required', 'string', 'max:10000'],
+            'issues.*.category' => self::categories() === []
+                ? ['prohibited']
+                : ['required', 'string', Rule::in(self::categories())],
             'issues.*.screenshots' => ['nullable', 'array', 'max:5'],
             'issues.*.screenshots.*' => [
                 'required',
@@ -51,8 +58,47 @@ class StoreFeedbackReportRequest extends FormRequest
             'issues' => '問題',
             'issues.*.title' => '問題標題',
             'issues.*.description' => '問題說明',
+            'issues.*.category' => '分類',
             'issues.*.screenshots' => '截圖',
             'issues.*.screenshots.*' => '截圖',
+        ];
+    }
+
+    /**
+     * 設定的開單分類；空陣列表示這個站不分類。
+     *
+     * @return list<string>
+     */
+    public static function categories(): array
+    {
+        return array_values(array_filter((array) config('feedback.report_categories'), 'is_string'));
+    }
+
+    /**
+     * 免登入入口沿用公開回報的防機器人：隱藏欄位有值就擋下，有設定 Turnstile 時要通過驗證。
+     *
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $project = $this->route('feedbackProject');
+                if (! $project instanceof FeedbackProject || ! app(FeedbackAccess::class)->isGuest($project)) {
+                    return;
+                }
+
+                if (filled($this->input(StorePublicFeedbackReportRequest::HONEYPOT_FIELD))) {
+                    $validator->errors()->add('issues', '送出失敗，請重新整理頁面後再試。');
+
+                    return;
+                }
+
+                if ($validator->errors()->isEmpty() && app(PublicReporting::class)->turnstileEnabled()
+                    && ! app(TurnstileVerifier::class)->passes($this->input(StorePublicFeedbackReportRequest::TURNSTILE_FIELD), $this->ip())) {
+                    $validator->errors()->add('turnstile', '人機驗證沒有通過，請重新驗證後再送出。');
+                }
+            },
         ];
     }
 }

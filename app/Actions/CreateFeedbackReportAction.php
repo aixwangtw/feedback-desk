@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 class CreateFeedbackReportAction
 {
     /**
-     * @param  array{title: string, description: string, reporter_name?: string|null, screenshots?: list<UploadedFile>}  $data
+     * @param  array{title: string, description: string, reporter_name?: string|null, category?: string|null, screenshots?: list<UploadedFile>}  $data
      * @param  array{creator_type: FeedbackCreatorType, creator_developer_id: int|null, creator_client_account_id?: int|null}  $creator
      * @param  FeedbackActor|null  $actor  寫進最近動態與附件上傳者的帳號、AI 工具；公開回報不記
      * @return array{report: FeedbackReport, reporter_token: string}
@@ -32,6 +32,7 @@ class CreateFeedbackReportAction
                 'creator_client_account_id' => $creator['creator_client_account_id'] ?? null,
                 'creator_agent' => $actor?->agent,
                 'reporter_name' => $data['reporter_name'] ?? null,
+                'category' => $data['category'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'],
                 'latest_activity_at' => now(),

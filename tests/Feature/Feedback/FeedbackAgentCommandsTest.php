@@ -229,6 +229,16 @@ class FeedbackAgentCommandsTest extends TestCase
         $this->assertNull($report->refresh()->completed_at);
     }
 
+    public function test_status_completed_by_an_agent_prints_a_reminder_but_still_updates(): void
+    {
+        $report = $this->makeReport(['status' => FeedbackReportStatus::NeedsInput]);
+
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => 'completed', '--agent' => 'Codex'])
+            ->expectsOutputToContain('AI 不應直接把單改成已完成')
+            ->assertSuccessful();
+        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+    }
+
     public function test_status_rejects_unknown_status_and_keeps_report_unchanged(): void
     {
         $report = $this->makeReport(['status' => FeedbackReportStatus::New]);

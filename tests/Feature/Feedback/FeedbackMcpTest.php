@@ -11,6 +11,7 @@ use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackWorkRule;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
@@ -60,8 +61,12 @@ class FeedbackMcpTest extends TestCase
         $this->mcp($issued['plain'], 'initialize', ['protocolVersion' => '2025-03-26', 'clientInfo' => ['name' => 'claude-code', 'version' => '2']])
             ->assertOk()
             ->assertJsonPath('result.protocolVersion', '2025-03-26')
-            ->assertJsonPath('result.serverInfo.name', 'feedback-desk');
+            ->assertJsonPath('result.serverInfo.name', 'feedback-desk')
+            ->assertJsonPath('result.instructions', fn (string $instructions): bool => str_contains($instructions, FeedbackWorkRule::TEXT));
         $this->assertSame('Claude Code', $issued['token']->refresh()->agentName());
+
+        $setStatus = collect($this->mcp($issued['plain'], 'tools/list')->json('result.tools'))->firstWhere('name', 'set_status');
+        $this->assertStringContainsString(FeedbackWorkRule::TEXT, $setStatus['description']);
 
         $this->withToken($issued['plain'])->postJson(route('feedback.mcp'), ['jsonrpc' => '2.0', 'method' => 'notifications/initialized'])->assertStatus(202);
         $this->mcp($issued['plain'], 'nope')->assertJsonPath('error.code', -32601);

@@ -9,6 +9,7 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackReportWork;
 use App\Support\FeedbackServiceException;
+use App\Support\FeedbackWorkRule;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -33,7 +34,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 說明：
   - report 純數字時是團隊端清單編號（含客戶刪除而隱藏的單）；否則視為 public_id。
   - 狀態寫錯時會列出可用值並失敗。
-  - 做完修改建議改成「待審核」，由客戶確認後再改成「已完成」。
+  - 做完修改改成「待審核」；AI 不可直接改成「已完成」，要等提出的人或負責人確認（AI 身分改成已完成時會印提醒，不會擋）。
   - 別人認領中的單會停下並說明是誰在處理；確定要接手才加 --force（會記錄）。
   - --as=帳號 讓紀錄顯示你的名字；在 Claude Code、Codex 裡執行時會自動標示是哪個 AI。
 HELP)]
@@ -85,6 +86,9 @@ class SetFeedbackReportStatusCommand extends Command
         $this->components->twoColumnDetail('新狀態', "{$status->value}（{$status->label()}）");
         if ($takenOver !== null) {
             $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
+        }
+        if ($status === FeedbackReportStatus::Completed && $actor->agent !== null) {
+            $this->components->warn(FeedbackWorkRule::COMPLETED_BY_AGENT_WARNING);
         }
 
         return self::SUCCESS;

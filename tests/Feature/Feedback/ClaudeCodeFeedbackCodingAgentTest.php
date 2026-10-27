@@ -10,6 +10,7 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Services\ClaudeCodeFeedbackCodingAgent;
 use App\Services\CodexFeedbackCodingAgent;
+use App\Support\FeedbackWorkRule;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\PendingProcess;
@@ -106,6 +107,7 @@ class ClaudeCodeFeedbackCodingAgentTest extends TestCase
                 && array_slice($command, -6) === ['--max-turns', '60', '--model', 'sonnet', '--add-dir', $imageDirectory]
                 && str_contains($process->input, $report->title)
                 && str_contains($process->input, 'AGENTS.md')
+                && str_contains($process->input, FeedbackWorkRule::TEXT)
                 && str_contains($process->input, $imageDirectory.'/shot.png')
                 && $process->path === realpath($this->workspace.'/app')
                 && $process->environment === ['DISABLE_AUTOUPDATER' => '1'];

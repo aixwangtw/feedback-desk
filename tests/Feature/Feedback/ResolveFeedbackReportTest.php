@@ -17,7 +17,7 @@ class ResolveFeedbackReportTest extends TestCase
 {
     use LazilyRefreshDatabase;
 
-    public function test_successful_agent_run_marks_report_completed_and_records_result(): void
+    public function test_successful_agent_run_marks_report_needs_input_and_records_result(): void
     {
         $project = FeedbackProject::factory()->create(['automation_enabled' => true]);
         $report = FeedbackReport::factory()->for($project)->create();
@@ -47,8 +47,9 @@ class ResolveFeedbackReportTest extends TestCase
         $report->refresh();
         $run->refresh();
 
-        $this->assertSame(FeedbackReportStatus::Completed, $report->status);
-        $this->assertNotNull($report->completed_at);
+        // AI 修好只改成待審核，已完成要等提出的人或負責人確認。
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->status);
+        $this->assertNull($report->completed_at);
         $this->assertSame(FeedbackAutomationStatus::Completed, $run->status);
         $this->assertSame('已修正手機版儲存流程。', $run->summary);
         $this->assertSame('Vibe coding', $report->feedbackMessages()->sole()->author_name);

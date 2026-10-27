@@ -6,6 +6,7 @@ use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Feedback\StoreFeedbackReportRequest;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
@@ -20,6 +21,11 @@ use Illuminate\Pagination\Paginator;
 
 class FeedbackPortalController extends Controller
 {
+    /**
+     * 分類篩選的「未分類」：沒有分類的舊單。
+     */
+    public const UNCATEGORIZED = '_none';
+
     private const PER_PAGE = 50;
 
     public function index(PublicReporting $publicReporting, FeedbackAccess $access): View
@@ -68,6 +74,11 @@ class FeedbackPortalController extends Controller
             : 'conversation';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
+        $reportCategories = StoreFeedbackReportRequest::categories();
+        $selectedCategory = request()->string('category')->toString();
+        $selectedCategory = $reportCategories !== [] && ($selectedCategory === self::UNCATEGORIZED || in_array($selectedCategory, $reportCategories, true))
+            ? $selectedCategory
+            : '';
         $keyword = mb_substr(trim(request()->string('q')->toString()), 0, 100);
         $viewMode = request()->string('view')->toString() === 'board' ? 'board' : 'list';
         $unreadOnly = $isOwner && request()->boolean('unread');
@@ -96,6 +107,8 @@ class FeedbackPortalController extends Controller
                 ->withMax('feedbackMessages as latest_message_at', 'created_at'))
             ->when($unreadOnly, fn ($query) => $query->unreadByOwner())
             ->when($selectedStatus, fn ($query) => $query->where('status', $selectedStatus))
+            ->when($selectedCategory === self::UNCATEGORIZED, fn ($query) => $query->where(fn ($query) => $query->whereNull('category')->orWhere('category', '')))
+            ->when($selectedCategory !== '' && $selectedCategory !== self::UNCATEGORIZED, fn ($query) => $query->where('category', $selectedCategory))
             ->when($keyword !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->whereLike('title', "%{$keyword}%")
                 ->orWhereLike('description', "%{$keyword}%")))
@@ -125,6 +138,8 @@ class FeedbackPortalController extends Controller
             'sort' => $sort,
             'direction' => $direction,
             'selectedStatus' => $selectedStatus,
+            'reportCategories' => $reportCategories,
+            'selectedCategory' => $selectedCategory,
             'keyword' => $keyword,
             'viewMode' => $viewMode,
             'isOwner' => $isOwner,

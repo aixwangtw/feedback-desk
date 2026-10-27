@@ -6,6 +6,7 @@ use App\Enums\FeedbackCreatorType;
 use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackAccess;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
@@ -150,5 +151,51 @@ class FeedbackGuestClientTest extends TestCase
         $this->get(route('feedback.portal', $this->project))->assertOk()->assertDontSee('data-issue-category', false);
         $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b']]])->assertRedirect();
         $this->assertNull(FeedbackReport::query()->sole()->category);
+    }
+
+    public function test_list_shows_category_column_and_filters_by_category(): void
+    {
+        FeedbackReport::factory()->for($this->project)->create(['title' => '排版單', 'category' => '經典排版', 'creator_client_account_id' => $this->account->id]);
+        FeedbackReport::factory()->for($this->project)->create(['title' => '程式單', 'category' => '程式使用問題', 'creator_client_account_id' => $this->account->id]);
+        FeedbackReport::factory()->for($this->project)->create(['title' => '舊單', 'category' => null, 'creator_client_account_id' => $this->account->id]);
+
+        $this->get(route('feedback.portal', $this->project))
+            ->assertOk()
+            ->assertSee('data-category-filter', false)
+            ->assertSee('未分類')
+            ->assertSee('排版單')->assertSee('程式單')->assertSee('舊單');
+
+        $this->get(route('feedback.portal', [$this->project, 'category' => '經典排版']))
+            ->assertSee('排版單')->assertDontSee('程式單')->assertDontSee('舊單');
+
+        $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))
+            ->assertSee('舊單')->assertDontSee('排版單')->assertDontSee('程式單');
+
+        $this->get(route('feedback.portal', [$this->project, 'category' => '亂填']))
+            ->assertSee('排版單')->assertSee('舊單');
+    }
+
+    public function test_owner_list_also_has_category_filter(): void
+    {
+        FeedbackReport::factory()->for($this->project)->create(['title' => '排版單', 'category' => '經典排版', 'creator_client_account_id' => $this->account->id]);
+        FeedbackReport::factory()->for($this->project)->create(['title' => '舊單', 'category' => null, 'creator_client_account_id' => $this->account->id]);
+        app(FeedbackAccess::class)->grantOwner($this->project);
+
+        $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))
+            ->assertOk()
+            ->assertSee('data-category-filter', false)
+            ->assertSee('舊單')->assertDontSee('排版單');
+    }
+
+    public function test_sites_without_categories_have_no_category_column_or_filter(): void
+    {
+        config()->set('feedback.report_categories', []);
+        FeedbackReport::factory()->for($this->project)->create(['title' => '一般單', 'creator_client_account_id' => $this->account->id]);
+
+        $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))
+            ->assertOk()
+            ->assertSee('一般單')
+            ->assertDontSee('data-category-filter', false)
+            ->assertDontSee('data-report-category', false);
     }
 }

@@ -4,6 +4,7 @@
             'view' => $viewMode,
             'q' => $keyword,
             'status' => $selectedStatus?->value,
+            'category' => $selectedCategory !== '' ? $selectedCategory : null,
             'deleted' => $isOwner ? $deletedFilter : null,
             'creator' => $isOwner ? $creator : null,
             'unread' => $unreadOnly ? 1 : null,
@@ -30,6 +31,7 @@
         };
         $statusUrl = fn (\App\Enums\FeedbackReportStatus $status): string => route('feedback.portal', $project).'?'.http_build_query(array_filter([
             'status' => $status->value,
+            'category' => $selectedCategory !== '' ? $selectedCategory : null,
             'creator' => $isOwner ? $creator : null,
             'unread' => $unreadOnly ? 1 : null,
             'view' => $viewMode === 'board' ? 'board' : null,
@@ -68,7 +70,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || $selectedCategory !== '' || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach (\App\Enums\FeedbackReportStatus::cases() as $summaryStatus)
                     @php
@@ -115,6 +117,17 @@
                     @endforeach
                 </select>
             </label>
+            @if ($reportCategories !== [])
+                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">分類
+                    <select name="category" data-auto-submit data-category-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
+                        <option value="">全部</option>
+                        @foreach ($reportCategories as $categoryOption)
+                            <option value="{{ $categoryOption }}" @selected($selectedCategory === $categoryOption)>{{ $categoryOption }}</option>
+                        @endforeach
+                        <option value="{{ \App\Http\Controllers\Feedback\FeedbackPortalController::UNCATEGORIZED }}" @selected($selectedCategory === \App\Http\Controllers\Feedback\FeedbackPortalController::UNCATEGORIZED)>未分類</option>
+                    </select>
+                </label>
+            @endif
             @if ($isOwner)
                 <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">建立者
                     <select name="creator" data-auto-submit data-creator-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
@@ -163,6 +176,9 @@
                         <th class="whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
+                        @if ($reportCategories !== [])
+                            <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
+                        @endif
                         <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                         <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
@@ -199,7 +215,10 @@
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}@if (filled($report->category))<span class="mt-0.5 block text-[11px] font-semibold text-teal-700" data-report-category>{{ $report->category }}</span>@endif</td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
+                            @if ($reportCategories !== [])
+                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{{ filled($report->category) ? $report->category : '未分類' }}</td>
+                            @endif
                             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
                                     <div class="flex flex-wrap gap-1 sm:justify-center">
@@ -253,7 +272,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="9" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">{{ $unreadOnly ? '沒有未讀留言的單。' : '目前沒有問題，請按「新增問題」登記第一筆。' }}</td></tr>
+                        <tr class="block sm:table-row"><td colspan="{{ $reportCategories !== [] ? 10 : 9 }}" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">{{ $unreadOnly ? '沒有未讀留言的單。' : '目前沒有問題，請按「新增問題」登記第一筆。' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>

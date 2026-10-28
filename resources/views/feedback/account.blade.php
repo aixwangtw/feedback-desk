@@ -4,6 +4,7 @@
     $nameErrors = $errors->getBag('name');
     $passwordErrors = $errors->getBag('password');
     $tokenErrors = $errors->getBag('token');
+    $categoryErrors = $errors->getBag('categories');
 @endphp
 <x-feedback.layout :title="'我的帳號｜'.$project->name" :$project>
     <x-slot:headerAction>
@@ -115,6 +116,23 @@
                         @endforeach
                     </ul>
                 @endif
+            </section>
+        @endif
+        @if ($isOwner)
+            <section id="project-settings" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" data-project-settings>
+                <h2 class="text-lg font-bold text-slate-950">專案設定</h2>
+                <p class="mt-1 text-sm text-slate-600">只有開發者看得到。改動會套用到「{{ $project->name }}」的所有人。</p>
+                @if ($categoryErrors->any())
+                    <p class="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{{ $categoryErrors->first() }}</p>
+                @endif
+                <form method="POST" action="{{ route('feedback.project.categories', $project) }}" class="mt-5 grid gap-3" data-categories-form>
+                    @csrf
+                    @method('PUT')
+                    <label for="report-categories" class="text-sm font-semibold text-slate-800">開單分類</label>
+                    <input id="report-categories" name="categories" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_INPUT_LENGTH }}" value="{{ old('categories', implode(',', $project->reportCategories())) }}" placeholder="例如：程式使用問題,版面排版,其他" class="{{ $input }}" data-categories-input>
+                    <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在下拉選單。留空就不分類，開單與清單都不顯示分類欄位。已經分好類的單不會被改掉。</p>
+                    <button type="submit" class="{{ $primary }}">儲存分類</button>
+                </form>
             </section>
         @endif
     </div>

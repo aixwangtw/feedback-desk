@@ -36,13 +36,16 @@ class StoreFeedbackReportRequest extends FormRequest
      */
     public function rules(): array
     {
+        $project = $this->route('feedbackProject');
+        $categories = $project instanceof FeedbackProject ? $project->reportCategories() : [];
+
         return [
             'issues' => ['required', 'array', 'min:1', 'max:20'],
             'issues.*.title' => ['required', 'string', 'max:160'],
             'issues.*.description' => ['required', 'string', 'max:10000'],
-            'issues.*.category' => self::categories() === []
+            'issues.*.category' => $categories === []
                 ? ['prohibited']
-                : ['required', 'string', Rule::in(self::categories())],
+                : ['required', 'string', Rule::in($categories)],
             'issues.*.screenshots' => ['nullable', 'array', 'max:5'],
             'issues.*.screenshots.*' => [
                 'required',
@@ -62,16 +65,6 @@ class StoreFeedbackReportRequest extends FormRequest
             'issues.*.screenshots' => '截圖',
             'issues.*.screenshots.*' => '截圖',
         ];
-    }
-
-    /**
-     * 設定的開單分類；空陣列表示這個站不分類。
-     *
-     * @return list<string>
-     */
-    public static function categories(): array
-    {
-        return array_values(array_filter((array) config('feedback.report_categories'), 'is_string'));
     }
 
     /**

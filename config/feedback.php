@@ -71,7 +71,8 @@ return [
     ],
 
     /*
-     * 開單分類選項，逗號分隔。沒設定時開單不顯示分類。
+     * 已淘汰：分類改在各專案設定。只在新增 report_categories 欄位的 migration 讀一次，
+     * 把舊的整站分類複製給既有專案；搬遷完成後可從 .env 移除。
      */
     'report_categories' => array_values(array_filter(array_map('trim', explode(',', (string) env('FEEDBACK_REPORT_CATEGORIES', ''))), fn (string $category): bool => $category !== '')),
 

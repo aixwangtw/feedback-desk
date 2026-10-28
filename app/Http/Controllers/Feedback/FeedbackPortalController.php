@@ -6,7 +6,6 @@ use App\Enums\FeedbackAttachmentKind;
 use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Feedback\StoreFeedbackReportRequest;
 use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
@@ -74,7 +73,7 @@ class FeedbackPortalController extends Controller
             : 'conversation';
         $direction = request()->string('direction')->toString() === 'asc' ? 'asc' : 'desc';
         $selectedStatus = FeedbackReportStatus::tryFrom(request()->string('status')->toString());
-        $reportCategories = StoreFeedbackReportRequest::categories();
+        $reportCategories = $feedbackProject->reportCategories();
         $selectedCategory = request()->string('category')->toString();
         $selectedCategory = $reportCategories !== [] && ($selectedCategory === self::UNCATEGORIZED || in_array($selectedCategory, $reportCategories, true))
             ? $selectedCategory

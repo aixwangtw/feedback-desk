@@ -30,7 +30,7 @@ class FeedbackGuestClientTest extends TestCase
         $this->account = FeedbackClientAccount::factory()->for($this->project)->withPassword('liff-password')->create(['username' => 'liff', 'name' => '張子元']);
         config()->set('feedback.guest_client.project', 'liff');
         config()->set('feedback.guest_client.account', 'liff');
-        config()->set('feedback.report_categories', ['程式使用問題', '經典排版', '其他']);
+        $this->project->update(['report_categories' => ['程式使用問題', '經典排版', '其他']]);
     }
 
     /**
@@ -146,7 +146,7 @@ class FeedbackGuestClientTest extends TestCase
 
     public function test_sites_without_categories_keep_the_form_unchanged(): void
     {
-        config()->set('feedback.report_categories', []);
+        $this->project->update(['report_categories' => null]);
 
         $this->get(route('feedback.portal', $this->project))->assertOk()->assertDontSee('data-issue-category', false);
         $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b']]])->assertRedirect();
@@ -189,7 +189,7 @@ class FeedbackGuestClientTest extends TestCase
 
     public function test_sites_without_categories_have_no_category_column_or_filter(): void
     {
-        config()->set('feedback.report_categories', []);
+        $this->project->update(['report_categories' => null]);
         FeedbackReport::factory()->for($this->project)->create(['title' => '一般單', 'creator_client_account_id' => $this->account->id]);
 
         $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))

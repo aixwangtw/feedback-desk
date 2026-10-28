@@ -44,7 +44,7 @@
             ? ($direction === 'asc' ? 'ascending' : 'descending')
             : 'none';
         $issueRows = old('issues', [['title' => '', 'description' => '']]);
-        $reportCategories = \App\Http\Requests\Feedback\StoreFeedbackReportRequest::categories();
+        $reportCategories = $project->reportCategories();
         $isGuest = app(\App\Support\FeedbackAccess::class)->isGuest($project);
         $editingReport = old('editing_report');
         $boardStatuses = \App\Enums\FeedbackReportStatus::cases();

@@ -11,6 +11,7 @@ use App\Http\Controllers\Feedback\FeedbackMcpController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
 use App\Http\Controllers\Feedback\FeedbackPortalController;
+use App\Http\Controllers\Feedback\FeedbackProjectSettingsController;
 use App\Http\Controllers\Feedback\FeedbackPublicReportController;
 use App\Http\Controllers\Feedback\FeedbackReportController;
 use App\Http\Controllers\Feedback\FeedbackStatusController;
@@ -56,6 +57,9 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
         ->name('feedback.account.tokens.store');
     Route::delete('/p/{feedbackProject:slug}/account/tokens/{token}', [FeedbackAccountController::class, 'destroyToken'])
         ->name('feedback.account.tokens.destroy');
+    Route::put('/p/{feedbackProject:slug}/settings/categories', [FeedbackProjectSettingsController::class, 'updateCategories'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.project.categories');
     Route::get('/p/{feedbackProject:slug}/conversations', [FeedbackConversationController::class, 'index'])
         ->middleware('throttle:120,1')
         ->name('feedback.conversations.index');

@@ -1,0 +1,119 @@
+<?php
+
+namespace Tests\Feature\Feedback;
+
+use App\Models\FeedbackClientAccount;
+use App\Models\FeedbackDeveloper;
+use App\Models\FeedbackProject;
+use App\Models\FeedbackReport;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * 開單分類是每個專案各自的設定：開發者在專案設定或 artisan 調整，沒設定就不顯示分類。
+ */
+class FeedbackProjectCategoriesTest extends TestCase
+{
+    use LazilyRefreshDatabase;
+
+    private FeedbackProject $project;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->project = FeedbackProject::factory()->withoutClientAccount()->create(['slug' => 'alpha']);
+        FeedbackClientAccount::factory()->for($this->project)->withPassword('client-old-password')->create(['username' => 'mei']);
+        FeedbackDeveloper::factory()->withPassword('dev-old-password-x')->create(['username' => 'amy']);
+    }
+
+    private function loginDeveloper(): void
+    {
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'amy', 'password' => 'dev-old-password-x'])->assertRedirect();
+    }
+
+    public function test_developer_sets_categories_from_project_settings(): void
+    {
+        $this->loginDeveloper();
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertSee('data-categories-form', false);
+
+        $this->put(route('feedback.project.categories', $this->project), ['categories' => ' 程式使用問題，版面排版, ,其他,其他 '])
+            ->assertRedirect(route('feedback.account', $this->project).'#project-settings')
+            ->assertSessionHas('success');
+
+        $this->assertSame(['程式使用問題', '版面排版', '其他'], $this->project->refresh()->reportCategories());
+        $this->get(route('feedback.portal', $this->project))->assertSee('data-issue-category', false)->assertSee('版面排版');
+    }
+
+    public function test_clearing_categories_hides_the_field(): void
+    {
+        $this->project->update(['report_categories' => ['其他']]);
+        $this->loginDeveloper();
+
+        $this->put(route('feedback.project.categories', $this->project), ['categories' => ''])->assertSessionHasNoErrors();
+
+        $this->assertNull($this->project->refresh()->report_categories);
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-issue-category', false);
+    }
+
+    public function test_too_many_or_too_long_categories_are_refused(): void
+    {
+        $this->loginDeveloper();
+
+        $this->put(route('feedback.project.categories', $this->project), ['categories' => implode(',', range(1, 21))])
+            ->assertSessionHasErrorsIn('categories', 'categories');
+        $this->put(route('feedback.project.categories', $this->project), ['categories' => str_repeat('長', 51)])
+            ->assertSessionHasErrorsIn('categories', 'categories');
+        $this->assertNull($this->project->refresh()->report_categories);
+    }
+
+    public function test_clients_cannot_change_categories_or_see_settings(): void
+    {
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'mei', 'password' => 'client-old-password'])->assertRedirect();
+
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertDontSee('data-categories-form', false);
+        $this->put(route('feedback.project.categories', $this->project), ['categories' => '其他'])->assertForbidden();
+        $this->assertNull($this->project->refresh()->report_categories);
+    }
+
+    public function test_each_project_uses_its_own_categories(): void
+    {
+        $other = FeedbackProject::factory()->create(['report_categories' => ['經典排版']]);
+        $this->project->update(['report_categories' => ['版面排版']]);
+        $this->loginDeveloper();
+
+        $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b', 'category' => '經典排版']]])
+            ->assertSessionHasErrors('issues.0.category');
+        $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b', 'category' => '版面排版']]])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['經典排版'], $other->reportCategories());
+    }
+
+    public function test_editing_keeps_an_old_category_and_allows_uncategorized(): void
+    {
+        $this->project->update(['report_categories' => ['版面排版', '其他']]);
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版']);
+        $this->loginDeveloper();
+
+        $this->get(route('feedback.portal', $this->project))->assertSee('未分類')->assertSee('經典排版');
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => $report->title, 'description' => $report->description, 'category' => '經典排版'])
+            ->assertSessionHasNoErrors();
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => $report->title, 'description' => $report->description, 'category' => ''])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($report->refresh()->category);
+    }
+
+    public function test_artisan_command_shows_and_sets_categories(): void
+    {
+        $other = FeedbackProject::factory()->create(['slug' => 'beta']);
+
+        $this->artisan('feedback:categories', ['project' => 'all', 'categories' => '程式使用問題,版面排版,其他'])->assertSuccessful();
+        $this->assertSame(['程式使用問題', '版面排版', '其他'], $other->refresh()->reportCategories());
+        $this->assertSame(['程式使用問題', '版面排版', '其他'], $this->project->refresh()->reportCategories());
+
+        $this->artisan('feedback:categories', ['project' => 'beta'])->expectsOutputToContain('beta：程式使用問題,版面排版,其他')->assertSuccessful();
+        $this->artisan('feedback:categories', ['project' => 'beta', '--clear' => true])->assertSuccessful();
+        $this->assertSame([], $other->refresh()->reportCategories());
+        $this->artisan('feedback:categories', ['project' => 'nope'])->assertFailed();
+    }
+}

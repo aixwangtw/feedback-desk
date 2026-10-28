@@ -4,6 +4,7 @@ namespace App\Http\Requests\Feedback;
 
 use App\Enums\FeedbackAttachmentKind;
 use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
+use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -45,13 +46,15 @@ class UpdateFeedbackReportRequest extends FormRequest
     public function rules(): array
     {
         $report = $this->route('feedbackReport');
+        $project = $report instanceof FeedbackReport ? $report->feedbackProject : $this->route('feedbackProject');
+        $categories = $project instanceof FeedbackProject ? $project->reportCategories() : [];
 
         return [
             'title' => ['required', 'string', 'max:160'],
             'description' => ['required', 'string', 'max:10000'],
-            'category' => StoreFeedbackReportRequest::categories() === []
+            'category' => $categories === []
                 ? ['prohibited']
-                : ['nullable', 'string', Rule::in(array_values(array_unique(array_filter([...StoreFeedbackReportRequest::categories(), $report?->category]))))],
+                : ['nullable', 'string', Rule::in(array_values(array_unique(array_filter([...$categories, $report?->category]))))],
             'screenshots' => ['nullable', 'array', 'max:'.self::MAX_SCREENSHOTS],
             'screenshots.*' => [
                 'required',

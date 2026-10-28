@@ -166,6 +166,7 @@ class FeedbackAccountController extends Controller
             'project' => $project,
             'account' => $account,
             'isDeveloper' => $account instanceof FeedbackDeveloper,
+            'isOwner' => $access->isOwner($project),
             'isPrefilled' => $account !== null && $this->isPrefilled($project, $account),
             'tokens' => $account?->apiTokens()->latest('id')->get() ?? collect(),
             'newToken' => $newToken,

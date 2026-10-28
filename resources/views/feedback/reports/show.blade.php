@@ -22,7 +22,9 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="min-w-0">
                         <h1 class="text-2xl font-bold tracking-tight text-slate-950">@if ($sequenceNumber !== null)<span class="mr-1 text-slate-400">編號 <span data-report-number>{{ $sequenceNumber }}</span>｜</span>@endif{{ $report->title }}</h1>
-                        @if (filled($report->category))
+                        @if ($canManage)
+                            <x-feedback.category-select :$project :$report :categories="$project->reportCategories()" class="mt-2" data-suffix="-page" />
+                        @elseif (filled($report->category))
                             <p class="mt-1 text-xs text-slate-500" data-report-category>分類：<span class="font-semibold text-teal-700">{{ $report->category }}</span></p>
                         @endif
                         @if ($isOwner && $report->isDeletedByClient())
@@ -41,9 +43,6 @@
                 </div>
 
                 <div class="mt-5" data-report-description>{{ \App\Support\FeedbackRichText::render($report->description) }}</div>
-                @unless ($isPublicReporter)
-                    <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
-                @endunless
 
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -112,6 +111,10 @@
                     @endif
                 </section>
             @endif
+
+            @unless ($isPublicReporter)
+                <p class="-mt-3 px-1 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
+            @endunless
 
             <section id="conversation" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">

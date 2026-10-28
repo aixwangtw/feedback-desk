@@ -175,12 +175,12 @@
                         <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
                         <th class="whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         @if ($reportCategories !== [])
                             <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
                         @endif
                         <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                         <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
+                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
@@ -215,7 +215,6 @@
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                                 </form>
                             </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
                             @if ($reportCategories !== [])
                                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{{ filled($report->category) ? $report->category : '未分類' }}</td>
                             @endif
@@ -251,6 +250,7 @@
                                     <span class="text-xs text-slate-400">—</span>
                                 @endif
                             </td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
@@ -399,8 +399,8 @@
                     </div>
                     <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                 </div>
+                <x-feedback.category-select :$project :$report :categories="$reportCategories" />
                 <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
-                <p class="text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <div class="flex flex-wrap gap-2">
                         @foreach ($report->feedbackAttachments as $attachment)
@@ -415,6 +415,7 @@
                         @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report, 'compact' => true])
                     </div>
                 @endif
+                <p class="text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                 <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
                 @unless ($isOwner)
                     <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{{ config('feedback.labels.owner') }}。</p>

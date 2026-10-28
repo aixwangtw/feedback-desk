@@ -116,4 +116,42 @@ class FeedbackProjectCategoriesTest extends TestCase
         $this->assertSame([], $other->refresh()->reportCategories());
         $this->artisan('feedback:categories', ['project' => 'nope'])->assertFailed();
     }
+
+    public function test_category_can_be_switched_from_detail_dialog_and_page(): void
+    {
+        $this->project->update(['report_categories' => ['版面排版', '其他']]);
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版']);
+        $this->loginDeveloper();
+
+        $portal = $this->get(route('feedback.portal', $this->project))->getContent();
+        $dialog = substr($portal, strpos($portal, 'id="detail-report-'.$report->public_id.'"'));
+        $this->assertStringContainsString('data-category-quick', substr($dialog, 0, strpos($dialog, '</dialog>')));
+        $this->get(route('feedback.reports.show', [$this->project, $report]))
+            ->assertSee('data-category-quick', false)
+            ->assertSee('<option value="經典排版" selected>', false)
+            ->assertSee('未分類');
+
+        $url = route('feedback.reports.category.update', [$this->project, $report]);
+        $this->patchJson($url, ['category' => '版面排版'])->assertOk()->assertJson(['category' => '版面排版']);
+        $this->assertSame('版面排版', $report->refresh()->category);
+        $this->patchJson($url, ['category' => ''])->assertOk()->assertJson(['category' => null]);
+        $this->assertNull($report->refresh()->category);
+        $this->patchJson($url, ['category' => '經典排版'])->assertUnprocessable()
+            ->assertJsonValidationErrors(['category' => '這個分類不在專案的分類清單裡，請重新整理後再選。']);
+    }
+
+    public function test_category_switch_is_hidden_and_refused_without_categories_or_permission(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create();
+        $url = route('feedback.reports.category.update', [$this->project, $report]);
+
+        $this->patchJson($url, ['category' => '其他'])->assertForbidden();
+
+        $this->loginDeveloper();
+        $this->get(route('feedback.reports.show', [$this->project, $report]))->assertDontSee('data-category-quick', false);
+        $this->patchJson($url, ['category' => '其他'])->assertUnprocessable()->assertJsonValidationErrors(['category' => '這個專案沒有設定分類。']);
+
+        $other = FeedbackProject::factory()->create(['report_categories' => ['其他']]);
+        $this->patchJson(route('feedback.reports.category.update', [$other, $report]), ['category' => '其他'])->assertNotFound();
+    }
 }

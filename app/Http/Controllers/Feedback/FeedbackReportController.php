@@ -8,12 +8,14 @@ use App\Actions\UpdateFeedbackReportAction;
 use App\Enums\FeedbackAttachmentKind;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackReportRequest;
+use App\Http\Requests\Feedback\UpdateFeedbackReportCategoryRequest;
 use App\Http\Requests\Feedback\UpdateFeedbackReportRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use App\Support\FeedbackReportWork;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 
 class FeedbackReportController extends Controller
@@ -49,6 +51,24 @@ class FeedbackReportController extends Controller
         $updateFeedbackReport->handle($feedbackReport, $request->validated(), $access->actor($feedbackProject));
 
         return back()->with('success', "已更新「{$feedbackReport->title}」。");
+    }
+
+    public function updateCategory(
+        UpdateFeedbackReportCategoryRequest $request,
+        FeedbackProject $feedbackProject,
+        FeedbackReport $feedbackReport,
+    ): JsonResponse|RedirectResponse {
+        $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
+
+        $category = $request->validated('category');
+        $feedbackReport->update(['category' => filled($category) ? $category : null]);
+        $label = $feedbackReport->category ?? '未分類';
+
+        if ($request->expectsJson()) {
+            return response()->json(['category' => $feedbackReport->category, 'message' => "分類已改為「{$label}」。"]);
+        }
+
+        return back()->with('success', "分類已改為「{$label}」。");
     }
 
     public function destroy(

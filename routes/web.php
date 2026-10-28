@@ -75,6 +75,9 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'update'])
         ->middleware('throttle:30,1')
         ->name('feedback.reports.update');
+    Route::patch('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/category', [FeedbackReportController::class, 'updateCategory'])
+        ->middleware('throttle:60,1')
+        ->name('feedback.reports.category.update');
     Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}', [FeedbackReportController::class, 'destroy'])
         ->name('feedback.reports.destroy');
     Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/client', [FeedbackReportController::class, 'clientDestroy'])

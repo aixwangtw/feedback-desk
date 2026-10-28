@@ -247,15 +247,24 @@ class FeedbackGuestClientTest extends TestCase
         $this->assertSame('舊分類', $report->fresh()->category);
     }
 
-    public function test_creator_is_shown_after_description_in_detail_dialog_and_page(): void
+    public function test_creator_is_shown_after_the_adjustment_note_in_list_dialog_and_page(): void
     {
-        $report = FeedbackReport::factory()->for($this->project)->create(['description' => '說明內文XYZ', 'creator_client_account_id' => $this->account->id]);
+        $report = FeedbackReport::factory()->for($this->project)->create([
+            'description' => '說明內文XYZ', 'adjustment_note' => '調整內文QRS', 'creator_client_account_id' => $this->account->id,
+        ]);
 
         $html = $this->get(route('feedback.portal', $this->project))->getContent();
+        $header = substr($html, strpos($html, '<thead'));
+        $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>調整說明</th>'));
+        $this->assertLessThan(strpos($header, '建立日期'), strpos($header, '>建立者</th>'));
+        $row = substr($html, strpos($html, '<tbody'));
+        $this->assertLessThan(strpos($row, 'data-report-creator'), strpos($row, '調整內文QRS'));
+
         $dialog = substr($html, strpos($html, 'id="detail-report-'.$report->public_id.'"'));
         $this->assertLessThan(strpos($dialog, '建立者：'), strpos($dialog, '說明內文XYZ'));
+        $this->assertLessThan(strpos($dialog, '建立者：'), strpos($dialog, '調整內文QRS'));
 
         $page = $this->get(route('feedback.reports.show', [$this->project, $report]))->getContent();
-        $this->assertLessThan(strpos($page, '建立者：'), strpos($page, '說明內文XYZ'));
+        $this->assertLessThan(strpos($page, '建立者：'), strpos($page, '調整內文QRS'));
     }
 }

@@ -437,3 +437,43 @@ document.addEventListener('click', (event) => {
     });
 });
 
+
+document.querySelectorAll('[data-category-quick]').forEach((select) => {
+    const form = select.form;
+    const feedback = form?.querySelector('[data-category-quick-feedback]');
+    select.dataset.savedValue = select.value;
+
+    select.addEventListener('change', async () => {
+        const savedValue = select.dataset.savedValue;
+        const body = new FormData(form);
+        select.disabled = true;
+        feedback.textContent = '儲存中…';
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body,
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const messages = {
+                    401: '登入已過期，請重新登入後再試。',
+                    403: '你沒有權限改這張單的分類。',
+                    404: '找不到這張單，可能已被刪除。',
+                    419: '頁面停留太久，請重新整理後再試。',
+                    429: '操作太頻繁，請稍後再試。',
+                };
+                const detail = response.status === 422 ? Object.values(result.errors ?? {}).flat()[0] : null;
+                throw new Error(detail ?? messages[response.status] ?? '分類儲存失敗，請重新整理後再試。');
+            }
+            select.dataset.savedValue = result.category ?? '';
+            feedback.textContent = '已儲存';
+        } catch (error) {
+            select.value = savedValue;
+            feedback.textContent = /[\u4e00-\u9fff]/.test(error.message) ? error.message : '分類儲存失敗，請檢查網路後再試。';
+        } finally {
+            select.disabled = false;
+        }
+    });
+});

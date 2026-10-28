@@ -69,7 +69,7 @@ function isPrefilled(c: AppContext, project: Project, holder: Account): boolean 
         return false;
     }
     return holder.kind === 'developer'
-        ? prefill.ownerUsername !== '' && prefill.ownerUsername === holder.developer.username
+        ? prefill.ownerEnabled && prefill.ownerUsername !== '' && prefill.ownerUsername === holder.developer.username
         : project.login_prefill_username !== null && project.login_prefill_username === holder.client.username;
 }
 

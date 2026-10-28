@@ -346,6 +346,18 @@ describe('review follow-ups', () => {
         expect((await clientRow(demo.account.id)).password_set_by_self).toBe(0);
     });
 
+    it('keeps the teacher prefill when only the developer prefill is switched off', async () => {
+        const vars = { FEEDBACK_LOGIN_PREFILL_ENABLED: 'true', FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED: 'false', FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME: 'admin', FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD: 'owner-secret' };
+        const seeded = await seedProject();
+        await env.DB.prepare('UPDATE projects SET login_prefill_username = ?, login_prefill_password = ? WHERE id = ?').bind('teacher', 'teacher-secret', seeded.project.id).run();
+        const browser = new Browser(undefined, vars);
+        const client = await (await browser.get(`/p/${seeded.project.slug}/login`)).text();
+        expect(client).toContain('teacher-secret');
+        const owner = await (await browser.get(`/owner/${seeded.project.slug}/login`)).text();
+        expect(owner).not.toContain('owner-secret');
+        expect(owner).not.toContain('value="admin"');
+    });
+
     it('answers a lost claim race with 409 instead of an error page', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);

@@ -311,8 +311,8 @@ web.get('/owner/:slug/login', async (c) => {
             v={viewContext(c)}
             project={project}
             isOwnerLogin
-            username={prefill.enabled ? prefill.ownerUsername : ''}
-            password={prefill.enabled ? prefill.ownerPassword : ''}
+            username={prefill.enabled && prefill.ownerEnabled ? prefill.ownerUsername : ''}
+            password={prefill.enabled && prefill.ownerEnabled ? prefill.ownerPassword : ''}
             showLogout={await access.canManage(project)}
         />,
     );

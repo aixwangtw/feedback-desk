@@ -445,7 +445,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `FEEDBACK_HOME_BODY` | 由開發團隊稱呼組成 | 首頁說明文字。 |
 | `FEEDBACK_UTC_OFFSET` / `FEEDBACK_TIMEZONE_NAME` | `+08:00` / `台北時間` | 畫面時間的時區（固定時差，不處理日光節約）與滑鼠停留時顯示的名稱。 |
 | `FEEDBACK_LOGIN_PREFILL_ENABLED` | `false` | 登入頁是否預填帳密。關閉時任何登入頁都不會輸出帳密。 |
-| `FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME` / `FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD` | 空 | 開啟預填時 `/owner/{slug}/login` 預填的帳密，只適合示範站。客戶登入頁的預填值來自 `client create --prefill`；本人改成自己的密碼後預填會清除。 |
+| `FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME` / `FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD` | 空 | 開啟預填時 `/owner/{slug}/login` 預填的帳密，只適合示範站。`FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED` 可單獨關閉開發者預填（未設定時跟隨上一項），客戶預填不受影響。客戶登入頁的預填值來自 `client create --prefill`；本人改成自己的密碼後預填會清除。 |
 | `FEEDBACK_HOME_PUBLIC_PROJECT` | 空 | 首頁公開回報要收進哪個專案（slug）。 |
 | `FEEDBACK_GUEST_CLIENT_PROJECT` | 空 | 免登入的專案（slug）：不用登入就能開單、查看、留言，沿用公開回報的限流。 |
 | `FEEDBACK_GUEST_CLIENT_ACCOUNT` | 空 | 免登入訪客使用的客戶帳號（username），單會記在這個帳號名下；訪客不能改這個帳號的設定。 |

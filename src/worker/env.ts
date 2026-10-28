@@ -13,7 +13,7 @@ export interface FeedbackConfig {
     labels: { client: string; owner: string };
     portalTitle: string;
     home: { title: string; eyebrow: string; heading: string; body: string };
-    loginPrefill: { enabled: boolean; ownerUsername: string; ownerPassword: string };
+    loginPrefill: { enabled: boolean; ownerEnabled: boolean; ownerUsername: string; ownerPassword: string };
     publicReporting: {
         homeProject: string;
         intro: string;
@@ -85,6 +85,8 @@ export function config(env: Env): FeedbackConfig {
         },
         loginPrefill: {
             enabled: bool(env, 'FEEDBACK_LOGIN_PREFILL_ENABLED'),
+            // Owner prefill also needs this; unset follows the global flag so only developers can be switched off.
+            ownerEnabled: str(env, 'FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED') === '' ? bool(env, 'FEEDBACK_LOGIN_PREFILL_ENABLED') : bool(env, 'FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED'),
             ownerUsername: str(env, 'FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME'),
             ownerPassword: str(env, 'FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD'),
         },

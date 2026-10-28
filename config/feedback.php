@@ -27,11 +27,13 @@ return [
      * Pre-fills the login forms. Disabled by default: when false, no username or password is
      * ever rendered into a login page (including per-project values saved with
      * `feedback:client-account --prefill`). `client` is used on /p/{slug}/login, `owner` on
-     * /owner/{slug}/login.
+     * /owner/{slug}/login and /login. `owner.enabled` additionally gates the owner prefill (defaults to
+     * the global flag), so the developer prefill can be off while teachers keep theirs.
      */
     'login_prefill' => [
         'enabled' => filter_var(env('FEEDBACK_LOGIN_PREFILL_ENABLED', false), FILTER_VALIDATE_BOOL),
         'owner' => [
+            'enabled' => filter_var(env('FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED', env('FEEDBACK_LOGIN_PREFILL_ENABLED', false)), FILTER_VALIDATE_BOOL),
             'username' => env('FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME'),
             'password' => env('FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD'),
         ],

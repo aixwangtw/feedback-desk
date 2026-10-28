@@ -197,7 +197,7 @@ class FeedbackAccountController extends Controller
         }
 
         return $account instanceof FeedbackDeveloper
-            ? filled(config('feedback.login_prefill.owner.username')) && config('feedback.login_prefill.owner.username') === $account->username
+            ? (bool) config('feedback.login_prefill.owner.enabled') && filled(config('feedback.login_prefill.owner.username')) && config('feedback.login_prefill.owner.username') === $account->username
             : filled($project->login_prefill_username) && $project->login_prefill_username === $account->username;
     }
 

@@ -486,6 +486,25 @@ class FeedbackLoginTest extends TestCase
             ->assertDontSee('value="admin"', false);
     }
 
+    public function test_owner_prefill_can_be_turned_off_while_teacher_prefill_stays(): void
+    {
+        config()->set('feedback.login_prefill.owner.enabled', false);
+        $project = FeedbackProject::factory()->create();
+
+        $this->get(route('feedback.login', $project))
+            ->assertSee('name="username" value="test"', false)
+            ->assertSee('type="password" value="client-pass"', false);
+
+        foreach ([route('feedback.owner.login', $project), route('feedback.login.unified')] as $url) {
+            $this->get($url)
+                ->assertOk()
+                ->assertSee('name="username" value=""', false)
+                ->assertSee('type="password" value=""', false)
+                ->assertDontSee('owner-prefill-pass')
+                ->assertDontSee('value="admin"', false);
+        }
+    }
+
     public function test_shared_owner_account_cannot_log_in_without_a_configured_password(): void
     {
         config()->set('feedback.accounts.owner.password_hash', null);

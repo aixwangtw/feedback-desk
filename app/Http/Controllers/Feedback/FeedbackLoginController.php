@@ -48,7 +48,7 @@ class FeedbackLoginController extends Controller
             return redirect()->intended(route('feedback.owner.index', $feedbackProject));
         }
 
-        $prefillEnabled = (bool) config('feedback.login_prefill.enabled');
+        $prefillEnabled = $this->ownerPrefillEnabled();
 
         return view('feedback.auth.login', [
             'project' => $feedbackProject,
@@ -56,6 +56,11 @@ class FeedbackLoginController extends Controller
             'prefillUsername' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.username') : '',
             'prefillPassword' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.password') : '',
         ]);
+    }
+
+    private function ownerPrefillEnabled(): bool
+    {
+        return (bool) config('feedback.login_prefill.enabled') && (bool) config('feedback.login_prefill.owner.enabled');
     }
 
     public function store(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
@@ -140,7 +145,7 @@ class FeedbackLoginController extends Controller
             return redirect()->intended(route('feedback.home'));
         }
 
-        $prefillEnabled = (bool) config('feedback.login_prefill.enabled');
+        $prefillEnabled = $this->ownerPrefillEnabled();
 
         return view('feedback.auth.unified-login', [
             'prefillUsername' => $prefillEnabled ? (string) config('feedback.login_prefill.owner.username') : '',

@@ -31,7 +31,7 @@ export interface PortalFormState {
     bag: 'default' | 'editReport';
     errors: string[];
     issues?: Array<{ title: string; description: string; category?: string }>;
-    editing?: { publicId: string; title: string; description: string; remove: string[] };
+    editing?: { publicId: string; title: string; description: string; category?: string; remove: string[] };
 }
 
 export interface PortalProps {
@@ -345,12 +345,13 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                 <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}{row.creatorLabel ? ` · 建立者：${row.creatorLabel}` : ''}</p>
+                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}</p>
                             <h2 id={`detail-report-title-${report.public_id}`} class="mt-1 break-words text-lg font-bold text-slate-950">{report.title}</h2>
                         </div>
                         <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                     </div>
                     <div data-report-description><RichText text={report.description} compact /></div>
+                    {row.creatorLabel ? <p class="text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p> : null}
                     {row.attachments.length > 0 ? (
                         <div class="flex flex-wrap gap-2">
                             {row.attachments.map((attachment) => (
@@ -387,6 +388,17 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                         <label for={`edit-title-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                         <input id={`edit-title-${report.public_id}`} name="title" value={editing ? editing.title : report.title} required maxlength={160} class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" />
                     </div>
+                    {v.cfg.reportCategories.length > 0 ? (
+                        <div>
+                            <label for={`edit-category-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
+                            <select id={`edit-category-${report.public_id}`} name="category" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-edit-category>
+                                <option value="">請選擇分類</option>
+                                {editCategoryOptions(v.cfg.reportCategories, report.category).map((option) => (
+                                    <option value={option} selected={option === (editing ? editing.category ?? '' : report.category ?? '')}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
+                    ) : null}
                     <div>
                         <label for={`edit-description-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">問題說明 <span class="text-rose-600">*</span></label>
                         <textarea id={`edit-description-${report.public_id}`} name="description" required maxlength={10000} rows={6} class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{editing ? editing.description : report.description}</textarea>
@@ -534,3 +546,8 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
         </dialog>
     );
 };
+
+/** 編輯時可選的分類：設定的分類，加上這張單原本、已不在設定裡的舊分類，避免存檔時遺失。 */
+export function editCategoryOptions(categories: string[], current: string | null): string[] {
+    return current && !categories.includes(current) ? [...categories, current] : categories;
+}

@@ -299,11 +299,6 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     ) : null}
                                     {report.title}
                                 </h1>
-                                {props.creatorLabel && !isPublicReporter ? (
-                                    <p class="mt-1 text-xs text-slate-500" data-report-creator>
-                                        建立者：{props.creatorLabel}
-                                    </p>
-                                ) : null}
                                 {report.category ? (
                                     <p class="mt-1 text-xs text-slate-500" data-report-category>
                                         分類：<span class="font-semibold text-teal-700">{report.category}</span>
@@ -324,6 +319,11 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </div>
 
                         <div class="mt-5" data-report-description><RichText text={report.description} /></div>
+                        {props.creatorLabel && !isPublicReporter ? (
+                            <p class="mt-3 text-xs text-slate-500" data-report-creator>
+                                建立者：{props.creatorLabel}
+                            </p>
+                        ) : null}
 
                         {props.attachments.length > 0 ? (
                             <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">

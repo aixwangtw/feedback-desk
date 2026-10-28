@@ -53,7 +53,7 @@ import {
 import { formatAbsolute, nowIso } from '../../shared/time';
 import { messagePreview, shortTime } from '../../shared/conversation';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
-import { PortalPage, ReportDialogs, type PortalFormState, type PortalRow } from '../views/portal';
+import { PortalPage, ReportDialogs, editCategoryOptions, type PortalFormState, type PortalRow } from '../views/portal';
 import { Activity, ConversationFragment, ReportPage } from '../views/report';
 import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
@@ -1275,6 +1275,12 @@ web.post('/p/:slug/reports/:publicId/update', async (c) => {
     const errors: string[] = [];
     validateText(errors, title, '問題標題', MAX_TITLE);
     validateText(errors, description, '問題說明', MAX_DESCRIPTION);
+    const configuredCategories = config(c.env).reportCategories;
+    const categoryOptions = configuredCategories.length > 0 ? editCategoryOptions(configuredCategories, report.category) : [];
+    const category = field(form, 'category');
+    if (categoryOptions.length > 0 && !categoryOptions.includes(category)) {
+        errors.push(category === '' ? '分類 為必填。' : '選擇的分類無效。');
+    }
     if (ids.length > MAX_SCREENSHOTS) {
         errors.push(`截圖 最多只能有 ${MAX_SCREENSHOTS} 項。`);
     }
@@ -1296,9 +1302,9 @@ web.post('/p/:slug/reports/:publicId/update', async (c) => {
         }
     }
     if (errors.length > 0 || uploads === null) {
-        return renderPortal(c, project, { bag: 'editReport', errors, editing: { publicId: report.public_id, title, description, remove: removeInput } }, 422);
+        return renderPortal(c, project, { bag: 'editReport', errors, editing: { publicId: report.public_id, title, description, category, remove: removeInput } }, 422);
     }
-    await updateReport(c.env, report, { title, description, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
+    await updateReport(c.env, report, { title, description, category: categoryOptions.length > 0 ? category : undefined, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
     access.setFlash({ success: `已更新「${title}」。` });
     return c.redirect(backUrl(c, form, paths.portal(project.slug)), 302);
 });

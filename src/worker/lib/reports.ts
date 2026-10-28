@@ -84,14 +84,14 @@ export async function createReport(
 export async function updateReport(
     env: Env,
     report: Report,
-    data: { title: string; description: string; uploads: Upload[]; removeAttachmentIds: number[]; author?: Author },
+    data: { title: string; description: string; category?: string | null; uploads: Upload[]; removeAttachmentIds: number[]; author?: Author },
     now = Date.now(),
 ): Promise<void> {
     const db = env.DB;
     const at = nowIso(now);
     const removed = await removableAttachments(db, report.id, data.removeAttachmentIds, 'feedback');
     await db.batch([
-        db.prepare('UPDATE reports SET title = ?, description = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(data.title, data.description, at, at, report.id),
+        db.prepare('UPDATE reports SET title = ?, description = ?, category = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(data.title, data.description, data.category === undefined ? report.category : data.category, at, at, report.id),
         ...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)),
         ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', nowIso: at, author: data.author }),
     ]);

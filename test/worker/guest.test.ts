@@ -117,4 +117,39 @@ describe('guest client entry', () => {
         expect(html).not.toContain('data-category-filter');
         expect(html).not.toContain('data-report-category');
     });
+
+    it('edit dialog offers the category dropdown preselected and saves a new category', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        const { report } = await seedReport(seeded.project);
+        await env.DB.prepare('UPDATE reports SET category = ? WHERE id = ?').bind('經典排版', report.id).run();
+        const visitor = browser();
+        const dialogs = await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialogs).toContain(`id="edit-category-${report.public_id}"`);
+        expect(dialogs).toMatch(/<option value="經典排版" selected/);
+        const post = (category: string) => visitor.post(`/p/${slug}/reports/${report.public_id}/update`, { title: 't', description: 'd', category });
+        expect((await post('亂填')).status).toBe(422);
+        expect((await reportsOf(seeded.project.id))[0].category).toBe('經典排版');
+        expect((await post('程式使用問題')).status).toBe(302);
+        expect((await reportsOf(seeded.project.id))[0].category).toBe('程式使用問題');
+    });
+
+    it('edit keeps a legacy category that is no longer configured', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        const { report } = await seedReport(seeded.project);
+        await env.DB.prepare('UPDATE reports SET category = ? WHERE id = ?').bind('舊分類', report.id).run();
+        const visitor = browser();
+        expect(await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text()).toMatch(/<option value="舊分類" selected/);
+        expect((await visitor.post(`/p/${slug}/reports/${report.public_id}/update`, { title: 't', description: 'd', category: '舊分類' })).status).toBe(302);
+        expect((await reportsOf(seeded.project.id))[0].category).toBe('舊分類');
+    });
+
+    it('shows the creator after the description in the detail dialog and page', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        const { report } = await seedReport(seeded.project);
+        await env.DB.prepare('UPDATE reports SET description = ? WHERE id = ?').bind('說明內文XYZ', report.id).run();
+        const visitor = browser();
+        for (const html of [await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text(), await (await visitor.get(`/p/${slug}/reports/${report.public_id}`)).text()]) {
+            expect(html.indexOf('建立者：')).toBeGreaterThan(html.indexOf('說明內文XYZ'));
+        }
+    });
 });

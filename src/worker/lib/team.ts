@@ -473,15 +473,29 @@ export async function writeHandoff(ctx: TeamContext, slug: string, identifier: s
 }
 
 /** A report created by a team account (through the API, CLI or MCP). */
-export async function createTeamReport(ctx: TeamContext, slug: string, input: { title: string; description: string; upload_ids?: string[] }) {
+export async function createTeamReport(ctx: TeamContext, slug: string, input: { title: string; description: string; category?: string | null; upload_ids?: string[] }) {
     const project = await projectOrFail(ctx.env, slug);
     const { title, description, uploadIds } = validateNewReport(input);
+    const category = validateNewReportCategory(ctx.env, input.category);
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'report', reportId: null });
     if (uploads === null) {
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這個專案，請重新上傳。', 422);
     }
-    const { report } = await createReport(ctx.env, project, { title, description, uploads, author: teamAuthor(ctx) }, { creator_type: 'developer', creator_developer_id: ctx.developer.id }, ctx.now);
-    return { public_id: report.public_id, title: report.title, url: absolute(ctx, paths.report(project.slug, report.public_id)), images_added: uploads.length };
+    const { report } = await createReport(ctx.env, project, { title, description, category, uploads, author: teamAuthor(ctx) }, { creator_type: 'developer', creator_developer_id: ctx.developer.id }, ctx.now);
+    return { public_id: report.public_id, title: report.title, category: report.category, url: absolute(ctx, paths.report(project.slug, report.public_id)), images_added: uploads.length };
+}
+
+/** 分類可省略；有給時必須是站台設定的分類之一（沒設定分類的站台不能給）。 */
+export function validateNewReportCategory(env: Env, category: string | null | undefined): string | null {
+    const value = (category ?? '').trim();
+    if (value === '') {
+        return null;
+    }
+    const categories = config(env).reportCategories;
+    if (!categories.includes(value)) {
+        throw new ServiceError('invalid_category', categories.length === 0 ? '這個站台沒有設定分類，不能指定分類。' : `分類不在可用值內：${categories.join('、')}`, 422);
+    }
+    return value;
 }
 
 export function validateNewReport(input: { title?: string; description?: string; upload_ids?: string[] }): { title: string; description: string; uploadIds: string[] } {

@@ -219,11 +219,18 @@ export class Browser {
     }
 }
 
-export async function api(method: string, path: string, token: string | null, body?: unknown, ip = '10.9.9.9'): Promise<Response> {
+export async function api(method: string, path: string, token: string | null, body?: unknown, ip = '10.9.9.9', vars: Record<string, string> = {}): Promise<Response> {
     const headers: Record<string, string> = { 'cf-connecting-ip': ip, accept: 'application/json' };
     if (token) headers.authorization = `Bearer ${token}`;
     if (body !== undefined) headers['content-type'] = 'application/json';
-    return exports.default.fetch(new Request(`${BASE}/api/v1${path}`, { method, headers, body: body === undefined ? null : JSON.stringify(body) }));
+    const request = new Request(`${BASE}/api/v1${path}`, { method, headers, body: body === undefined ? null : JSON.stringify(body) });
+    if (Object.keys(vars).length === 0) {
+        return exports.default.fetch(request);
+    }
+    const ctx = createExecutionContext();
+    const response = await app.fetch(request, { ...env, ...vars }, ctx);
+    await waitOnExecutionContext(ctx);
+    return response;
 }
 
 export async function mcpCall(token: string | null, method: string, params: unknown = {}, id = 1): Promise<Response> {

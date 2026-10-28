@@ -405,7 +405,7 @@ export async function handoff(rt: Runtime, argv: string[]): Promise<number> {
 
 /** New report (team or client account), with images. */
 export async function create(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { title: { type: 'string' }, description: { type: 'string' }, image: { type: 'string', multiple: true } });
+    const args = parse(argv, { title: { type: 'string' }, description: { type: 'string' }, category: { type: 'string' }, image: { type: 'string', multiple: true } });
     const slug = requirePositional(args, 0, '<project>');
     const title = str(args, 'title');
     const description = str(args, 'description');
@@ -421,7 +421,8 @@ export async function create(rt: Runtime, argv: string[]): Promise<number> {
     for (const image of images) {
         uploadIds.push((await api.upload(`/projects/${encodePath(slug)}/uploads`, image.bytes, image.name, image.mime)).id);
     }
-    const result = await api.post<{ public_id: string; title: string; url: string; images_added: number }>(`/projects/${encodePath(slug)}/reports`, { title, description, upload_ids: uploadIds });
+    const category = str(args, 'category');
+    const result = await api.post<{ public_id: string; title: string; url: string; images_added: number }>(`/projects/${encodePath(slug)}/reports`, { title, description, ...(category ? { category } : {}), upload_ids: uploadIds });
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result, null, 2));
         return 0;

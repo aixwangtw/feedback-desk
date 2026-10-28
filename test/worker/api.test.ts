@@ -290,3 +290,26 @@ describe('MCP', () => {
         expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM messages WHERE report_id = ?').bind(report.id).first('n')).toBe(1);
     });
 });
+
+describe('team report creation with a category', () => {
+    it('accepts a configured category, rejects unknown ones, and allows omitting it', async () => {
+        const seeded = await seedProject({ client: false });
+        const { developer } = await seedDeveloper();
+        const token = await seedToken(developer);
+        const vars = { FEEDBACK_REPORT_CATEGORIES: '功能建議,其他' };
+        const path = `/projects/${seeded.project.slug}/reports`;
+        const body = { title: '新功能', description: '說明' };
+
+        const created = await api('POST', path, token, { ...body, category: '功能建議' }, '10.9.9.8', vars);
+        expect(created.status).toBe(201);
+        expect((await json<{ category: string }>(created)).category).toBe('功能建議');
+
+        const unknown = await api('POST', path, token, { ...body, category: '不存在' }, '10.9.9.8', vars);
+        expect(unknown.status).toBe(422);
+        expect((await json(unknown)).error).toBe('invalid_category');
+
+        expect((await api('POST', path, token, body, '10.9.9.8', vars)).status).toBe(201);
+        const none = await api('POST', path, token, { ...body, category: '功能建議' });
+        expect(none.status).toBe(422);
+    });
+});

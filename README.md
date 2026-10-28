@@ -486,7 +486,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `developer disable\|enable\|delete <帳號>` | 停用、重新啟用、刪除團隊帳號（建立過的單保留）。不能對自己目前登入的帳號操作。 |
 | `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--unread] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
 | `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/` 並印出路徑。 |
-| `create <project> --title --description [--image]...` | 開新單（團隊與客戶帳號都可以）。 |
+| `create <project> --title --description [--category] [--image]...` | 開新單（團隊與客戶帳號都可以）；站台有設定分類（`FEEDBACK_REPORT_CATEGORIES`）時`--category` 可指定其中之一（可省略）。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整說明與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |
 | `message <project> <public_id\|編號> --body [--image]...` | 以自己的帳號留言。 |

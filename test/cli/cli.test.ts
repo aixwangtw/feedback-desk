@@ -394,6 +394,9 @@ describe('handoff commands', () => {
         expect(fake.calls[2].url).toBe('https://desk.example.com/api/v1/projects/demo/uploads');
         expect(fake.calls[3].body).toEqual({ title: '新單', description: '說明', upload_ids: ['up-1'] });
 
+        await main(['create', 'demo', '--title', '新單', '--description', '說明', '--category', '功能建議'], fake.rt);
+        expect(fake.calls[4].body).toEqual({ title: '新單', description: '說明', category: '功能建議', upload_ids: [] });
+
         const claude = signedIn(() => jsonResponse({ title: '單', released: false }), { CLAUDECODE: '1' });
         expect(await main(['release', 'demo', 'uuid-1'], claude.rt)).toBe(0);
         expect(claude.calls[0].headers['x-feedback-desk-agent']).toBe('Claude Code');

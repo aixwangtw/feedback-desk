@@ -3,6 +3,7 @@
  * through these functions, so the rules match the web pages and each other.
  */
 import { CREATOR_FILTER_PATTERN, describedStatusOptions, statusFromInput, statusLabel, type ReportStatus } from '../../shared/status';
+import { categoryProblem, parseCategoryInput, projectCategories } from '../../shared/categories';
 import { charLength, slugify } from '../../shared/text';
 import { formatAbsolute, nowIso } from '../../shared/time';
 import { config, type Env } from '../env';
@@ -476,7 +477,7 @@ export async function writeHandoff(ctx: TeamContext, slug: string, identifier: s
 export async function createTeamReport(ctx: TeamContext, slug: string, input: { title: string; description: string; category?: string | null; upload_ids?: string[] }) {
     const project = await projectOrFail(ctx.env, slug);
     const { title, description, uploadIds } = validateNewReport(input);
-    const category = validateNewReportCategory(ctx.env, input.category);
+    const category = validateNewReportCategory(project, input.category);
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'report', reportId: null });
     if (uploads === null) {
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這個專案，請重新上傳。', 422);
@@ -485,15 +486,15 @@ export async function createTeamReport(ctx: TeamContext, slug: string, input: { 
     return { public_id: report.public_id, title: report.title, category: report.category, url: absolute(ctx, paths.report(project.slug, report.public_id)), images_added: uploads.length };
 }
 
-/** 分類可省略；有給時必須是站台設定的分類之一（沒設定分類的站台不能給）。 */
-export function validateNewReportCategory(env: Env, category: string | null | undefined): string | null {
+/** 分類可省略；有給時必須是專案設定的分類之一（沒設定分類的專案不能給）。 */
+export function validateNewReportCategory(project: Project, category: string | null | undefined): string | null {
     const value = (category ?? '').trim();
     if (value === '') {
         return null;
     }
-    const categories = config(env).reportCategories;
+    const categories = projectCategories(project);
     if (!categories.includes(value)) {
-        throw new ServiceError('invalid_category', categories.length === 0 ? '這個站台沒有設定分類，不能指定分類。' : `分類不在可用值內：${categories.join('、')}`, 422);
+        throw new ServiceError('invalid_category', categories.length === 0 ? '這個專案沒有設定分類，不能指定分類。' : `分類不在可用值內：${categories.join('、')}`, 422);
     }
     return value;
 }
@@ -866,6 +867,31 @@ export async function setPublicReporting(ctx: TeamContext, slug: string, input: 
         home_page_active: input.enabled && homeProject === project.slug,
         hint: input.enabled && homeProject !== project.slug ? `首頁尚未顯示：請在 wrangler.jsonc 的 vars 設定 FEEDBACK_HOME_PUBLIC_PROJECT=${project.slug} 後重新部署。` : null,
     };
+}
+
+/**
+ * 查看或設定開單分類。slug 為 all 時套用到所有專案；categories 省略且沒有 clear 時只回傳目前設定。
+ */
+export async function reportCategories(ctx: TeamContext, slug: string, input: { categories?: string | null; clear?: boolean } | null) {
+    const projects =
+        slug === 'all'
+            ? (await ctx.env.DB.prepare('SELECT * FROM projects ORDER BY id').all<Project>()).results
+            : [await projectOrFail(ctx.env, slug)];
+    const write = input !== null && (input.clear === true || typeof input.categories === 'string');
+    if (!write) {
+        return { updated: false, projects: projects.map((project) => ({ slug: project.slug, categories: projectCategories(project) })) };
+    }
+    const categories = input.clear === true ? [] : parseCategoryInput(input.categories ?? '');
+    const problem = categoryProblem(categories);
+    if (problem !== null) {
+        throw new ServiceError('invalid_categories', problem, 422);
+    }
+    const at = nowIso(ctx.now);
+    const value = categories.length === 0 ? null : JSON.stringify(categories);
+    for (const project of projects) {
+        await ctx.env.DB.prepare('UPDATE projects SET report_categories = ?, updated_at = ? WHERE id = ?').bind(value, at, project.id).run();
+    }
+    return { updated: true, projects: projects.map((project) => ({ slug: project.slug, categories })) };
 }
 
 // ------------------------------------------------------------------ team accounts

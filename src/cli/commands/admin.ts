@@ -27,9 +27,30 @@ export async function project(rt: Runtime, argv: string[]): Promise<number> {
         'client-name': { type: 'string' },
         'no-client': { type: 'boolean' },
         prefill: { type: 'boolean' },
+        clear: { type: 'boolean' },
     });
     const api = apiFor(rt, str(args, 'url'));
     switch (action) {
+        case 'categories': {
+            const slug = requirePositional(args, 0, '<slug|all>');
+            const input = args.positionals[1];
+            const path = `/projects/${encodePath(slug)}/categories`;
+            type Result = { updated: boolean; projects: Array<{ slug: string; categories: string[] }> };
+            const result =
+                input === undefined && !bool(args, 'clear')
+                    ? await api.get<Result>(path)
+                    : await api.post<Result>(path, bool(args, 'clear') ? { clear: true } : { categories: input });
+            if (bool(args, 'json')) return printJson(rt, result);
+            for (const p of result.projects) {
+                const list = p.categories.join(',');
+                rt.out(
+                    result.updated
+                        ? `${escapeInline(p.slug)}：${p.categories.length === 0 ? '已清除分類' : `分類設為 ${escapeInline(list)}`}`
+                        : `${escapeInline(p.slug)}：${p.categories.length === 0 ? '（未設定，不分類）' : escapeInline(list)}`,
+                );
+            }
+            return 0;
+        }
         case 'create': {
             const name = requirePositional(args, 0, '<專案名稱>');
             const result = await api.post<{ project: ProjectSummary; client_link: string | null; owner_link: string }>('/projects', {
@@ -93,7 +114,7 @@ export async function project(rt: Runtime, argv: string[]): Promise<number> {
             return 0;
         }
         default:
-            throw new CliError('用法：feedback-desk project create|list|client-link|owner-link|client-account');
+            throw new CliError('用法：feedback-desk project create|list|categories|client-link|owner-link|client-account');
     }
 }
 

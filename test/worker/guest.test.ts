@@ -5,11 +5,13 @@ import { Browser, seedClientAccount, seedProject, seedReport, unique } from './h
 
 const CATEGORIES = '程式使用問題,經典排版,其他';
 
-async function guestSetup(vars: Record<string, string> = {}) {
+async function guestSetup(vars: Record<string, string> = {}, categories: string = CATEGORIES) {
     const seeded = await seedProject({ client: false });
+    const list = categories.split(',').filter((category) => category !== '');
+    await env.DB.prepare('UPDATE projects SET report_categories = ? WHERE id = ?').bind(list.length > 0 ? JSON.stringify(list) : null, seeded.project.id).run();
     const username = unique('guest');
     const { account } = await seedClientAccount(seeded.project, username, 'guest-password-1234567', '張子元');
-    const allVars = { FEEDBACK_GUEST_CLIENT_PROJECT: seeded.project.slug, FEEDBACK_GUEST_CLIENT_ACCOUNT: username, FEEDBACK_REPORT_CATEGORIES: CATEGORIES, ...vars };
+    const allVars = { FEEDBACK_GUEST_CLIENT_PROJECT: seeded.project.slug, FEEDBACK_GUEST_CLIENT_ACCOUNT: username, ...vars };
     const browser = () => new Browser(`10.2.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`, allVars);
     return { seeded, slug: seeded.project.slug, account, browser, vars: allVars };
 }
@@ -112,7 +114,7 @@ describe('guest client entry', () => {
     });
 
     it('sites without categories have no category column or filter', async () => {
-        const { slug, browser } = await guestSetup({ FEEDBACK_REPORT_CATEGORIES: '' });
+        const { slug, browser } = await guestSetup({}, '');
         const html = await (await browser().get(`/p/${slug}`)).text();
         expect(html).not.toContain('data-category-filter');
         expect(html).not.toContain('data-report-category');

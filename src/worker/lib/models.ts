@@ -14,6 +14,8 @@ export interface Project {
     login_prefill_username: string | null;
     login_prefill_password: string | null;
     public_reporting_enabled: number;
+    /** 開單分類，JSON 陣列（migration 0009）；NULL 表示這個專案不分類。 */
+    report_categories: string | null;
     /** Move on every change shown in the chat panel list of each side (database triggers, migration 0004). */
     chat_version_owner: number;
     chat_version_client: number;

@@ -32,6 +32,8 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
 專案與帳號
   project create <名稱> [--slug] [--client-name] [--no-client]
   project list
+  project categories <slug|all> ["分類1,分類2"] [--clear]
+                                   查看或設定開單分類（逗號或換行分隔，最多 20 個）
   project client-link <slug>       重發客戶私密入口（舊的失效）
   project owner-link <slug>        重發開發團隊私密入口（舊的失效）
   client create <slug> <帳號> [--name 顯示名稱] [--prefill]

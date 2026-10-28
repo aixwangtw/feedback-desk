@@ -10,6 +10,7 @@ import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
+import { projectCategories } from '../../shared/categories';
 
 export interface PortalRow {
     report: Report;
@@ -124,7 +125,8 @@ export const PortalPage: FC<PortalProps> = (props) => {
     }
     const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedCategory ?? '') !== '' || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
-    const showCategory = v.cfg.reportCategories.length > 0;
+    const categories = projectCategories(project);
+    const showCategory = categories.length > 0;
     const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
     const clientRender = rows.length > SERVER_ROW_LIMIT;
@@ -210,7 +212,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                         <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">分類
                             <select name="category" data-auto-submit data-category-filter class={FILTER_SELECT}>
                                 <option value="">全部</option>
-                                {v.cfg.reportCategories.map((option) => (
+                                {categories.map((option) => (
                                     <option value={option} selected={props.selectedCategory === option}>{option}</option>
                                 ))}
                                 <option value="_none" selected={props.selectedCategory === '_none'}>未分類</option>
@@ -323,18 +325,18 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 {rows
                     .filter((row) => form?.bag === 'editReport' && form.editing?.publicId === row.report.public_id)
                     .map((row) => (
-                        <ReportDialogs v={v} row={row} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} form={form} />
+                        <ReportDialogs v={v} row={row} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} categories={categories} form={form} />
                     ))}
             </div>
 
-            <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} categories={v.cfg.reportCategories} guest={props.guest === true} turnstileSiteKey={props.guest && v.cfg.publicReporting.turnstileSiteKey !== '' && v.cfg.publicReporting.turnstileSecretKey !== '' ? v.cfg.publicReporting.turnstileSiteKey : ''} />
+            <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} categories={categories} guest={props.guest === true} turnstileSiteKey={props.guest && v.cfg.publicReporting.turnstileSiteKey !== '' && v.cfg.publicReporting.turnstileSecretKey !== '' ? v.cfg.publicReporting.turnstileSiteKey : ''} />
         </Layout>
     );
 };
 
 type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
-export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, row, slug, isOwner, backPath, attachmentUrl, form }) => {
+export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalFormState }> = ({ v, row, slug, isOwner, backPath, attachmentUrl, categories, form }) => {
     const report = row.report;
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
     const editing = form?.bag === 'editReport' && form.editing?.publicId === report.public_id ? form.editing : null;
@@ -388,12 +390,12 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                         <label for={`edit-title-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                         <input id={`edit-title-${report.public_id}`} name="title" value={editing ? editing.title : report.title} required maxlength={160} class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" />
                     </div>
-                    {v.cfg.reportCategories.length > 0 ? (
+                    {categories.length > 0 ? (
                         <div>
                             <label for={`edit-category-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">分類</label>
                             <select id={`edit-category-${report.public_id}`} name="category" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-edit-category>
                                 <option value="" selected={(editing ? editing.category ?? '' : report.category ?? '') === ''}>未分類</option>
-                                {editCategoryOptions(v.cfg.reportCategories, report.category).map((option) => (
+                                {editCategoryOptions(categories, report.category).map((option) => (
                                     <option value={option} selected={option === (editing ? editing.category ?? '' : report.category ?? '')}>{option}</option>
                                 ))}
                             </select>

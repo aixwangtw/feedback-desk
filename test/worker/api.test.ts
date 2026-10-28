@@ -296,20 +296,21 @@ describe('team report creation with a category', () => {
         const seeded = await seedProject({ client: false });
         const { developer } = await seedDeveloper();
         const token = await seedToken(developer);
-        const vars = { FEEDBACK_REPORT_CATEGORIES: '功能建議,其他' };
+        const other = await seedProject({ client: false });
+        await env.DB.prepare('UPDATE projects SET report_categories = ? WHERE id = ?').bind(JSON.stringify(['功能建議', '其他']), seeded.project.id).run();
         const path = `/projects/${seeded.project.slug}/reports`;
         const body = { title: '新功能', description: '說明' };
 
-        const created = await api('POST', path, token, { ...body, category: '功能建議' }, '10.9.9.8', vars);
+        const created = await api('POST', path, token, { ...body, category: '功能建議' });
         expect(created.status).toBe(201);
         expect((await json<{ category: string }>(created)).category).toBe('功能建議');
 
-        const unknown = await api('POST', path, token, { ...body, category: '不存在' }, '10.9.9.8', vars);
+        const unknown = await api('POST', path, token, { ...body, category: '不存在' });
         expect(unknown.status).toBe(422);
         expect((await json(unknown)).error).toBe('invalid_category');
 
-        expect((await api('POST', path, token, body, '10.9.9.8', vars)).status).toBe(201);
-        const none = await api('POST', path, token, { ...body, category: '功能建議' });
+        expect((await api('POST', path, token, body)).status).toBe(201);
+        const none = await api('POST', `/projects/${other.project.slug}/reports`, token, { ...body, category: '功能建議' });
         expect(none.status).toBe(422);
     });
 });

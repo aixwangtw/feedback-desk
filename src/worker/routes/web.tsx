@@ -58,6 +58,7 @@ import { Activity, ConversationFragment, ReportPage } from '../views/report';
 import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
+import { projectCategories } from '../../shared/categories';
 import { verifyTurnstile } from '../lib/turnstile';
 import { withAgent } from '../lib/agents';
 import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
@@ -518,7 +519,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const direction: 'asc' | 'desc' = c.req.query('direction') === 'asc' ? 'asc' : 'desc';
     const statusInput = c.req.query('status') ?? '';
     const selectedStatus: ReportStatus | null = isStatus(statusInput) ? statusInput : null;
-    const categories = config(c.env).reportCategories;
+    const categories = projectCategories(project);
     const categoryInput = c.req.query('category') ?? '';
     const selectedCategory = categories.length > 0 && (categoryInput === UNCATEGORIZED || categories.includes(categoryInput)) ? categoryInput : '';
     const keyword = charSlice((c.req.query('q') ?? '').trim(), 100);
@@ -746,7 +747,7 @@ web.post('/p/:slug/reports', async (c) => {
     const form = await readForm(c);
     const issues = parseIssues(form);
     const errors: string[] = [];
-    const categories = config(c.env).reportCategories;
+    const categories = projectCategories(project);
     if (isGuest && field(form, HONEYPOT_FIELD) !== '') {
         errors.push('送出失敗，請重新整理頁面後再試。');
     }
@@ -1215,6 +1216,7 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
             isOwner={isOwner}
             backPath={isSafeLocalPath(back) ? back : paths.portal(project.slug)}
             attachmentUrl={(target, attachment) => paths.attachment(project.slug, target.public_id, attachment.id)}
+            categories={projectCategories(project)}
         />,
     );
 });
@@ -1275,7 +1277,7 @@ web.post('/p/:slug/reports/:publicId/update', async (c) => {
     const errors: string[] = [];
     validateText(errors, title, '問題標題', MAX_TITLE);
     validateText(errors, description, '問題說明', MAX_DESCRIPTION);
-    const configuredCategories = config(c.env).reportCategories;
+    const configuredCategories = projectCategories(project);
     const categoryOptions = configuredCategories.length > 0 ? editCategoryOptions(configuredCategories, report.category) : [];
     const category = field(form, 'category');
     if (categoryOptions.length > 0 && category !== '' && !categoryOptions.includes(category)) {

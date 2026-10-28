@@ -265,6 +265,8 @@ api.post('/projects/:slug/clients/:username/reset', async (c) => {
 api.post('/projects/:slug/clients/:username/disable', async (c) => c.json(await team.setClientDisabled(ctx(c), c.req.param('slug'), c.req.param('username'), true)));
 api.post('/projects/:slug/clients/:username/enable', async (c) => c.json(await team.setClientDisabled(ctx(c), c.req.param('slug'), c.req.param('username'), false)));
 api.delete('/projects/:slug/clients/:username', async (c) => c.json(await team.deleteClient(ctx(c), c.req.param('slug'), c.req.param('username'))));
+api.get('/projects/:slug/categories', async (c) => c.json(await team.reportCategories(ctx(c), c.req.param('slug'), null)));
+api.post('/projects/:slug/categories', async (c) => c.json(await team.reportCategories(ctx(c), c.req.param('slug'), await body(c))));
 api.post('/projects/:slug/public-reporting', async (c) => c.json(await team.setPublicReporting(ctx(c), c.req.param('slug'), await body(c))));
 
 api.get('/projects/:slug/reports', async (c) => {

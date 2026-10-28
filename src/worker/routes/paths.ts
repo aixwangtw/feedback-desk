@@ -12,6 +12,7 @@ export const paths = {
     accountName: (slug: string) => `/p/${enc(slug)}/account/name`,
     accountVerify: (slug: string) => `/p/${enc(slug)}/account/verify`,
     accountPassword: (slug: string) => `/p/${enc(slug)}/account/password`,
+    projectCategories: (slug: string) => `/p/${enc(slug)}/settings/categories`,
     uploads: (slug: string) => `/p/${enc(slug)}/uploads`,
     reportsStore: (slug: string) => `/p/${enc(slug)}/reports`,
     conversations: (slug: string) => `/p/${enc(slug)}/conversations`,

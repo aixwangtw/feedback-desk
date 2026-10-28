@@ -334,6 +334,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | 查看、撤銷 token | `token list` 查 id，`token revoke <id>` 撤銷 |
 | 這台電腦登出命令列 | `logout`（撤銷並刪除本機 token） |
 | 更新到最新版 | 在部署的資料夾執行 `deploy`：已上線的站會先更新資料庫結構、再換新程式，資料保留。更新前可先備份：`npx wrangler d1 export DB --remote --output backup.sql` |
+| 從舊版升級（曾設 `FEEDBACK_REPORT_CATEGORIES`） | 開單分類改成每個專案各自設定，舊的整站設定不再讀取，升級後要補回，否則開單不顯示分類：`project categories all "程式使用問題,經典排版,其他"`，或到「我的帳號」→「專案設定」逐一設定。已分類的單不受影響。 |
 
 指令前面都要加 `npx --allow-git=all github:aixwangtw/feedback-desk`。
 
@@ -448,7 +449,6 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `FEEDBACK_HOME_PUBLIC_PROJECT` | 空 | 首頁公開回報要收進哪個專案（slug）。 |
 | `FEEDBACK_GUEST_CLIENT_PROJECT` | 空 | 免登入的專案（slug）：不用登入就能開單、查看、留言，沿用公開回報的限流。 |
 | `FEEDBACK_GUEST_CLIENT_ACCOUNT` | 空 | 免登入訪客使用的客戶帳號（username），單會記在這個帳號名下；訪客不能改這個帳號的設定。 |
-| `FEEDBACK_REPORT_CATEGORIES` | 空 | 開單分類，逗號分隔（例如 `程式使用問題,經典排版,其他`）；空的就不分類。 |
 | `FEEDBACK_PUBLIC_INTRO` / `FEEDBACK_PUBLIC_NOTICE` | 空 | 公開回報表單上方的說明、一行提示。 |
 | `FEEDBACK_PUBLIC_GITHUB_URL` / `FEEDBACK_PUBLIC_BLOG_URL` | 空 | 公開首頁的連結，只接受 `https://`。 |
 | `FEEDBACK_PUBLIC_THROTTLE_PER_MINUTE` / `_PER_HOUR` | `3` / `20` | 公開送單每個 IP 的上限。 |
@@ -476,6 +476,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `token create [--expires 天數] [--agent 名稱]\|list\|revoke <id>` | 管理自己的 API token；`--agent` 標示這個 token 給哪個 AI 用。 |
 | `project create <名稱> [--slug] [--client-name] [--no-client]` | 建立專案並印出客戶與開發團隊入口連結。 |
 | `project list` | 列出專案。 |
+| `project categories <slug\|all> ["分類1,分類2"] [--clear]` | 查看或設定專案的開單分類（逗號或換行分隔，最多 20 個、每個 50 字）；沒設定就不顯示分類。開發團隊也可在網頁「我的帳號」→「專案設定」改。 |
 | `project client-link <slug>` / `project owner-link <slug>` | 重發私密入口，舊連結失效。 |
 | `client create <slug> <帳號> [--name] [--prefill]` | 新增客戶帳號（每位客戶一個），密碼由系統產生。 |
 | `client list <slug>` / `client reset <slug> <帳號>` | 列出客戶帳號／重設系統產生的密碼（本人自設的密碼不能重設）。 |
@@ -486,7 +487,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `developer disable\|enable\|delete <帳號>` | 停用、重新啟用、刪除團隊帳號（建立過的單保留）。不能對自己目前登入的帳號操作。 |
 | `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--unread] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
 | `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/` 並印出路徑。 |
-| `create <project> --title --description [--category] [--image]...` | 開新單（團隊與客戶帳號都可以）；站台有設定分類（`FEEDBACK_REPORT_CATEGORIES`）時`--category` 可指定其中之一（可省略）。 |
+| `create <project> --title --description [--category] [--image]...` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整說明與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |
 | `message <project> <public_id\|編號> --body [--image]...` | 以自己的帳號留言。 |

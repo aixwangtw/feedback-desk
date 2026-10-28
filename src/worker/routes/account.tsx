@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { MAX_PASSWORD_LENGTH, selfSetPasswordProblems } from '../../shared/password';
+import { categoryProblem, MAX_CATEGORY_INPUT_LENGTH, parseCategoryInput, projectCategories } from '../../shared/categories';
 import { charLength } from '../../shared/text';
 import { nowIso } from '../../shared/time';
 import { hashPassword, hmac, SELF_SET_PASSWORD_ITERATIONS, timingSafeEqualString, verifyPassword } from '../lib/crypto';
@@ -115,6 +116,8 @@ interface RenderOptions {
     passwordErrors?: string[];
     nameErrors?: string[];
     nameOld?: string;
+    categoryErrors?: string[];
+    categoriesOld?: string;
     status?: 200 | 403 | 422;
     success?: string;
 }
@@ -130,6 +133,11 @@ async function render(c: AppContext, project: Project, holder: Account | null, o
             passwordErrors={options.passwordErrors ?? []}
             nameErrors={options.nameErrors ?? []}
             nameOld={options.nameOld}
+            projectSettings={
+                (await c.get('access').isOwner(project))
+                    ? { categories: options.categoriesOld ?? projectCategories(project).join(','), errors: options.categoryErrors ?? [] }
+                    : null
+            }
             success={options.success}
         />,
         options.status ?? 200,
@@ -268,4 +276,25 @@ account.post('/p/:slug/account/password', async (c) => {
     access.jar.forget(REAUTH_COOKIE);
     access.setFlash({ success: message });
     return c.redirect(paths.account(project.slug), 303);
+});
+
+/** 專案設定：開發團隊調整這個專案的開單分類。留空＝清除（不顯示分類）；已分類的單不受影響。 */
+account.post('/p/:slug/settings/categories', async (c) => {
+    const project = await projectOr404(c);
+    const access = c.get('access');
+    if (!(await access.isOwner(project))) {
+        return render(c, project, await accountFor(c, project), { status: 403 });
+    }
+    const form = await readForm(c);
+    const input = field(form, 'categories');
+    const categories = parseCategoryInput(input);
+    const problem = charLength(input) > MAX_CATEGORY_INPUT_LENGTH ? `開單分類 不可超過 ${MAX_CATEGORY_INPUT_LENGTH} 字。` : categoryProblem(categories);
+    if (problem !== null) {
+        return render(c, project, await accountFor(c, project), { categoryErrors: [problem], categoriesOld: input, status: 422 });
+    }
+    await c.env.DB.prepare('UPDATE projects SET report_categories = ?, updated_at = ? WHERE id = ?')
+        .bind(categories.length === 0 ? null : JSON.stringify(categories), nowIso(c.get('now')), project.id)
+        .run();
+    access.setFlash({ success: categories.length === 0 ? '已清除開單分類，這個專案不再顯示分類欄位。' : `已更新開單分類：${categories.join('、')}。` });
+    return c.redirect(`${paths.account(project.slug)}#project-settings`, 303);
 });

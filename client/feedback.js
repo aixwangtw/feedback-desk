@@ -656,12 +656,14 @@ document.addEventListener('change', async (event) => {
         }
         select.dataset.savedValue = result.category ?? '';
         if (feedback) feedback.textContent = '已儲存';
-        const publicId = form.dataset.reportPublicId;
-        document.querySelectorAll(`[data-report-row="${CSS.escape(publicId)}"] [data-report-category]`).forEach((cell) => {
-            const label = cell.querySelector('span');
-            cell.textContent = '';
-            if (label) cell.append(label);
-            cell.append(result.category || '未分類');
+        // 同一張單在頁面上可能有好幾個下拉（清單、看板、詳細視窗），存好後一起同步。
+        const saved = result.category ?? '';
+        document.querySelectorAll(`[data-category-form][data-report-public-id="${CSS.escape(form.dataset.reportPublicId)}"] [data-category-autosave]`).forEach((other) => {
+            if (saved !== '' && !Array.from(other.options).some((option) => option.value === saved)) {
+                other.add(new Option(saved, saved));
+            }
+            other.value = saved;
+            other.dataset.savedValue = saved;
         });
     } catch (error) {
         select.value = savedValue;

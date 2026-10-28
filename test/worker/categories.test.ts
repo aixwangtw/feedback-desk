@@ -150,4 +150,15 @@ describe('per-project report categories', () => {
         expect((await none.json<{ message: string }>()).message).toBe('這個專案沒有設定分類。');
         expect(await (await owner.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text()).not.toContain('data-category-autosave');
     });
+
+    it('list rows and board cards switch the category with the same dropdown; none without categories', async () => {
+        const { seeded, slug, owner, client } = await setup();
+        const { report } = await seedReport(seeded.project);
+        expect(await (await owner.get(`/p/${slug}`)).text()).not.toContain('data-category-autosave');
+        await owner.post(`/p/${slug}/settings/categories`, { categories: '程式問題,排版' });
+        const list = await (await client.get(`/p/${slug}`)).text();
+        expect(list).toContain(`id="row-category-${report.public_id}"`);
+        const board = await (await client.get(`/p/${slug}?view=board`)).text();
+        expect(board).toContain(`id="card-category-${report.public_id}"`);
+    });
 });

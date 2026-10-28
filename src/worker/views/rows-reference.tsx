@@ -9,6 +9,7 @@ import type { Attachment, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { ChatButton, cx, StatusSelect, Time, type ViewContext } from './components';
 import type { PortalRow } from './portal';
+import { CategoryAutosave } from './report';
 
 const ICON_TRASH = (
     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></svg>
@@ -24,9 +25,9 @@ function dialogsSrc(slug: string, publicId: string, backPath: string): string {
     return `${paths.reportDialogs(slug, publicId)}?back=${encodeURIComponent(backPath)}`;
 }
 
-export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; showCategory?: boolean; attachmentUrl: (report: Report, attachment: Attachment) => string };
+export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; showCategory?: boolean; categories?: string[]; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
-export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCategory, attachmentUrl }) => {
+export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCategory, categories, attachmentUrl }) => {
     const report = row.report;
     const deleted = report.client_deleted_at !== null;
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
@@ -59,7 +60,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                 </form>
             </td>
             {showCategory ? (
-                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{report.category || '未分類'}</td>
+                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="row-category" compact class="justify-start sm:justify-center" /> : report.category || '未分類'}</td>
             ) : null}
             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                 {row.attachments.length > 0 ? (
@@ -114,7 +115,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
     );
 };
 
-export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slug, isOwner, backPath, attachmentUrl }) => {
+export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slug, isOwner, backPath, categories, attachmentUrl }) => {
     const report = row.report;
     const deleted = report.client_deleted_at !== null;
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
@@ -125,6 +126,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span></p>
+                    {(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="card-category" compact class="mt-1" /> : null}
                     <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>

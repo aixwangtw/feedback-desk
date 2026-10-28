@@ -43,6 +43,27 @@ describe('string-rendered rows match the JSX reference', () => {
         }
     });
 
+    it('category dropdowns in list rows and board cards match the JSX reference (legacy category kept and preselected)', () => {
+        const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };
+        const attachmentUrl = (report: Report, item: Attachment) => paths.attachment('demo', report.public_id, item.id);
+        const categories = ['程式問題', '排<版>"'];
+        const backPath = '/p/demo?q=a"b';
+        for (const portalRow of [row({ category: '排<版>"' }), row({ category: '舊分類' }), row({})]) {
+            const ctx = { v, slug: 'demo', isOwner: true, backPath, showCategory: true, categories };
+            const html = listRowHtml(ctx, portalRow);
+            expect(html).toBe(String(<ListRow v={v} row={portalRow} slug="demo" isOwner backPath={backPath} showCategory categories={categories} attachmentUrl={attachmentUrl} />));
+            const card = boardCardHtml(ctx, portalRow, 1);
+            expect(card).toBe(String(<BoardCard v={v} row={portalRow} order={1} slug="demo" isOwner backPath={backPath} categories={categories} attachmentUrl={attachmentUrl} />));
+            for (const output of [html, card]) {
+                expect(output).toContain('data-category-autosave');
+                const current = portalRow.report.category;
+                expect(output).toContain(current ? `selected="">${current === '舊分類' ? '舊分類' : '排&lt;版&gt;&quot;'}</option>` : '<option value="" selected="">未分類</option>');
+            }
+            expect(card.indexOf('data-category-autosave')).toBeGreaterThan(card.indexOf('data-report-number'));
+            expect(card.indexOf('data-category-autosave')).toBeLessThan(card.indexOf('data-report-detail-open'));
+        }
+    });
+
     const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };
     const backPath = '/p/demo?status=new&q=a"b';
     const attachmentUrl = (report: Report, item: Attachment) => paths.attachment('demo', report.public_id, item.id);

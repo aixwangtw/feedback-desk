@@ -127,7 +127,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const categories = projectCategories(project);
     const showCategory = categories.length > 0;
-    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory };
+    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory, categories };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
     const clientRender = rows.length > SERVER_ROW_LIMIT;
     const sortHeader = (column: string, label: string, thClass: string) => (

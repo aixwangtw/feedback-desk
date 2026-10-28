@@ -14,13 +14,13 @@ export function editCategoryOptions(categories: string[], current: string | null
 }
 
 /** 詳細對話框與詳細頁的分類下拉：選了就存（JS），沒有 JS 時按「儲存」。 */
-export const CategoryAutosave: FC<{ slug: string; report: Report; categories: string[]; backPath: string; idPrefix: string }> = ({ slug, report, categories, backPath, idPrefix }) => {
+export const CategoryAutosave: FC<{ slug: string; report: Report; categories: string[]; backPath: string; idPrefix: string; compact?: boolean; class?: string }> = ({ slug, report, categories, backPath, idPrefix, compact, class: extra }) => {
     const current = report.category ?? '';
     const id = `${idPrefix}-${report.public_id}`;
     return (
-        <form method="post" action={paths.reportCategory(slug, report.public_id)} class="flex flex-wrap items-center gap-2 text-xs" data-category-form data-report-public-id={report.public_id}>
+        <form method="post" action={paths.reportCategory(slug, report.public_id)} class={cx('flex flex-wrap items-center gap-2 text-xs', extra)} data-category-form data-report-public-id={report.public_id}>
             <input type="hidden" name="_back" value={backPath} />
-            <label for={id} class="font-semibold text-slate-600">分類</label>
+            <label for={id} class={compact ? 'sr-only' : 'font-semibold text-slate-600'}>分類</label>
             <select id={id} name="category" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10" data-category-autosave>
                 <option value="" selected={current === ''}>未分類</option>
                 {editCategoryOptions(categories, report.category).map((option) => (

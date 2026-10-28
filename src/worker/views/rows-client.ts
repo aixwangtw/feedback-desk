@@ -21,6 +21,7 @@ export interface PortalRowsPayload {
     isOwner: boolean;
     backPath: string;
     showCategory: boolean;
+    categories: string[];
     now: number;
     labels: { client: string };
     utcOffsetMinutes: number;
@@ -44,6 +45,7 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
         isOwner: ctx.isOwner,
         backPath: ctx.backPath,
         showCategory: ctx.showCategory === true,
+        categories: ctx.categories ?? [],
         now: ctx.v.now,
         labels: { client: ctx.v.cfg.labels.client },
         utcOffsetMinutes: ctx.v.cfg.utcOffsetMinutes,
@@ -77,7 +79,7 @@ export function payloadScript(payload: PortalRowsPayload): string {
 
 function contextFrom(payload: PortalRowsPayload): RowContext {
     const cfg = { labels: payload.labels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
-    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory };
+    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory, categories: payload.categories ?? [] };
 }
 
 function toRows(payload: PortalRowsPayload): PortalRow[] {

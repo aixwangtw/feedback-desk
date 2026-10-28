@@ -8,7 +8,7 @@
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
 import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
-import type { Attachment } from '../lib/models';
+import type { Attachment, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
 import type { ViewContext } from './components';
@@ -28,6 +28,25 @@ export interface RowContext {
     backPath: string;
     /** 有設定開單分類的站：列表多一欄分類。 */
     showCategory?: boolean;
+    /** 專案的開單分類；有值時分類欄與看板卡片顯示可直接切換的下拉。 */
+    categories?: string[];
+}
+
+/** 與 views/report.tsx 的 CategoryAutosave（compact）輸出相同的 HTML。 */
+export function categorySelectHtml(ctx: RowContext, report: Report, idPrefix: string, extraClass: string): string {
+    const categories = ctx.categories ?? [];
+    const current = report.category ?? '';
+    const options = current !== '' && !categories.includes(current) ? [...categories, current] : categories;
+    const id = esc(`${idPrefix}-${report.public_id}`);
+    let html = `<form method="post" action="${esc(paths.reportCategory(ctx.slug, report.public_id))}" class="flex flex-wrap items-center gap-2 text-xs ${extraClass}" data-category-form="true" data-report-public-id="${esc(report.public_id)}">`;
+    html += `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/><label for="${id}" class="sr-only">分類</label>`;
+    html += `<select id="${id}" name="category" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10" data-category-autosave="true">`;
+    html += `<option value=""${current === '' ? ' selected=""' : ''}>未分類</option>`;
+    for (const option of options) {
+        html += `<option value="${esc(option)}"${option === current ? ' selected=""' : ''}>${esc(option)}</option>`;
+    }
+    html += '</select><noscript><button type="submit" class="font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-category-feedback="true" aria-live="polite"></span></form>';
+    return html;
 }
 
 function time(v: ViewContext, at: string, relative = false): string {
@@ -87,7 +106,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     html += '</td>';
     html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'min-w-0 flex-1 sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs')}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
     if (ctx.showCategory) {
-        html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${esc(report.category || '未分類')}</td>`;
+        html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
     }
     html += '<td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">';
     if (row.attachments.length > 0) {
@@ -138,6 +157,9 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}" title="拖拉卡片可改變狀態">`;
     html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span></p>`;
+    if ((ctx.categories ?? []).length > 0) {
+        html += categorySelectHtml(ctx, report, 'card-category', 'mt-1');
+    }
     html += `<button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button></div>`;
     html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${chatButtonHtml(isOwner, report.public_id, report.title, row)}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {

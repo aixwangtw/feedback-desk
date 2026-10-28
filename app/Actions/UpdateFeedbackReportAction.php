@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 class UpdateFeedbackReportAction
 {
     /**
-     * @param  array{title: string, description: string, screenshots?: list<UploadedFile>, remove_attachments?: list<int|string>}  $data
+     * @param  array{title: string, description: string, category?: string, screenshots?: list<UploadedFile>, remove_attachments?: list<int|string>}  $data
      */
     public function handle(FeedbackReport $report, array $data, ?FeedbackActor $actor = null): FeedbackReport
     {
@@ -24,6 +24,7 @@ class UpdateFeedbackReportAction
                 $report->update([
                     'title' => $data['title'],
                     'description' => $data['description'],
+                    ...(array_key_exists('category', $data) ? ['category' => $data['category']] : []),
                     'latest_activity_at' => now(),
                 ]);
 

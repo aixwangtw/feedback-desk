@@ -198,4 +198,49 @@ class FeedbackGuestClientTest extends TestCase
             ->assertDontSee('data-category-filter', false)
             ->assertDontSee('data-report-category', false);
     }
+
+    public function test_edit_dialog_offers_category_dropdown_preselected_with_current_category(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['title' => '排版單', 'category' => '經典排版', 'creator_client_account_id' => $this->account->id]);
+
+        $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+
+        $this->assertStringContainsString('id="edit-category-'.$report->public_id.'"', $html);
+        $this->assertMatchesRegularExpression('/id="edit-category-'.$report->public_id.'"[\s\S]*?<option value="經典排版" selected/', $html);
+    }
+
+    public function test_edit_changes_category_and_rejects_unknown_category(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版', 'creator_client_account_id' => $this->account->id]);
+
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => '亂填'])
+            ->assertSessionHasErrorsIn('editReport', 'category');
+        $this->assertSame('經典排版', $report->fresh()->category);
+
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => '程式使用問題'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('程式使用問題', $report->fresh()->category);
+    }
+
+    public function test_edit_keeps_a_legacy_category_that_is_no_longer_configured(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => '舊分類', 'creator_client_account_id' => $this->account->id]);
+
+        $this->get(route('feedback.portal', $this->project))->assertSee('<option value="舊分類" selected>', false);
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => '舊分類'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('舊分類', $report->fresh()->category);
+    }
+
+    public function test_creator_is_shown_after_description_in_detail_dialog_and_page(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['description' => '說明內文XYZ', 'creator_client_account_id' => $this->account->id]);
+
+        $html = $this->get(route('feedback.portal', $this->project))->getContent();
+        $dialog = substr($html, strpos($html, 'id="detail-report-'.$report->public_id.'"'));
+        $this->assertLessThan(strpos($dialog, '建立者：'), strpos($dialog, '說明內文XYZ'));
+
+        $page = $this->get(route('feedback.reports.show', [$this->project, $report]))->getContent();
+        $this->assertLessThan(strpos($page, '建立者：'), strpos($page, '說明內文XYZ'));
+    }
 }

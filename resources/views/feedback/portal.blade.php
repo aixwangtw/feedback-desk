@@ -394,12 +394,13 @@
             <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }} · 建立者：{{ $report->creatorLabel() }}</p>
+                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}</p>
                         <h2 id="detail-report-title-{{ $report->public_id }}" class="mt-1 break-words text-lg font-bold text-slate-950">{{ $report->title }}</h2>
                     </div>
                     <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                 </div>
                 <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
+                <p class="text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <div class="flex flex-wrap gap-2">
                         @foreach ($report->feedbackAttachments as $attachment)
@@ -445,6 +446,21 @@
                     <label for="edit-title-{{ $report->public_id }}" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                     <input id="edit-title-{{ $report->public_id }}" name="title" value="{{ $isEditing ? old('title') : $report->title }}" required maxlength="160" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">
                 </div>
+                @if ($reportCategories !== [])
+                    @php $editCategory = $isEditing ? old('category') : $report->category; @endphp
+                    <div>
+                        <label for="edit-category-{{ $report->public_id }}" class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
+                        <select id="edit-category-{{ $report->public_id }}" name="category" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-edit-category>
+                            <option value="">請選擇分類</option>
+                            @foreach ($reportCategories as $reportCategory)
+                                <option value="{{ $reportCategory }}" @selected($editCategory === $reportCategory)>{{ $reportCategory }}</option>
+                            @endforeach
+                            @if (filled($report->category) && ! in_array($report->category, $reportCategories, true))
+                                <option value="{{ $report->category }}" @selected($editCategory === $report->category)>{{ $report->category }}</option>
+                            @endif
+                        </select>
+                    </div>
+                @endif
                 <div>
                     <label for="edit-description-{{ $report->public_id }}" class="mb-2 block text-sm font-semibold text-slate-800">問題說明 <span class="text-rose-600">*</span></label>
                     <textarea id="edit-description-{{ $report->public_id }}" name="description" required maxlength="10000" rows="6" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ $isEditing ? old('description') : $report->description }}</textarea>

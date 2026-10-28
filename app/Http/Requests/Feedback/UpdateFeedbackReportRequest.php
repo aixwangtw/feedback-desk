@@ -49,6 +49,9 @@ class UpdateFeedbackReportRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:160'],
             'description' => ['required', 'string', 'max:10000'],
+            'category' => StoreFeedbackReportRequest::categories() === []
+                ? ['prohibited']
+                : ['required', 'string', Rule::in(array_values(array_unique(array_filter([...StoreFeedbackReportRequest::categories(), $report?->category]))))],
             'screenshots' => ['nullable', 'array', 'max:'.self::MAX_SCREENSHOTS],
             'screenshots.*' => [
                 'required',
@@ -96,6 +99,7 @@ class UpdateFeedbackReportRequest extends FormRequest
         return [
             'title' => '問題標題',
             'description' => '問題說明',
+            'category' => '分類',
             'screenshots' => '截圖',
             'screenshots.*' => '截圖',
             'remove_attachments.*' => '要刪除的截圖',

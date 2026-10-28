@@ -1278,8 +1278,8 @@ web.post('/p/:slug/reports/:publicId/update', async (c) => {
     const configuredCategories = config(c.env).reportCategories;
     const categoryOptions = configuredCategories.length > 0 ? editCategoryOptions(configuredCategories, report.category) : [];
     const category = field(form, 'category');
-    if (categoryOptions.length > 0 && !categoryOptions.includes(category)) {
-        errors.push(category === '' ? '分類 為必填。' : '選擇的分類無效。');
+    if (categoryOptions.length > 0 && category !== '' && !categoryOptions.includes(category)) {
+        errors.push('選擇的分類無效。');
     }
     if (ids.length > MAX_SCREENSHOTS) {
         errors.push(`截圖 最多只能有 ${MAX_SCREENSHOTS} 項。`);
@@ -1304,7 +1304,7 @@ web.post('/p/:slug/reports/:publicId/update', async (c) => {
     if (errors.length > 0 || uploads === null) {
         return renderPortal(c, project, { bag: 'editReport', errors, editing: { publicId: report.public_id, title, description, category, remove: removeInput } }, 422);
     }
-    await updateReport(c.env, report, { title, description, category: categoryOptions.length > 0 ? category : undefined, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
+    await updateReport(c.env, report, { title, description, category: categoryOptions.length > 0 ? (category === '' ? null : category) : undefined, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
     access.setFlash({ success: `已更新「${title}」。` });
     return c.redirect(backUrl(c, form, paths.portal(project.slug)), 302);
 });

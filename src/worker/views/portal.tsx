@@ -390,9 +390,9 @@ export const ReportDialogs: FC<RowProps & { form?: PortalFormState }> = ({ v, ro
                     </div>
                     {v.cfg.reportCategories.length > 0 ? (
                         <div>
-                            <label for={`edit-category-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
-                            <select id={`edit-category-${report.public_id}`} name="category" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-edit-category>
-                                <option value="">請選擇分類</option>
+                            <label for={`edit-category-${report.public_id}`} class="mb-2 block text-sm font-semibold text-slate-800">分類</label>
+                            <select id={`edit-category-${report.public_id}`} name="category" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-edit-category>
+                                <option value="" selected={(editing ? editing.category ?? '' : report.category ?? '') === ''}>未分類</option>
                                 {editCategoryOptions(v.cfg.reportCategories, report.category).map((option) => (
                                     <option value={option} selected={option === (editing ? editing.category ?? '' : report.category ?? '')}>{option}</option>
                                 ))}

@@ -133,6 +133,16 @@ describe('guest client entry', () => {
         expect((await reportsOf(seeded.project.id))[0].category).toBe('程式使用問題');
     });
 
+    it('edit allows an empty category and preselects uncategorized', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        const { report } = await seedReport(seeded.project);
+        const visitor = browser();
+        expect(await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text()).toMatch(/<option value="" selected[^>]*>未分類/);
+        await env.DB.prepare('UPDATE reports SET category = ? WHERE id = ?').bind('經典排版', report.id).run();
+        expect((await visitor.post(`/p/${slug}/reports/${report.public_id}/update`, { title: 't', description: 'd', category: '' })).status).toBe(302);
+        expect((await reportsOf(seeded.project.id))[0].category).toBeNull();
+    });
+
     it('edit keeps a legacy category that is no longer configured', async () => {
         const { seeded, slug, browser } = await guestSetup();
         const { report } = await seedReport(seeded.project);

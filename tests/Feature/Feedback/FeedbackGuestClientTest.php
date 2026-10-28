@@ -222,6 +222,21 @@ class FeedbackGuestClientTest extends TestCase
         $this->assertSame('程式使用問題', $report->fresh()->category);
     }
 
+    public function test_edit_allows_empty_category_and_preselects_uncategorized(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => null, 'creator_client_account_id' => $this->account->id]);
+
+        $this->get(route('feedback.portal', $this->project))->assertSee('<option value="" selected>未分類</option>', false);
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => ''])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($report->fresh()->category);
+
+        $report->update(['category' => '經典排版']);
+        $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => ''])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($report->fresh()->category);
+    }
+
     public function test_edit_keeps_a_legacy_category_that_is_no_longer_configured(): void
     {
         $report = FeedbackReport::factory()->for($this->project)->create(['category' => '舊分類', 'creator_client_account_id' => $this->account->id]);

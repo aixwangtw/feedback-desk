@@ -51,7 +51,7 @@ class UpdateFeedbackReportRequest extends FormRequest
             'description' => ['required', 'string', 'max:10000'],
             'category' => StoreFeedbackReportRequest::categories() === []
                 ? ['prohibited']
-                : ['required', 'string', Rule::in(array_values(array_unique(array_filter([...StoreFeedbackReportRequest::categories(), $report?->category]))))],
+                : ['nullable', 'string', Rule::in(array_values(array_unique(array_filter([...StoreFeedbackReportRequest::categories(), $report?->category]))))],
             'screenshots' => ['nullable', 'array', 'max:'.self::MAX_SCREENSHOTS],
             'screenshots.*' => [
                 'required',

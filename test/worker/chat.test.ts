@@ -459,6 +459,29 @@ describe('portal default order', () => {
         expect(emptyOld.id + emptyNew.id).toBeGreaterThan(0);
     });
 
+    it('groups by status: pending first for the team, needs-input first for the client', async () => {
+        const seeded = await seedProject();
+        const base = Date.now() - 600_000;
+        await seedReport(seeded.project, { title: '甲待處理舊', at: base });
+        const { report: oldNeedsInput } = await seedReport(seeded.project, { title: '乙待審核舊', at: base + 1000 });
+        await env.DB.prepare('UPDATE reports SET status = ? WHERE id = ?').bind('needs_input', oldNeedsInput.id).run();
+        await seedReport(seeded.project, { title: '丙待處理新', at: base + 2000 });
+        const { report: newNeedsInput } = await seedReport(seeded.project, { title: '丁待審核新', at: base + 3000 });
+        await env.DB.prepare('UPDATE reports SET status = ? WHERE id = ?').bind('needs_input', newNeedsInput.id).run();
+        const { report: done } = await seedReport(seeded.project, { title: '戊已完成', at: base + 4000 });
+        await env.DB.prepare('UPDATE reports SET status = ? WHERE id = ?').bind('completed', done.id).run();
+        const titlesOf = async (browser: Browser, query = ''): Promise<string[]> => {
+            const html = await (await browser.get(`/p/${seeded.project.slug}${query}`)).text();
+            return ['甲待處理舊', '乙待審核舊', '丙待處理新', '丁待審核新', '戊已完成'].sort((a, b) => html.indexOf(`>${a}</button>`) - html.indexOf(`>${b}</button>`));
+        };
+        const owner = await new Browser().asOwner(seeded);
+        expect(await titlesOf(owner)).toEqual(['丙待處理新', '甲待處理舊', '丁待審核新', '乙待審核舊', '戊已完成']);
+        const client = await new Browser().asClient(seeded);
+        expect(await titlesOf(client)).toEqual(['丁待審核新', '乙待審核舊', '丙待處理新', '甲待處理舊', '戊已完成']);
+        // A manual sort ignores the status groups.
+        expect(await titlesOf(owner, '?sort=created_at&direction=desc')).toEqual(['戊已完成', '丁待審核新', '丙待處理新', '乙待審核舊', '甲待處理舊']);
+    });
+
     it('orders the client side by the client unread state', async () => {
         const seeded = await seedProject();
         const base = Date.now() - 600_000;

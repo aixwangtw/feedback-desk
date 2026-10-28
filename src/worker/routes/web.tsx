@@ -21,6 +21,7 @@ import {
     creatorLabel,
     deleteReport,
     conversationOrderSql,
+    statusPriorityOrderSql,
     hasUnreadMessagesSql,
     latestMessageSql,
     markRead,
@@ -594,7 +595,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
     const orderBy =
         sort === 'conversation'
-            ? conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })
+            ? `${statusPriorityOrderSql('status', isOwner)}, ${conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })}`
             : `${sort} ${direction}, id ${direction}`;
     const listSql = `WITH numbered AS (
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq${isOwner ? '' : `, ${viewerReadAtColumnSql('reports', viewer)}`} FROM reports WHERE project_id = ? ${clientOnly}

@@ -337,6 +337,16 @@ export function conversationOrderSql(columns: { unread: string; messagesCount: s
     return `${tier} DESC, ${time} DESC, ${columns.number} ASC`;
 }
 
+/**
+ * ORDER BY term for the portal's default order: pending first then needs-input on the team side,
+ * needs-input first then pending on the client side, everything else after. Goes before
+ * conversationOrderSql; the chat panel does not use it.
+ */
+export function statusPriorityOrderSql(statusColumn: string, isOwner: boolean): string {
+    const [first, second] = isOwner ? ['new', 'needs_input'] : ['needs_input', 'new'];
+    return `(CASE ${statusColumn} WHEN '${first}' THEN 2 WHEN '${second}' THEN 1 ELSE 0 END) DESC`;
+}
+
 /** Unread count (for this viewer side) and message count of one report, for its chat button. */
 export async function chatCounts(db: D1Database, report: Pick<Report, 'id'>, isOwner: boolean, viewer: ClientViewer = null): Promise<{ unread: number; messagesCount: number }> {
     const row = await db

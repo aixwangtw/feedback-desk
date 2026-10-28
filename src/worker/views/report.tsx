@@ -8,6 +8,31 @@ import { paths } from '../routes/paths';
 import { cx, ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
 import { RichText } from './rich-text';
 
+/** 已有分類不在專案清單時（例如分類改名後的舊單）仍列出，才能預選與保留。 */
+export function editCategoryOptions(categories: string[], current: string | null): string[] {
+    return current && !categories.includes(current) ? [...categories, current] : categories;
+}
+
+/** 詳細對話框與詳細頁的分類下拉：選了就存（JS），沒有 JS 時按「儲存」。 */
+export const CategoryAutosave: FC<{ slug: string; report: Report; categories: string[]; backPath: string; idPrefix: string }> = ({ slug, report, categories, backPath, idPrefix }) => {
+    const current = report.category ?? '';
+    const id = `${idPrefix}-${report.public_id}`;
+    return (
+        <form method="post" action={paths.reportCategory(slug, report.public_id)} class="flex flex-wrap items-center gap-2 text-xs" data-category-form data-report-public-id={report.public_id}>
+            <input type="hidden" name="_back" value={backPath} />
+            <label for={id} class="font-semibold text-slate-600">分類</label>
+            <select id={id} name="category" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10" data-category-autosave>
+                <option value="" selected={current === ''}>未分類</option>
+                {editCategoryOptions(categories, report.category).map((option) => (
+                    <option value={option} selected={option === current}>{option}</option>
+                ))}
+            </select>
+            <noscript><button type="submit" class="font-semibold text-teal-700">儲存</button></noscript>
+            <span class="text-[11px] empty:hidden text-slate-500" data-category-feedback aria-live="polite"></span>
+        </form>
+    );
+};
+
 /** Read-only adjustment block shared by the client and the team. */
 export const AdjustmentBlock: FC<{
     report: Report;
@@ -141,6 +166,8 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     activityEtag?: string;
     /** Who created the report (account name), shown to project members. */
     creatorLabel?: string;
+    /** 專案的開單分類；空陣列表示不分類。 */
+    categories?: string[];
     /** Team side only: who is working on it, handoff notes and recent activity. */
     work?: WorkState;
     /** Signed in with a personal team account (claims need a name; the shared owner link has none). */
@@ -299,7 +326,11 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     ) : null}
                                     {report.title}
                                 </h1>
-                                {report.category ? (
+                                {(props.categories ?? []).length > 0 && props.canManage && !isPublicReporter ? (
+                                    <div class="mt-2">
+                                        <CategoryAutosave slug={slug} report={report} categories={props.categories ?? []} backPath={paths.report(slug, report.public_id)} idPrefix="page-category" />
+                                    </div>
+                                ) : report.category ? (
                                     <p class="mt-1 text-xs text-slate-500" data-report-category>
                                         分類：<span class="font-semibold text-teal-700">{report.category}</span>
                                     </p>
@@ -319,11 +350,6 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </div>
 
                         <div class="mt-5" data-report-description><RichText text={report.description} /></div>
-                        {props.creatorLabel && !isPublicReporter ? (
-                            <p class="mt-3 text-xs text-slate-500" data-report-creator>
-                                建立者：{props.creatorLabel}
-                            </p>
-                        ) : null}
 
                         {props.attachments.length > 0 ? (
                             <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -381,6 +407,11 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                 </details>
                             ) : null}
                         </section>
+                    ) : null}
+                    {props.creatorLabel && !isPublicReporter ? (
+                        <p class="-mt-3 px-1 text-xs text-slate-500" data-report-creator>
+                            建立者：{props.creatorLabel}
+                        </p>
                     ) : null}
 
                     <section id="conversation" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>

@@ -45,7 +45,7 @@ describe('guest client entry', () => {
         expect(report.creator_client_account_id).toBe(account.id);
         expect(report.category).toBe('經典排版');
         const page = await (await visitor.get(`/p/${slug}/reports/${report.public_id}`)).text();
-        expect(page).toContain('data-report-category');
+        expect(page).toMatch(/data-category-autosave[\s\S]*<option value="經典排版" selected/);
         expect(page).toContain('張子元');
     });
 
@@ -155,13 +155,27 @@ describe('guest client entry', () => {
         expect((await reportsOf(seeded.project.id))[0].category).toBe('舊分類');
     });
 
-    it('shows the creator after the description in the detail dialog and page', async () => {
+    it('shows the creator after the adjustment note in the detail dialog and page', async () => {
         const { seeded, slug, browser } = await guestSetup();
         const { report } = await seedReport(seeded.project);
-        await env.DB.prepare('UPDATE reports SET description = ? WHERE id = ?').bind('說明內文XYZ', report.id).run();
+        await env.DB.prepare('UPDATE reports SET description = ?, adjustment_note = ? WHERE id = ?').bind('說明內文XYZ', '調整內文ABC', report.id).run();
         const visitor = browser();
         for (const html of [await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text(), await (await visitor.get(`/p/${slug}/reports/${report.public_id}`)).text()]) {
-            expect(html.indexOf('建立者：')).toBeGreaterThan(html.indexOf('說明內文XYZ'));
+            expect(html.indexOf('調整內文ABC')).toBeGreaterThan(html.indexOf('說明內文XYZ'));
+            expect(html.indexOf('建立者：')).toBeGreaterThan(html.indexOf('調整內文ABC'));
         }
+    });
+
+    it('orders list columns as title, status, category, images, adjustment, creator, dates, actions', async () => {
+        const { seeded, slug, browser } = await guestSetup();
+        await seedReport(seeded.project);
+        const html = await (await browser().get(`/p/${slug}`)).text();
+        const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+        const order = ['標題', '狀態', '分類', '圖片', '調整說明', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
+        expect(order.every((index) => index >= 0)).toBe(true);
+        expect([...order].sort((a, b) => a - b)).toEqual(order);
+        const row = html.slice(html.indexOf('data-report-row='));
+        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('調整說明：'));
+        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('data-report-category'));
     });
 });

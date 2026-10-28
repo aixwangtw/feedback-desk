@@ -86,7 +86,6 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     }
     html += '</td>';
     html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'min-w-0 flex-1 sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs')}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
-    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
     if (ctx.showCategory) {
         html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${esc(report.category || '未分類')}</td>`;
     }
@@ -114,6 +113,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
         html += '<span class="text-xs text-slate-400">—</span>';
     }
     html += '</td>';
+    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
     html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><div class="flex flex-wrap gap-2 sm:justify-center"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
@@ -137,7 +137,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const url = (attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}" title="拖拉卡片可改變狀態">`;
-    html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator="true">· ${esc(row.creatorLabel)}</span></p>`;
+    html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span></p>`;
     html += `<button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button></div>`;
     html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${chatButtonHtml(isOwner, report.public_id, report.title, row)}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {
@@ -166,6 +166,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         }
         html += '</div>';
     }
+    html += `<p class="mt-3 text-xs text-slate-500" data-report-creator="true">建立者：${esc(row.creatorLabel)}</p>`;
     html += `<p class="mt-3 text-xs text-slate-500">更新於 ${time(v, report.latest_activity_at, true)}</p>`;
     html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form="true">${back}<label for="board-status-${id}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>${statusSelect(`board-status-${report.public_id}`, report.status, 'w-full !px-2 !py-1.5 !text-xs')}<noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="min-h-4 text-[11px] text-slate-500" data-status-feedback="true" aria-live="polite"></span></form>`;
     html += '</article>';

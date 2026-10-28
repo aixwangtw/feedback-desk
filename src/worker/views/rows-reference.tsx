@@ -58,7 +58,6 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
                 </form>
             </td>
-            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
             {showCategory ? (
                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{report.category || '未分類'}</td>
             ) : null}
@@ -92,6 +91,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     <span class="text-xs text-slate-400">—</span>
                 )}
             </td>
+            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><Time v={v} at={report.created_at} /></td>
             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><Time v={v} at={report.latest_activity_at} relative /></td>
             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
@@ -124,7 +124,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
         <article class={cx('cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)} title="拖拉卡片可改變狀態">
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
-                    <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {row.creatorLabel}</span></p>
+                    <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span></p>
                     <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>
@@ -174,6 +174,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
                 </div>
             ) : null}
 
+            <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p>
             <p class="mt-3 text-xs text-slate-500">更新於 <Time v={v} at={report.latest_activity_at} relative /></p>
             <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
 <input type="hidden" name="_back" value={backPath} />

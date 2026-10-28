@@ -616,3 +616,57 @@ function updateStatusSummary(counts) {
         count.textContent = String(counts[count.dataset.kanbanTotalCount] ?? 0);
     });
 }
+
+// 詳細對話框與詳細頁的分類下拉：選了就存，失敗時回到原值並顯示中文說明。
+const CATEGORY_ERROR_MESSAGES = {
+    401: '登入已過期，請重新登入後再試。',
+    403: '你沒有權限修改這張單的分類。',
+    404: '找不到這張單，可能已被刪除，請重新整理頁面。',
+    419: '頁面已過期，請重新整理後再試。',
+    429: '操作太頻繁，請稍等一下再試。',
+};
+
+document.addEventListener('focusin', (event) => {
+    const select = event.target.closest?.('[data-category-autosave]');
+    if (select && select.dataset.savedValue === undefined) {
+        select.dataset.savedValue = select.value;
+    }
+});
+
+document.addEventListener('change', async (event) => {
+    const select = event.target.closest?.('[data-category-autosave]');
+    if (!select) {
+        return;
+    }
+    const form = select.form;
+    const feedback = form?.querySelector('[data-category-feedback]');
+    const savedValue = select.dataset.savedValue ?? '';
+    const body = new URLSearchParams(new FormData(form));
+    select.disabled = true;
+    if (feedback) feedback.textContent = '儲存中…';
+    try {
+        const response = await fetch(form.action, {
+            method: 'PATCH',
+            body,
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.message || CATEGORY_ERROR_MESSAGES[response.status] || '儲存失敗，請重新整理後再試。');
+        }
+        select.dataset.savedValue = result.category ?? '';
+        if (feedback) feedback.textContent = '已儲存';
+        const publicId = form.dataset.reportPublicId;
+        document.querySelectorAll(`[data-report-row="${CSS.escape(publicId)}"] [data-report-category]`).forEach((cell) => {
+            const label = cell.querySelector('span');
+            cell.textContent = '';
+            if (label) cell.append(label);
+            cell.append(result.category || '未分類');
+        });
+    } catch (error) {
+        select.value = savedValue;
+        if (feedback) feedback.textContent = error instanceof Error && /[一-鿿]/.test(error.message) ? error.message : '儲存失敗，請檢查網路後再試。';
+    } finally {
+        select.disabled = false;
+    }
+});

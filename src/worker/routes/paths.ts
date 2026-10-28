@@ -23,6 +23,7 @@ export const paths = {
     reportClientDestroy: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/client-delete`,
     reportRestore: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/restore`,
     reportStatus: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/status`,
+    reportCategory: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/category`,
     reportDialogs: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/dialogs`,
     reportActivity: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/activity`,
     reportMessages: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/messages`,

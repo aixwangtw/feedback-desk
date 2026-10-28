@@ -954,6 +954,7 @@ async function renderReport(
             privateReportUrl={flash.private_report_url}
             activityEtag={activityEtag(report, viewerKey(isOwner, await access.clientViewer(project)), c.get('now'))}
             creatorLabel={await reportCreatorLabel(c, project, report)}
+            categories={projectCategories(project)}
             work={work}
             canClaim={developer !== null}
             {...extra}
@@ -1349,6 +1350,45 @@ web.post('/p/:slug/reports/:publicId/restore', async (c) => {
     await setClientDeleted(c.env, report, false, c.get('now'));
     access.setFlash({ success: `已還原「${report.title}」，${config(c.env).labels.client}端會重新看到。` });
     return c.redirect(backUrl(c, form, paths.portal(project.slug)), 302);
+});
+
+/** 詳細對話框與詳細頁的分類下拉：選了就存。權限同編輯回報單。 */
+web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/category', async (c) => {
+    await throttle(c, 'reports-update', 30);
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    if (!(await access.reportVisible(project, report))) {
+        abort(404);
+    }
+    const form = await readForm(c);
+    const back = backUrl(c, form, paths.report(project.slug, report.public_id));
+    const categories = projectCategories(project);
+    const category = field(form, 'category');
+    const problem =
+        categories.length === 0
+            ? '這個專案沒有設定分類。'
+            : category !== '' && !editCategoryOptions(categories, report.category).includes(category)
+              ? '這個分類不在專案的分類清單裡，請重新整理後再選。'
+              : null;
+    if (problem !== null) {
+        if (wantsJson(c)) {
+            return c.json({ message: problem, errors: { category: [problem] } }, 422);
+        }
+        access.setFlash({ success: problem });
+        return c.redirect(back, 302);
+    }
+    const value = category === '' ? null : category;
+    await c.env.DB.prepare('UPDATE reports SET category = ?, updated_at = ? WHERE id = ?').bind(value, nowIso(c.get('now')), report.id).run();
+    const message = value === null ? '已改為未分類。' : `分類已改為「${value}」。`;
+    if (wantsJson(c)) {
+        return c.json({ category: value, message });
+    }
+    access.setFlash({ success: message });
+    return c.redirect(back, 302);
 });
 
 web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/status', async (c) => {

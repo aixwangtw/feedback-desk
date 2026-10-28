@@ -3,7 +3,7 @@ import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../
 import type { Attachment, Project, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { ChatButton, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
-import { AdjustmentBlock } from './report';
+import { AdjustmentBlock, CategoryAutosave, editCategoryOptions } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
@@ -268,10 +268,10 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
                                     {sortHeader('title', '標題', 'whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
-                                    <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                                     {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
                                     <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
                                     <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
+                                    <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                                     {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
                                     {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-28 px-4 py-3.5 text-center')}
                                     <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
@@ -349,11 +349,15 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                         <div class="min-w-0">
                             <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}</p>
                             <h2 id={`detail-report-title-${report.public_id}`} class="mt-1 break-words text-lg font-bold text-slate-950">{report.title}</h2>
+                            {categories.length > 0 ? (
+                                <div class="mt-2">
+                                    <CategoryAutosave slug={slug} report={report} categories={categories} backPath={backPath} idPrefix="detail-category" />
+                                </div>
+                            ) : null}
                         </div>
                         <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
                     </div>
                     <div data-report-description><RichText text={report.description} compact /></div>
-                    {row.creatorLabel ? <p class="text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p> : null}
                     {row.attachments.length > 0 ? (
                         <div class="flex flex-wrap gap-2">
                             {row.attachments.map((attachment) => (
@@ -366,6 +370,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                             <AdjustmentBlock report={report} adjustmentAttachments={row.adjustmentAttachments} attachmentUrl={(attachment) => attachmentUrl(report, attachment)} compact />
                         </div>
                     ) : null}
+                    {row.creatorLabel ? <p class="text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p> : null}
                     <p class="text-xs text-slate-500">建立：<Time v={v} at={report.created_at} />　最後更新：<Time v={v} at={report.latest_activity_at} /></p>
                     {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{v.cfg.labels.owner}。</p>}
                     <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
@@ -550,6 +555,4 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
 };
 
 /** 編輯時可選的分類：設定的分類，加上這張單原本、已不在設定裡的舊分類，避免存檔時遺失。 */
-export function editCategoryOptions(categories: string[], current: string | null): string[] {
-    return current && !categories.includes(current) ? [...categories, current] : categories;
-}
+export { editCategoryOptions };

@@ -114,4 +114,40 @@ describe('per-project report categories', () => {
         expect(await categoriesOf(a.project.id)).toBeNull();
         expect((await api('GET', '/projects/no-such-project/categories', token)).status).toBe(404);
     });
+
+    it('detail dialog and page switch the category directly with JSON responses', async () => {
+        const { seeded, slug, owner, client } = await setup();
+        await owner.post(`/p/${slug}/settings/categories`, { categories: '程式問題,排版' });
+        const { report } = await seedReport(seeded.project);
+        await env.DB.prepare('UPDATE reports SET category = ? WHERE id = ?').bind('舊分類', report.id).run();
+        const dialogs = await (await client.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialogs).toContain(`id="detail-category-${report.public_id}"`);
+        expect(dialogs).toMatch(/data-category-autosave[\s\S]*<option value="舊分類" selected/);
+        const page = await (await client.get(`/p/${slug}/reports/${report.public_id}`)).text();
+        expect(page).toContain(`id="page-category-${report.public_id}"`);
+
+        const path = `/p/${slug}/reports/${report.public_id}/category`;
+        const json = { accept: 'application/json' };
+        const patch = (browser: Browser, category: string) => browser.request('PATCH', path, { body: new URLSearchParams({ category }), headers: { ...json, 'content-type': 'application/x-www-form-urlencoded' } });
+        const category = async () => ((await env.DB.prepare('SELECT * FROM reports WHERE id = ?').bind(report.id).first<Report>()) as Report).category;
+
+        const bad = await patch(client, '亂填');
+        expect(bad.status).toBe(422);
+        expect((await bad.json<{ message: string }>()).message).toBe('這個分類不在專案的分類清單裡，請重新整理後再選。');
+        expect(await category()).toBe('舊分類');
+
+        const ok = await patch(client, '排版');
+        expect(ok.status).toBe(200);
+        expect(await ok.json()).toMatchObject({ category: '排版' });
+        expect(await category()).toBe('排版');
+        expect((await patch(owner, '')).status).toBe(200);
+        expect(await category()).toBeNull();
+
+        expect((await patch(new Browser(), '排版')).status).toBe(403);
+        await owner.post(`/p/${slug}/settings/categories`, { categories: '' });
+        const none = await patch(owner, '排版');
+        expect(none.status).toBe(422);
+        expect((await none.json<{ message: string }>()).message).toBe('這個專案沒有設定分類。');
+        expect(await (await owner.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text()).not.toContain('data-category-autosave');
+    });
 });

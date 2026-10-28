@@ -152,7 +152,7 @@ class FeedbackPortalController extends Controller
     }
 
     /**
-     * 預設排序：先取篩選後每張單的未讀與留言統計，用對話面板的規則排好，再只載入這一頁的完整資料。
+     * 預設排序：先依狀態分組，再用對話面板的規則排序；先取篩選後每張單的未讀與留言統計，用對話面板的規則排好，再只載入這一頁的完整資料。
      *
      * @param  Closure(array<int, string>=): HasMany<FeedbackReport, FeedbackProject>  $filteredReports  篩選後的單（含留言統計），參數為要取的欄位
      * @param  Closure(HasMany<FeedbackReport, FeedbackProject>): HasMany<FeedbackReport, FeedbackProject>  $withListRelations
@@ -161,10 +161,10 @@ class FeedbackPortalController extends Controller
      */
     private function paginateInConversationOrder(Closure $filteredReports, Closure $withListRelations, array $sequenceNumbers, bool $isOwner): LengthAwarePaginator
     {
-        $orderedIds = $filteredReports(['feedback_reports.id', 'feedback_reports.created_at', 'feedback_reports.client_last_read_at', 'feedback_reports.adjustment_updated_at'])
+        $orderedIds = $filteredReports(['feedback_reports.id', 'feedback_reports.created_at', 'feedback_reports.status', 'feedback_reports.client_last_read_at', 'feedback_reports.adjustment_updated_at'])
             ->get()
-            ->sort(fn (FeedbackReport $a, FeedbackReport $b): int => $b->conversationSortKeyFor($isOwner, ($sequenceNumbers[$b->id] ?? 0) + 1)
-                <=> $a->conversationSortKeyFor($isOwner, ($sequenceNumbers[$a->id] ?? 0) + 1))
+            ->sort(fn (FeedbackReport $a, FeedbackReport $b): int => $this->defaultSortKey($b, $sequenceNumbers, $isOwner)
+                <=> $this->defaultSortKey($a, $sequenceNumbers, $isOwner))
             ->pluck('id')
             ->values();
 
@@ -181,6 +181,23 @@ class FeedbackPortalController extends Controller
         return (new LengthAwarePaginator($pageReports, $orderedIds->count(), self::PER_PAGE, $page, [
             'path' => Paginator::resolveCurrentPath(),
         ]))->withQueryString();
+    }
+
+    /**
+     * 預設排序鍵：先依狀態分組（開發者端待處理最上、待審核其次；業主端相反，其餘在後），組內照對話面板的規則。
+     *
+     * @param  array<int, int>  $sequenceNumbers  report id => 從 0 起算的編號索引
+     * @return array{0: int, 1: array{0: int, 1: int, 2: int}}
+     */
+    private function defaultSortKey(FeedbackReport $report, array $sequenceNumbers, bool $isOwner): array
+    {
+        $statusRank = match ($report->status) {
+            FeedbackReportStatus::New => $isOwner ? 2 : 1,
+            FeedbackReportStatus::NeedsInput => $isOwner ? 1 : 2,
+            default => 0,
+        };
+
+        return [$statusRank, $report->conversationSortKeyFor($isOwner, ($sequenceNumbers[$report->id] ?? 0) + 1)];
     }
 
     /**

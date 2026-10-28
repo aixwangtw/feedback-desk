@@ -163,6 +163,48 @@ class FeedbackPortalDefaultSortTest extends TestCase
         $this->assertSame(['沒留言 50'], $this->listTitles($this->get(route('feedback.portal', [$this->project, 'page' => 2]))->getContent()));
     }
 
+    public function test_owner_default_puts_pending_first_then_needs_input_then_completed(): void
+    {
+        $this->seedStatusScenario();
+        $this->actingAsOwner();
+
+        $this->assertSame(
+            ['待處理新', '待處理舊', '待審核新', '待審核舊', '已完成新'],
+            $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()),
+        );
+    }
+
+    public function test_client_default_puts_needs_input_first_then_pending_then_completed(): void
+    {
+        $this->seedStatusScenario();
+        $this->actingAsClient();
+
+        $this->assertSame(
+            ['待審核新', '待審核舊', '待處理新', '待處理舊', '已完成新'],
+            $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()),
+        );
+    }
+
+    public function test_manual_sort_ignores_status_groups(): void
+    {
+        $this->seedStatusScenario();
+        $this->actingAsOwner();
+
+        $this->assertSame(
+            ['已完成新', '待審核新', '待處理新', '待審核舊', '待處理舊'],
+            $this->listTitles($this->get(route('feedback.portal', [$this->project, 'sort' => 'created_at', 'direction' => 'desc']))->getContent()),
+        );
+    }
+
+    private function seedStatusScenario(): void
+    {
+        $this->report('待處理舊', now()->subDays(5));
+        $this->report('待審核舊', now()->subDays(4), ['status' => FeedbackReportStatus::NeedsInput]);
+        $this->report('待處理新', now()->subDays(3));
+        $this->report('待審核新', now()->subDays(2), ['status' => FeedbackReportStatus::NeedsInput]);
+        $this->report('已完成新', now()->subDay(), ['status' => FeedbackReportStatus::Completed]);
+    }
+
     /**
      * @return array<string, FeedbackReport>
      */

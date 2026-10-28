@@ -154,4 +154,28 @@ class FeedbackProjectCategoriesTest extends TestCase
         $other = FeedbackProject::factory()->create(['report_categories' => ['其他']]);
         $this->patchJson(route('feedback.reports.category.update', [$other, $report]), ['category' => '其他'])->assertNotFound();
     }
+
+    public function test_list_rows_and_board_cards_show_a_category_dropdown(): void
+    {
+        $this->project->update(['report_categories' => ['版面排版', '其他']]);
+        $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版']);
+        $this->loginDeveloper();
+
+        $list = $this->get(route('feedback.portal', $this->project))->getContent();
+        $row = substr($list, strpos($list, 'data-report-category-cell'));
+        $row = substr($row, 0, strpos($row, '</td>'));
+        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-row"', $row);
+        $this->assertStringContainsString('<option value="經典排版" selected>', $row);
+        $this->assertStringContainsString('未分類', $row);
+
+        $board = $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->getContent();
+        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-card"', $board);
+        $card = substr($board, strpos($board, 'data-report-id="'.$report->public_id.'"'));
+        $card = substr($card, 0, strpos($card, '</article>'));
+        $this->assertLessThan(strpos($card, 'data-report-creator'), strpos($card, 'data-report-number'));
+        $this->assertStringContainsString('建立者：', $card);
+
+        $this->project->update(['report_categories' => null]);
+        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-category-quick', false);
+    }
 }

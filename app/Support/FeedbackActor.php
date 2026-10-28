@@ -41,6 +41,15 @@ final readonly class FeedbackActor
 
     public function label(): string
     {
-        return FeedbackAgentName::label($this->name, $this->agent);
+        return FeedbackAgentName::label($this->name, $this->agent, $this->isDeveloperSide());
+    }
+
+    /**
+     * 開發者端：個人開發者帳號或共用 owner「開發者」。標籤不顯示 AI 工具名稱。
+     */
+    public function isDeveloperSide(): bool
+    {
+        return $this->clientAccount === null
+            && ($this->developer !== null || ($this->isTeam && $this->name === (string) config('feedback.labels.owner')));
     }
 }

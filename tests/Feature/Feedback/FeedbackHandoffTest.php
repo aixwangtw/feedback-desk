@@ -69,7 +69,7 @@ class FeedbackHandoffTest extends TestCase
     public function test_artisan_claim_records_the_account_and_agent_and_blocks_others_without_force(): void
     {
         $this->artisan('feedback:claim', ['project' => 'site', 'report' => $this->report->public_id, '--as' => 'amy', '--agent' => 'Codex'])
-            ->expectsOutputToContain('王小明（Codex）')
+            ->expectsOutputToContain('王小明')
             ->assertSuccessful();
         $this->report->refresh();
         $this->assertSame($this->amy->id, $this->report->claimed_by_developer_id);
@@ -77,7 +77,7 @@ class FeedbackHandoffTest extends TestCase
 
         // 別人（或同一人換另一個 AI）要改狀態、寫調整說明，沒加 --force 就停下。
         $this->artisan('feedback:status', ['project' => 'site', 'report' => $this->report->public_id, 'status' => 'needs_input', '--as' => 'ben'])
-            ->expectsOutputToContain('王小明（Codex）')
+            ->expectsOutputToContain('王小明')
             ->assertFailed();
         $this->artisan('feedback:adjust', ['project' => 'site', 'report' => $this->report->public_id, '--note' => '改好了', '--as' => 'amy', '--agent' => 'Claude Code'])
             ->assertFailed();
@@ -93,7 +93,7 @@ class FeedbackHandoffTest extends TestCase
         $this->assertSame(FeedbackReportStatus::NeedsInput, $this->report->status);
         $this->assertSame($this->ben->id, $this->report->claimed_by_developer_id);
         $this->assertSame(['claim', 'adjustment', 'takeover', 'status'], $this->report->events()->orderBy('id')->pluck('kind')->all());
-        $this->assertSame('王小明（Codex）', $this->report->events()->where('kind', 'takeover')->value('detail'));
+        $this->assertSame('王小明', $this->report->events()->where('kind', 'takeover')->value('detail'));
     }
 
     public function test_handoff_and_release_through_artisan_and_report_output(): void
@@ -112,7 +112,7 @@ class FeedbackHandoffTest extends TestCase
         Artisan::call('feedback:report', ['project' => 'site', 'report' => $this->report->public_id, '--json' => true]);
         $data = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
         $this->assertNull($data['claim']);
-        $this->assertSame('王小明（Hermes Agent）', $data['handoff_notes'][0]['author']);
+        $this->assertSame('王小明', $data['handoff_notes'][0]['author']);
         $this->assertSame('列表頁改好，下一步改手機版', $data['handoff_notes'][0]['note']);
         $this->assertSame(['release', 'handoff', 'claim'], array_column($data['recent_activity'], 'kind'));
 
@@ -128,7 +128,7 @@ class FeedbackHandoffTest extends TestCase
 
         Artisan::call('feedback:reports', ['project' => 'site', '--json' => true]);
         $rows = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('王小明（Codex）', $rows[0]['claimed_by']);
+        $this->assertSame('王小明', $rows[0]['claimed_by']);
     }
 
     public function test_the_web_page_offers_claim_release_takeover_and_handoff_to_personal_team_accounts(): void

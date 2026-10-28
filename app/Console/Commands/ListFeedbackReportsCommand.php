@@ -90,7 +90,7 @@ class ListFeedbackReportsCommand extends Command
             'status_label' => $report->status->label(),
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
-            'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent) : null,
+            'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent, true) : null,
             'title' => $report->title,
             'messages_count' => $report->feedback_messages_count,
             'unread_messages_count' => $report->unread_messages_count,

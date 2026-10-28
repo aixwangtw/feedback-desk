@@ -48,7 +48,11 @@ class FeedbackMessage extends Model
                 ?? ($this->author_developer_id !== null ? $this->authorDeveloper?->name : null);
         $name ??= filled($this->author_name) ? $this->author_name : $this->author_type->label();
 
-        return FeedbackAgentName::label($name, $isPublic && ! $viewerIsOwner ? null : $this->author_agent);
+        return FeedbackAgentName::label(
+            $name,
+            $isPublic && ! $viewerIsOwner ? null : $this->author_agent,
+            $this->author_client_account_id === null && ($this->author_developer_id !== null || $this->author_type === FeedbackAuthorType::Owner),
+        );
     }
 
     /** @return HasMany<FeedbackAttachment, $this> */

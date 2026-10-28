@@ -253,7 +253,7 @@ class FeedbackMcpTools
                 'status_label' => $report->status->label(),
                 'creator_type' => $report->creator_type->value,
                 'creator' => $report->isPublicReport() ? '公開回報' : $report->creatorLabel(),
-                'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent) : null,
+                'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent, true) : null,
                 'source' => $report->isPublicReport() ? 'public_stranger' : 'project_member',
                 'messages_count' => (int) $report->feedback_messages_count,
                 'unread_messages_count' => (int) $report->unread_messages_count,

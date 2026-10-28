@@ -204,11 +204,15 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 清單、單頁與對話面板顯示的建立者：帳號目前的名字，用 AI 開的單加上工具名稱，例如「王小明（Codex）」。
+     * 清單、單頁與對話面板顯示的建立者：帳號目前的名字，客戶用 AI 開的單加上工具名稱，例如「王小明（Codex）」；開發者端只顯示名字。
      */
     public function creatorLabel(): string
     {
-        return FeedbackAgentName::label($this->creatorName(), $this->creator_type === FeedbackCreatorType::Public ? null : $this->creator_agent);
+        return FeedbackAgentName::label(
+            $this->creatorName(),
+            $this->creator_type === FeedbackCreatorType::Public ? null : $this->creator_agent,
+            in_array($this->creator_type, [FeedbackCreatorType::Developer, FeedbackCreatorType::OwnerShared], true),
+        );
     }
 
     private function creatorName(): string

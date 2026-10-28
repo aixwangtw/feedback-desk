@@ -175,7 +175,7 @@ class FeedbackReportWork
                 ->limit(self::HANDOFF_NOTES_SHOWN)
                 ->get()
                 ->map(fn (FeedbackHandoffNote $note): array => [
-                    'author' => FeedbackAgentName::label($note->feedbackDeveloper?->name ?? $note->author_name, $note->agent),
+                    'author' => FeedbackAgentName::label($note->feedbackDeveloper?->name ?? $note->author_name, $note->agent, true),
                     'created_at' => $note->created_at,
                     'note' => $note->body,
                 ])
@@ -188,7 +188,7 @@ class FeedbackReportWork
                 ->map(fn (FeedbackReportEvent $event): array => [
                     'kind' => $event->kind,
                     'label' => FeedbackReportEvent::LABELS[$event->kind] ?? $event->kind,
-                    'by' => FeedbackAgentName::label($event->feedbackDeveloper?->name ?? $event->feedbackClientAccount?->name ?? $event->actor_name, $event->agent),
+                    'by' => FeedbackAgentName::label($event->feedbackDeveloper?->name ?? $event->feedbackClientAccount?->name ?? $event->actor_name, $event->agent, $event->feedback_client_account_id === null && ($event->feedback_developer_id !== null || $event->actor_name === (string) config('feedback.labels.owner'))),
                     'detail' => $event->detail,
                     'at' => $event->created_at,
                 ])

@@ -467,7 +467,13 @@ document.querySelectorAll('[data-category-quick]').forEach((select) => {
                 const detail = response.status === 422 ? Object.values(result.errors ?? {}).flat()[0] : null;
                 throw new Error(detail ?? messages[response.status] ?? '分類儲存失敗，請重新整理後再試。');
             }
-            select.dataset.savedValue = result.category ?? '';
+            document.querySelectorAll('[data-category-quick-form]').forEach((other) => {
+                const otherSelect = other.querySelector('[data-category-quick]');
+                if (other.action === form.action && otherSelect) {
+                    otherSelect.value = result.category ?? '';
+                    otherSelect.dataset.savedValue = result.category ?? '';
+                }
+            });
             feedback.textContent = '已儲存';
         } catch (error) {
             select.value = savedValue;

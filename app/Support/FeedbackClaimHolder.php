@@ -18,7 +18,7 @@ final readonly class FeedbackClaimHolder
 
     public function label(): string
     {
-        return FeedbackAgentName::label($this->name, $this->agent);
+        return FeedbackAgentName::label($this->name, $this->agent, true);
     }
 
     /**

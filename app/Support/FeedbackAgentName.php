@@ -49,11 +49,17 @@ class FeedbackAgentName
     }
 
     /**
-     * 「王小明（Codex）」；人在網頁上做的只顯示名字。
+     * 客戶端帳號用 AI 做的事顯示「王小明（Codex）」；人在網頁上做的只顯示名字。
+     * 開發者端（共用 owner「開發者」與個人開發者帳號）一律只顯示名字，不加 AI 工具標示；
+     * 資料庫仍照存 agent 欄位。
      */
-    public static function label(string $name, ?string $agent): string
+    public static function label(string $name, ?string $agent, bool $isDeveloperSide = false): string
     {
-        return $agent !== null && $agent !== '' ? "{$name}（{$agent}）" : $name;
+        if ($isDeveloperSide || $agent === null || $agent === '') {
+            return $name;
+        }
+
+        return "{$name}（{$agent}）";
     }
 
     /**

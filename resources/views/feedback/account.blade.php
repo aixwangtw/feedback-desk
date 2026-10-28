@@ -75,7 +75,7 @@
             <section id="tokens" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" data-token-section>
                 <h2 class="text-lg font-bold text-slate-950">AI 工具連線（MCP）</h2>
                 <p class="mt-1 text-sm leading-6 text-slate-600">
-                    給 Claude Code、Codex 或其他支援 MCP 的 AI 工具用。AI 做的事會記在你名下，畫面顯示「{{ $account->name }}（工具名稱）」。
+                    給 Claude Code、Codex 或其他支援 MCP 的 AI 工具用。AI 做的事會記在你名下，{{ $isDeveloper ? '畫面只顯示「'.$account->name.'」。' : '畫面顯示「'.$account->name.'（工具名稱）」。' }}
                     {{ $isDeveloper ? '團隊帳號可以處理所有專案的單。' : '客戶帳號只能看這個專案的單、開單與留言。' }}
                 </p>
                 @if ($newToken)

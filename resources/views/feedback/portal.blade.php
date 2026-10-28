@@ -216,7 +216,7 @@
                                 </form>
                             </td>
                             @if ($reportCategories !== [])
-                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{{ filled($report->category) ? $report->category : '未分類' }}</td>
+                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
                             @endif
                             <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
                                 @if ($report->feedbackAttachments->isNotEmpty())
@@ -300,7 +300,8 @@
                                     <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span><span class="ml-1.5 font-semibold text-slate-400" data-report-creator>· {{ $report->creatorLabel() }}</span>@if (filled($report->category))<span class="ml-1.5 font-semibold text-teal-700" data-report-category>· {{ $report->category }}</span>@endif</p>
+                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
+                                                <x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="mt-1" data-suffix="-card" data-card-action />
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
@@ -361,7 +362,8 @@
                                             </div>
                                         @endif
 
-                                        <p class="mt-3 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
+                                        <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
+                                        <p class="mt-1 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
                                         <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
                                             @csrf
                                             @method('PATCH')

@@ -102,7 +102,7 @@ class FeedbackMcpTest extends TestCase
         $this->assertArrayNotHasKey('title', $listed['reports'][0]);
         $this->assertSame('林小美', $listed['reports'][0]['creator']);
 
-        $this->assertSame('王小明（Codex）', $this->tool($codex, 'claim_report', ['project' => 'site', 'report' => $report->public_id])['claimed_by']);
+        $this->assertSame('王小明', $this->tool($codex, 'claim_report', ['project' => 'site', 'report' => $report->public_id])['claimed_by']);
 
         // 同一個人換另一個 AI 也要 force。
         $blocked = $this->callTool($claude, 'set_status', ['project' => 'site', 'report' => $report->public_id, 'status' => 'needs_input']);
@@ -119,7 +119,7 @@ class FeedbackMcpTest extends TestCase
         $this->assertSame($this->amy->id, FeedbackAttachment::query()->where('kind', FeedbackAttachmentKind::Adjustment->value)->value('uploader_developer_id'));
 
         $status = $this->tool($claude, 'set_status', ['project' => 'site', 'report' => $report->public_id, 'status' => '待審核', 'force' => true]);
-        $this->assertStringContainsString('王小明（Codex）', $status['took_over_from']);
+        $this->assertStringContainsString('王小明', $status['took_over_from']);
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
 
         $this->tool($claude, 'add_message', ['project' => 'site', 'report' => $report->public_id, 'body' => '請確認']);
@@ -128,14 +128,14 @@ class FeedbackMcpTest extends TestCase
         $this->tool($claude, 'write_handoff', ['project' => 'site', 'report' => $report->public_id, 'note' => '等客戶確認', 'release' => true]);
         $read = $this->tool($claude, 'get_report', ['project' => 'site', 'report' => '1']);
         $this->assertNull($read['claim']);
-        $this->assertSame('王小明（Claude Code）', $read['handoff_notes'][0]['author']);
+        $this->assertSame('王小明', $read['handoff_notes'][0]['author']);
         $this->assertSame(['release', 'handoff', 'message', 'status', 'takeover', 'adjustment', 'claim'], array_column($read['recent_activity'], 'kind'));
-        $this->assertSame('王小明（Claude Code）', $read['untrusted_content']['messages'][0]['author']);
+        $this->assertSame('王小明', $read['untrusted_content']['messages'][0]['author']);
         $this->assertStringContainsString('/download?expires=', $read['adjustment_attachments'][0]['url']);
 
         // 網頁上顯示「名字（AI）」。
         $this->withSession(["feedback.owner.{$this->project->id}" => true]);
-        $this->get(route('feedback.reports.show', [$this->project, $report]))->assertSee('王小明（Claude Code）');
+        $this->get(route('feedback.reports.show', [$this->project, $report]))->assertSee('王小明');
     }
 
     public function test_signed_attachment_urls_work_without_login_and_expire(): void

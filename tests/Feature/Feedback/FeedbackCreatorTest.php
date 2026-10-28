@@ -163,8 +163,8 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
-            ->assertSee('data-report-creator>· Dev A<', false)
-            ->assertSee('data-report-creator>· 示範客戶<', false);
+            ->assertSee('data-report-creator>建立者：Dev A<', false)
+            ->assertSee('data-report-creator>建立者：示範客戶<', false);
     }
 
     public function test_creator_filter_narrows_the_list_and_survives_paging_sorting_and_view_switch(): void

@@ -22,7 +22,7 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 - 留言對話面板：登入後右下角的對話按鈕可集中查看每張單的留言、搜尋、直接回覆並附圖，開啟即標為已讀；手機上全螢幕顯示。
 - 開發團隊自己建的單，客戶看不到；客戶刪除的單只是隱藏，開發團隊看得到也能還原。
 - 每人一個帳號：同一個專案可以開多個客戶帳號，單、留言、附件都記錄是誰寫的，清單、單頁與對話面板顯示建立者名字，未讀也是每個人各自計算。每個人（團隊與客戶）都能在「我的帳號」改自己的顯示名稱與密碼。
-- 多人、多個 AI 接手：開單、留言、調整說明、改狀態都記錄帳號與 AI 工具，畫面顯示「王小明（Codex）」。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
+- 多人、多個 AI 接手：開單、留言、調整說明、改狀態都記錄帳號與 AI 工具，客戶帳號用 AI 做的事畫面顯示「王小明（Codex）」，開發者端只顯示名字。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
 - 首頁公開回報（選用）：不認識的人不用登入就能對指定專案回報，拿到私密網址追蹤。
 - AI 處理：Claude Code、Codex 或任何支援 MCP 的 AI agent（不支援 MCP 的用命令列）讀單、寫調整說明、上傳圖片、改狀態。
 
@@ -232,7 +232,7 @@ Codex：已寫入 /home/you/.codex/config.toml 的 [mcp_servers.feedback-desk]�
 - 兩個工具各拿一個獨立的 token，存在 `~/.config/feedback-desk/mcp/`，只有你的系統帳號能讀。Claude Code、Codex 連線時執行一個小程式讀 token 檔，所以 token 不會出現在設定檔、指令參數或環境變數裡，也不用改 `~/.bashrc`。
 - 重開 Claude Code 後，輸入 `/mcp` 應該看到 `feedback-desk` 已連線；Codex 可用 `codex mcp list` 確認。Claude Code 只會在你同意信任的資料夾執行讀 token 的小程式：第一次在某個資料夾開 Claude Code 時請按信任，否則 `/mcp` 會顯示連不上。
 - 每個人用自己的帳號 login 再 mcp install，AI 做的事就記在自己名下。客戶帳號也能安裝，MCP 只會出現看單、開單、留言的工具。
-- 同一台電腦的 Claude Code 與 Codex 各用一個 token；畫面上會標示「名字（Claude Code）」或「名字（Codex）」。在 Claude Code、Codex 裡執行命令列指令時也會自動標示。
+- 同一台電腦的 Claude Code 與 Codex 各用一個 token；客戶帳號的畫面會標示「名字（Claude Code）」或「名字（Codex）」，開發者帳號只顯示名字（資料仍記錄用了哪個工具）。在 Claude Code、Codex 裡執行命令列指令時也會自動標示。
 - 重新執行 `mcp install` 會撤銷上一次的 token。只接受 `--scope user`（預設）或 `local`，不接受會進版控的 `project`。
 
 #### 其他 AI Agent 怎麼接

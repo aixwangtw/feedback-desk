@@ -42,7 +42,7 @@ import {
 } from './reports';
 import { signedAttachmentUrl } from './signed';
 import type { Author } from './access';
-import { withAgent } from './agents';
+import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
 import { findClaimableUploads } from './uploads';
 import { paths } from '../routes/paths';
 
@@ -200,8 +200,8 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             status: report.status,
             status_label: statusLabel(report.status),
             creator_type: report.creator_type,
-            creator: withAgent(creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name), report.creator_agent),
-            claimed_by: report.claimed_at && report.claimed_name ? withAgent(report.claimed_name, report.claimed_agent) : null,
+            creator: withAgent(creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
+            claimed_by: report.claimed_at && report.claimed_name ? withAgent(report.claimed_name, report.claimed_agent, true) : null,
             source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
             title: report.title,
             messages_count: report.messages_count,
@@ -245,7 +245,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         status: report.status,
         status_label: statusLabel(report.status),
         creator_type: report.creator_type,
-        creator: withAgent(creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null), report.creator_agent),
+        creator: withAgent(creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
         deleted_by_client: report.client_deleted_at !== null,
         ...(await workState(ctx, report)),
@@ -261,7 +261,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         messages: await Promise.all(
             messages.map(async (message) => ({
                 author_type: message.author_type,
-                author: withAgent(message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client), message.author_agent),
+                author: withAgent(message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client), message.author_agent, isDeveloperSideAuthor(message)),
                 created_at: message.created_at,
                 body: message.body,
                 attachments: await attachmentData(ctx, attachments.filter((a) => a.message_id === message.id)),
@@ -321,7 +321,7 @@ function isMine(ctx: WorkViewer, holder: ClaimHolder): boolean {
 }
 
 function describeHolder(ctx: WorkViewer, holder: ClaimHolder): string {
-    return `${withAgent(holder.name, holder.agent)}（${formatAbsolute(holder.since, config(ctx.env).utcOffsetMinutes)} 開始）`;
+    return `${withAgent(holder.name, holder.agent, true)}（${formatAbsolute(holder.since, config(ctx.env).utcOffsetMinutes)} 開始）`;
 }
 
 /**
@@ -355,7 +355,7 @@ async function guardClaim(ctx: TeamContext, report: Report, force: boolean): Pro
         ctx.env.DB.prepare(
             `INSERT INTO report_events (report_id, kind, developer_id, client_account_id, actor_name, agent, detail, created_at)
              SELECT ?, 'takeover', ?, NULL, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM reports WHERE id = ? AND claimed_by_developer_id = ? AND claimed_at = ?)`,
-        ).bind(report.id, ctx.developer.id, ctx.developer.name, ctx.agent ?? null, withAgent(holder.name, holder.agent), at, report.id, ctx.developer.id, at),
+        ).bind(report.id, ctx.developer.id, ctx.developer.name, ctx.agent ?? null, withAgent(holder.name, holder.agent, true), at, report.id, ctx.developer.id, at),
     ]);
     if ((taken.meta.changes ?? 0) === 0) {
         throw new ServiceError('claimed_by_other', '認領剛剛有變動，請重新讀取看是誰在處理。', 409);
@@ -372,21 +372,21 @@ export async function workState(ctx: WorkViewer, report: Report) {
              WHERE h.report_id = ? ORDER BY h.id DESC LIMIT ${HANDOFF_NOTES_SHOWN}`,
         ).bind(report.id),
         ctx.env.DB.prepare(
-            `SELECT e.kind, e.agent, e.detail, e.created_at, COALESCE(d.name, ca.name, e.actor_name) AS actor FROM report_events e
+            `SELECT e.kind, e.agent, e.detail, e.created_at, e.developer_id, e.client_account_id, COALESCE(d.name, ca.name, e.actor_name) AS actor FROM report_events e
              LEFT JOIN developers d ON d.id = e.developer_id LEFT JOIN client_accounts ca ON ca.id = e.client_account_id
              WHERE e.report_id = ? ORDER BY e.id DESC LIMIT ${EVENTS_SHOWN}`,
         ).bind(report.id),
     ]);
     return {
-        claim: holder ? { by: withAgent(holder.name, holder.agent), since: holder.since, yours: isMine(ctx, holder) } : null,
+        claim: holder ? { by: withAgent(holder.name, holder.agent, true), since: holder.since, yours: isMine(ctx, holder) } : null,
         handoff_notes: (notes.results as Array<{ body: string; agent: string | null; created_at: string; author: string }>).map((note) => ({
-            author: withAgent(note.author, note.agent),
+            author: withAgent(note.author, note.agent, true),
             created_at: note.created_at,
             note: note.body,
         })),
-        recent_activity: (events.results as Array<{ kind: string; agent: string | null; detail: string | null; created_at: string; actor: string }>).map((event) => ({
+        recent_activity: (events.results as Array<{ kind: string; agent: string | null; detail: string | null; created_at: string; actor: string; developer_id: number | null; client_account_id: number | null }>).map((event) => ({
             kind: event.kind,
-            by: withAgent(event.actor, event.agent),
+            by: withAgent(event.actor, event.agent, event.client_account_id === null && (event.developer_id !== null || event.actor === config(ctx.env).labels.owner)),
             detail: event.detail,
             at: event.created_at,
         })),
@@ -417,7 +417,7 @@ export async function claimReport(ctx: TeamContext, slug: string, identifier: st
             }
         }
     }
-    return { public_id: report.public_id, title: report.title, claimed_by: withAgent(ctx.developer.name, ctx.agent ?? null), took_over_from: takenOver };
+    return { public_id: report.public_id, title: report.title, claimed_by: withAgent(ctx.developer.name, ctx.agent ?? null, true), took_over_from: takenOver };
 }
 
 /** Lets go of the report. Releasing someone else's claim needs `force` and is logged. */
@@ -434,7 +434,7 @@ export async function releaseReport(ctx: TeamContext, slug: string, identifier: 
     const at = nowIso(ctx.now);
     await ctx.env.DB.batch([
         ctx.env.DB.prepare('UPDATE reports SET claimed_by_developer_id = NULL, claimed_agent = NULL, claimed_at = NULL WHERE id = ?').bind(report.id),
-        eventStatement(ctx.env.DB, report, 'release', teamAuthor(ctx), at, isMine(ctx, holder) ? null : withAgent(holder.name, holder.agent)),
+        eventStatement(ctx.env.DB, report, 'release', teamAuthor(ctx), at, isMine(ctx, holder) ? null : withAgent(holder.name, holder.agent, true)),
     ]);
     return { public_id: report.public_id, title: report.title, released: true };
 }
@@ -583,7 +583,7 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
     }
     const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
     await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: teamAuthor(ctx) }, ctx.now);
-    return { public_id: report.public_id, title: report.title, author: report.creator_type === 'public' ? author : withAgent(author, ctx.agent), images_added: uploads.length };
+    return { public_id: report.public_id, title: report.title, author: report.creator_type === 'public' ? author : withAgent(author, ctx.agent, true), images_added: uploads.length };
 }
 
 // ------------------------------------------------------------------ projects

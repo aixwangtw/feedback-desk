@@ -41,7 +41,21 @@ export function normalizeAgent(value: unknown): string | null {
     return [...cleaned].slice(0, MAX_AGENT_LENGTH).join('');
 }
 
-/** "王小明（Codex）", or just the name for people on the web. */
-export function withAgent(name: string, agent: string | null | undefined): string {
-    return agent ? `${name}（${agent}）` : name;
+/**
+ * "王小明（Codex）" for a client account's AI, or just the name for people on the web.
+ * Developer-side actors (the shared owner and personal developer accounts) always show only the
+ * name; the agent column is still stored.
+ */
+export function withAgent(name: string, agent: string | null | undefined, developerSide = false): string {
+    return agent && !developerSide ? `${name}（${agent}）` : name;
+}
+
+/** Message authors: owner and agent messages from the team, unless a client account wrote them. */
+export function isDeveloperSideAuthor(message: { author_type: string; author_client_account_id?: number | null }): boolean {
+    return (message.author_client_account_id ?? null) === null && (message.author_type === 'owner' || message.author_type === 'agent');
+}
+
+/** Reports created by a developer account or the shared owner (not a client or the public). */
+export function isDeveloperSideCreator(creatorType: string): boolean {
+    return creatorType !== 'client' && creatorType !== 'public';
 }

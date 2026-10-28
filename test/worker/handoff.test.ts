@@ -133,15 +133,15 @@ describe('several people and AI tools on one report', () => {
         const blocked = await tool<{ error: string; message: string }>(beaCodex, 'set_status', { project: slug, report: report.public_id, status: 'needs_input' });
         expect(blocked.isError).toBe(true);
         expect(blocked.data.error).toBe('claimed_by_other');
-        expect(blocked.data.message).toContain('王小明（Claude Code）');
+        expect(blocked.data.message).toContain('王小明');
         expect((await tool(beaCodex, 'write_adjustment', { project: slug, report: report.public_id, note: '偷改' })).data).toMatchObject({ error: 'claimed_by_other' });
 
         const read = await tool<{ claim: { by: string; yours: boolean }; handoff_notes: Array<{ author: string; note: string }> }>(beaCodex, 'get_report', { project: slug, report: report.public_id });
-        expect(read.data.claim).toMatchObject({ by: '王小明（Claude Code）', yours: false });
-        expect(read.data.handoff_notes[0]).toMatchObject({ author: '王小明（Claude Code）', note: expect.stringContaining('Header.tsx') });
+        expect(read.data.claim).toMatchObject({ by: '王小明', yours: false });
+        expect(read.data.handoff_notes[0]).toMatchObject({ author: '王小明', note: expect.stringContaining('Header.tsx') });
 
         const taken = await tool<{ took_over_from: string }>(beaCodex, 'claim_report', { project: slug, report: report.public_id, force: true });
-        expect(taken.data.took_over_from).toContain('王小明（Claude Code）');
+        expect(taken.data.took_over_from).toContain('王小明');
         expect((await tool(beaCodex, 'write_adjustment', { project: slug, report: report.public_id, note: '按鈕已移到上方。' })).isError).toBe(false);
         expect((await tool(beaCodex, 'set_status', { project: slug, report: report.public_id, status: 'needs_input' })).isError).toBe(false);
         expect((await tool(beaCodex, 'add_message', { project: slug, report: report.public_id, body: '改好了，請確認。' })).isError).toBe(false);
@@ -165,7 +165,8 @@ describe('several people and AI tools on one report', () => {
         const page = await (await owner.get(`/p/${slug}/reports/${report.public_id}`)).text();
         expect(page).toContain('data-work-panel');
         expect(page).toContain('Header.tsx');
-        expect(page).toContain('陳美華（Codex）');
+        expect(page).toContain('陳美華');
+        expect(page).not.toContain('陳美華（Codex）');
         expect((await owner.post(`/p/${slug}/reports/${report.public_id}/claim`, { action: 'claim' })).status).toBe(302);
         const claimed = await env.DB.prepare('SELECT claimed_by_developer_id, claimed_agent FROM reports WHERE id = ?').bind(report.id).first();
         expect(claimed).toEqual({ claimed_by_developer_id: alex.developer.id, claimed_agent: null });
@@ -174,7 +175,7 @@ describe('several people and AI tools on one report', () => {
         const clientPage = await (await client.get(`/p/${slug}/reports/${report.public_id}`)).text();
         expect(clientPage).not.toContain('data-work-panel');
         expect(clientPage).not.toContain('Header.tsx');
-        expect(clientPage).toContain('陳美華（Codex）');
+        expect(clientPage).toContain('陳美華');
     });
 
     it('labels any MCP client by the name it reports when connecting', async () => {
@@ -192,11 +193,11 @@ describe('several people and AI tools on one report', () => {
         expect(await env.DB.prepare('SELECT mcp_client FROM api_tokens WHERE agent IS NULL ORDER BY id DESC LIMIT 1').first()).toEqual({ mcp_client: 'hermes-agent' });
         expect((await tool(token, 'claim_report', { project: seeded.project.slug, report: report.public_id })).isError).toBe(false);
         const read = await tool<{ claim: { by: string } }>(token, 'get_report', { project: seeded.project.slug, report: report.public_id });
-        expect(read.data.claim.by).toBe('林大同（hermes-agent）');
+        expect(read.data.claim.by).toBe('林大同');
         // A label given when the token was made wins over what the client reports.
         const labelled = await agentToken({ developerId: developer.id }, 'OpenClaw');
         await mcpCall(labelled, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'something-else', version: '1' } });
-        expect((await tool<{ took_over_from: string }>(labelled, 'claim_report', { project: seeded.project.slug, report: report.public_id, force: true })).data.took_over_from).toContain('林大同（hermes-agent）');
+        expect((await tool<{ took_over_from: string }>(labelled, 'claim_report', { project: seeded.project.slug, report: report.public_id, force: true })).data.took_over_from).toMatch(/^林大同（\d{4}/);
         const claimed = await env.DB.prepare('SELECT claimed_agent FROM reports WHERE id = ?').bind(report.id).first();
         expect(claimed).toEqual({ claimed_agent: 'OpenClaw' });
         // The name a client reported over MCP does not override the CLI's own header.

@@ -1,7 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { Attachment, Message, Project, Report } from '../lib/models';
 import { isStatus, statusLabel } from '../../shared/status';
-import { withAgent } from '../lib/agents';
+import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
 import { MAX_ADJUSTMENT_NOTE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
@@ -101,7 +101,7 @@ export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttach
                         <div class={cx('flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', isMine ? 'items-end' : 'items-start')}>
                             <div class={cx('flex flex-wrap items-baseline gap-x-2 px-1 text-xs', isMine ? 'flex-row-reverse' : null)}>
                                 <span class={`font-semibold ${nameClass}`} data-chat-author>
-                                    {withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent)}
+                                    {withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent, isDeveloperSideAuthor(message))}
                                 </span>
                                 <Time v={v} at={message.created_at} relative class="text-slate-500" />
                             </div>

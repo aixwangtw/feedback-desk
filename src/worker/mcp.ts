@@ -141,7 +141,7 @@ export function createServer(ctx: team.TeamContext): McpServer {
         'get_report',
         {
             title: '讀取回報單',
-            description: `讀取單張回報單：說明、附件、調整說明、留言，以及 claim（誰在處理）、handoff_notes（最新交接紀錄在前）與 recent_activity（誰做了什麼，「名字（Codex）」表示用哪個 AI 做的）。附件附上一小時內有效的下載網址；include_images 為 true 時，1 MB 以內的圖片會直接附上（合計 3 MB 內），其餘請用網址下載。${HANDOFF_FLOW}${UNTRUSTED}`,
+            description: `讀取單張回報單：說明、附件、調整說明、留言，以及 claim（誰在處理）、handoff_notes（最新交接紀錄在前）與 recent_activity（誰做了什麼，客戶帳號用 AI 做的會顯示「名字（Codex）」，開發者端只顯示名字）。附件附上一小時內有效的下載網址；include_images 為 true 時，1 MB 以內的圖片會直接附上（合計 3 MB 內），其餘請用網址下載。${HANDOFF_FLOW}${UNTRUSTED}`,
             inputSchema: z.object({
                 project: PROJECT,
                 report: REPORT.describe('public_id，或團隊端清單編號（純數字）'),
@@ -301,7 +301,7 @@ export function createServer(ctx: team.TeamContext): McpServer {
         'create_report',
         {
             title: '開新回報單',
-            description: '以目前登入的團隊帳號開一張新單（建立者顯示「名字（AI 工具）」）。圖片用 images 直接附 base64（合計 1 MB 內）。',
+            description: '以目前登入的團隊帳號開一張新單（客戶帳號建立者顯示「名字（AI 工具）」，開發者只顯示名字）。圖片用 images 直接附 base64（合計 1 MB 內）。',
             inputSchema: z.object({ project: PROJECT, title: z.string().min(1).max(160), description: z.string().min(1).max(10_000), images: IMAGES }),
         },
         async (input) =>

@@ -60,7 +60,7 @@ import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewCont
 import { paths } from './paths';
 import { projectCategories } from '../../shared/categories';
 import { verifyTurnstile } from '../lib/turnstile';
-import { withAgent } from '../lib/agents';
+import { isDeveloperSideCreator, withAgent } from '../lib/agents';
 import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
 
 export const web = new Hono<AppEnv>();
@@ -117,7 +117,7 @@ async function reportCreatorLabel(c: AppContext, project: Project, report: Repor
         report.creator_type === 'developer' && report.creator_developer_id ? findDeveloper(c.env.DB, report.creator_developer_id) : Promise.resolve(null),
         report.creator_type === 'client' && report.creator_client_account_id ? findClientAccount(c.env.DB, report.creator_client_account_id) : Promise.resolve(null),
     ]);
-    return withAgent(creatorLabel(c.env, report, project, developer?.name ?? null, account?.name ?? null), report.creator_agent);
+    return withAgent(creatorLabel(c.env, report, project, developer?.name ?? null, account?.name ?? null), report.creator_agent, isDeveloperSideCreator(report.creator_type));
 }
 
 function attachmentUrlFor(project: Project, report: Report) {
@@ -652,7 +652,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         return {
             report,
             number: report.seq,
-            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent),
+            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
             attachments: own.filter((attachment) => attachment.kind === 'feedback'),
             adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
             unread: report.unread_count,
@@ -1106,7 +1106,7 @@ web.get('/p/:slug/conversations', async (c) => {
             adjustment_updated: adjustmentUpdated,
             has_update: row.unread_count > 0 || adjustmentUpdated,
             messages_count: row.messages_count,
-            creator: withAgent(creatorLabel(c.env, row, project, row.creator_developer_name, row.creator_client_name), row.creator_agent),
+            creator: withAgent(creatorLabel(c.env, row, project, row.creator_developer_name, row.creator_client_name), row.creator_agent, isDeveloperSideCreator(row.creator_type)),
             thread_url: paths.conversation(project.slug, row.public_id),
             page_url: paths.report(project.slug, row.public_id),
         };

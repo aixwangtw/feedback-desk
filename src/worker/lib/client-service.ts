@@ -8,7 +8,7 @@ import { charLength } from '../../shared/text';
 import type { Env } from '../env';
 import { config } from '../env';
 import type { Author } from './access';
-import { withAgent } from './agents';
+import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
 import { attachmentsForReport, findClientAccount, findProjectBySlug, messagesForReport } from './db';
 import type { Attachment, ClientAccount, Project, Report } from './models';
 import {
@@ -101,7 +101,7 @@ export async function listOwnReports(ctx: ClientContext, slug: string) {
             status: report.status,
             status_label: statusLabel(report.status),
             creator_type: report.creator_type,
-            creator: withAgent(creatorLabel(ctx.env, report, project, null, report.creator_client_name), report.creator_agent),
+            creator: withAgent(creatorLabel(ctx.env, report, project, null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
             source: 'project_member',
             title: report.title,
             messages_count: report.messages_count,
@@ -145,7 +145,7 @@ export async function getOwnReport(ctx: ClientContext, slug: string, identifier:
         title: report.title,
         status: report.status,
         status_label: statusLabel(report.status),
-        creator: withAgent(creatorLabel(ctx.env, report, project, null, creator?.name ?? null), report.creator_agent),
+        creator: withAgent(creatorLabel(ctx.env, report, project, null, creator?.name ?? null), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         created_at: report.created_at,
         latest_activity_at: report.latest_activity_at,
         last_read_at: readAt,
@@ -157,7 +157,7 @@ export async function getOwnReport(ctx: ClientContext, slug: string, identifier:
         messages: await Promise.all(
             messages.map(async (message) => ({
                 author_type: message.author_type,
-                author: withAgent(message.author_name || (message.author_type === 'reporter' ? labels.client : labels.owner), message.author_agent),
+                author: withAgent(message.author_name || (message.author_type === 'reporter' ? labels.client : labels.owner), message.author_agent, isDeveloperSideAuthor(message)),
                 created_at: message.created_at,
                 body: message.body,
                 attachments: await attachmentData(ctx, attachments.filter((a) => a.message_id === message.id)),

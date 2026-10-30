@@ -471,6 +471,26 @@ if (root) {
         openThread(opener.dataset.chatOpen);
     });
 
+    // 清單／看板的詳細視窗載入留言後（伺服器已標為已讀）：本地歸零並同步整頁；面板還沒這張的資料就向伺服器重取。
+    document.addEventListener('feedback:report-read', (event) => {
+        const item = state.items.find((candidate) => candidate.id === event.detail?.id);
+        if (!item) {
+            loadList();
+
+            return;
+        }
+        if (item.unread > 0 || item.adjustment_updated || item.has_update) {
+            item.unread = 0;
+            item.adjustment_updated = false;
+            item.has_update = false;
+            recountBadge();
+            if (isOpen()) {
+                renderList();
+            }
+        }
+        syncPage();
+    });
+
     const showError = (message) => {
         errorBox.textContent = message;
         errorBox.hidden = false;

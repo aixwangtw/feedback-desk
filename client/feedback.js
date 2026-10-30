@@ -1,5 +1,6 @@
 import Sortable from 'sortablejs';
 import './chat-panel.js';
+import { openDialogThread } from './report-dialog-thread.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
 // Long portal pages send their rows as JSON; build them before anything below binds to the rows.
@@ -419,6 +420,7 @@ document.addEventListener('click', async (event) => {
             dialog = document.getElementById(opener.dataset.dialogOpen);
         }
         dialog?.showModal();
+        openDialogThread(dialog);
 
         return;
     }
@@ -432,7 +434,10 @@ document.addEventListener('click', (event) => {
     }
 });
 
-document.querySelectorAll('dialog[data-open-on-load]').forEach((dialog) => dialog.showModal());
+document.querySelectorAll('dialog[data-open-on-load]').forEach((dialog) => {
+    dialog.showModal();
+    openDialogThread(dialog);
+});
 
 const persistStatus = async (form, status) => {
     const body = new URLSearchParams(new FormData(form));

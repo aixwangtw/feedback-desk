@@ -2,7 +2,7 @@ import type { FC } from 'hono/jsx';
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
 import { paths } from '../routes/paths';
-import { ChatButton, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
+import { cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock, CategoryAutosave, editCategoryOptions } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
@@ -372,10 +372,44 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                     ) : null}
                     {row.creatorLabel ? <p class="text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p> : null}
                     <p class="text-xs text-slate-500">建立：<Time v={v} at={report.created_at} />　最後更新：<Time v={v} at={report.latest_activity_at} /></p>
-                    {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以點「開啟對話」直接留言給{v.cfg.labels.owner}。</p>}
+                    {/* The thread comes from the same JSON the chat panel uses (server-escaped HTML); loading it marks the report read. */}
+                    <section
+                        class="grid gap-3 border-t border-slate-100 pt-4"
+                        aria-label="留言"
+                        data-dialog-thread
+                        data-thread-url={paths.conversation(slug, report.public_id)}
+                        data-report-id={report.public_id}
+                    >
+                        <h3 class="text-sm font-bold text-slate-900">留言</h3>
+                        {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以在下方直接留言給{v.cfg.labels.owner}。</p>}
+                        <div class="max-h-[50dvh] overflow-y-auto rounded-xl bg-slate-50/70 px-3 py-3" aria-live="polite" data-dialog-thread-body>
+                            <p class="py-4 text-center text-sm text-slate-500">留言載入中…</p>
+                        </div>
+                        <form action={paths.reportMessages(slug, report.public_id)} method="post" class="grid gap-2" data-dialog-thread-form novalidate>
+                            <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error hidden></p>
+                            <div id={`dialog-preview-${report.public_id}`} class="grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                            <label for={`dialog-body-${report.public_id}`} class="sr-only">留言內容</label>
+                            <textarea
+                                id={`dialog-body-${report.public_id}`}
+                                name="body"
+                                rows={2}
+                                maxlength={10000}
+                                placeholder="輸入留言…（Ctrl＋Enter 送出）"
+                                class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"
+                                data-dialog-thread-input
+                            ></textarea>
+                            <div class="flex items-center justify-between gap-2">
+                                <label for={`dialog-screenshots-${report.public_id}`} class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                    附圖
+                                    <input id={`dialog-screenshots-${report.public_id}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`dialog-preview-${report.public_id}`} data-dialog-thread-files />
+                                </label>
+                                <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">最多 5 張，每張 10 MB</span>
+                                <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>
+                            </div>
+                        </form>
+                    </section>
                     <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                        <ChatButton publicId={report.public_id} title={report.title} total={row.messagesCount} unread={row.unread} isOwner={isOwner} label="開啟對話" />
-                        <a href={paths.report(slug, report.public_id)} class="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">查看留言紀錄</a>
+                        <a href={paths.report(slug, report.public_id)} class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">查看留言紀錄（完整頁）</a>
                     </div>
                 </div>
             </dialog>

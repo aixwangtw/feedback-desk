@@ -57,10 +57,13 @@ describe('unread client messages on the team side', () => {
         // A report without messages has no chat button on the list.
         expect(badgeOf(html, other)).toBeUndefined();
 
-        // The preview dialog on the list does not mark the report read, and offers "開啟對話" with the count.
+        // Fetching the detail dialog alone does not mark the report read; it carries the thread section
+        // (loaded from the conversation JSON, which marks it read) and a message box with images.
         const dialog = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
-        expect(dialog).toContain('開啟對話');
-        expect(badgeOf(dialog, report)).toBe('2');
+        expect(dialog).toContain(`data-thread-url="/p/${seeded.project.slug}/conversations/${report.public_id}"`);
+        expect(dialog).toContain(`action="/p/${seeded.project.slug}/reports/${report.public_id}/messages"`);
+        expect(dialog).toContain('data-dialog-thread-files');
+        expect(dialog).toContain('查看留言紀錄（完整頁）');
         expect(badgeOf(await portal(owner, seeded), report)).toBe('2');
 
         const before = await reload('reports', report);
@@ -260,7 +263,8 @@ describe('new replies on the client side', () => {
         expect(ownerPage).not.toContain('看完有問題，可直接在下方留言');
 
         const clientDialog = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
-        expect(clientDialog).toContain('有問題或補充，可以點「開啟對話」直接留言給開發團隊。');
+        expect(clientDialog).toContain('有問題或補充，可以在下方直接留言給開發團隊。');
+        expect(clientDialog).toContain('data-dialog-thread');
         const ownerDialog = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
         expect(ownerDialog).not.toContain('直接留言給');
     });
@@ -397,5 +401,41 @@ describe('migration 0003 back-fill', () => {
         expect(badgeOf(html, lastWord)).toBe('1');
         expect(badgeOf(html, noTeam)).toBe('2');
         expect(html).toContain('有 <span data-unread-report-count="true">2</span> 張單有未讀留言');
+    });
+});
+
+describe('detail dialog on the list', () => {
+    it('marks the report read when the dialog loads its thread, and posts messages from the dialog for both sides', async () => {
+        const seeded = await seedProject();
+        const slug = seeded.project.slug;
+        const { report } = await seedReport(seeded.project, { title: '彈窗留言' });
+        const client = await new Browser().asClient(seeded);
+        await clientPosts(client, seeded, report, '客戶補充');
+        const owner = await new Browser().asOwner(seeded);
+        expect(badgeOf(await portal(owner, seeded), report)).toBe('1');
+
+        const dialog = await (await owner.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text();
+        const threadUrl = /data-thread-url="([^"]+)"/.exec(dialog)?.[1] as string;
+        const thread = await owner.get(threadUrl, { accept: 'application/json' });
+        expect(thread.status).toBe(200);
+        const data = await thread.json<{ html: string; upload_url: string }>();
+        expect(data.html).toContain('客戶補充');
+        expect(data.upload_url).toContain('purpose=message');
+
+        let html = await portal(owner, seeded);
+        expect(badgeOf(html, report)).toBeNull();
+        expect(html).toContain('目前沒有未讀留言');
+
+        // The dialog form posts as JSON (fetch with Accept: application/json).
+        expect(dialog).toContain(`action="/p/${slug}/reports/${report.public_id}/messages"`);
+        const posted = await owner.post(`/p/${slug}/reports/${report.public_id}/messages`, { body: '團隊回覆' }, { accept: 'application/json' });
+        expect(posted.status).toBe(201);
+
+        // The client side gets the reply as unread until its dialog loads the thread.
+        expect(badgeOf(await portal(client, seeded), report)).toBe('1');
+        const clientDialog = await (await client.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text();
+        expect((await client.get(/data-thread-url="([^"]+)"/.exec(clientDialog)?.[1] as string, { accept: 'application/json' })).status).toBe(200);
+        html = await portal(client, seeded);
+        expect(badgeOf(html, report)).toBeNull();
     });
 });

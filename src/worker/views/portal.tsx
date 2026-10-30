@@ -70,7 +70,7 @@ export interface PortalProps {
 }
 
 const INPUT = 'block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10';
-const FILTER_SELECT = 'min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10';
+const FILTER_SELECT = 'h-10 min-w-0 md:w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10';
 function query(base: Record<string, string | number | null | undefined>): string {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(base)) {

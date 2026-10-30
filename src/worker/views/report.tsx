@@ -21,7 +21,7 @@ export const CategoryAutosave: FC<{ slug: string; report: Report; categories: st
         <form method="post" action={paths.reportCategory(slug, report.public_id)} class={cx('flex flex-wrap items-center gap-2 text-xs', extra)} data-category-form data-report-public-id={report.public_id}>
             <input type="hidden" name="_back" value={backPath} />
             <label for={id} class={compact ? 'sr-only' : 'font-semibold text-slate-600'}>分類</label>
-            <select id={id} name="category" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10" data-category-autosave>
+            <select id={id} name="category" class={cx(compact ? 'h-8 w-28 shrink-0 px-2 py-0' : 'px-2 py-1', 'rounded-lg border border-slate-300 bg-white text-xs shadow-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-600/10')} data-category-autosave>
                 <option value="" selected={current === ''}>未分類</option>
                 {editCategoryOptions(categories, report.category).map((option) => (
                     <option value={option} selected={option === current}>{option}</option>

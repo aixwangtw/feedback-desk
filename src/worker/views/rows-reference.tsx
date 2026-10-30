@@ -53,7 +53,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     <label for={`status-${report.public_id}`} class="sr-only">「{report.title}」的狀態</label>
                     <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
                         <span class={`size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}`} aria-hidden="true" data-status-dot></span>
-                        <StatusSelect id={`status-${report.public_id}`} status={report.status} class="min-w-0 flex-1 sm:min-w-28 sm:max-w-36 !px-2 !py-1 !text-xs" autosave />
+                        <StatusSelect id={`status-${report.public_id}`} status={report.status} class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" autosave />
                     </div>
                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>

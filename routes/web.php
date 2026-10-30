@@ -10,6 +10,7 @@ use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMcpController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
+use App\Http\Controllers\Feedback\FeedbackPatrolController;
 use App\Http\Controllers\Feedback\FeedbackPortalController;
 use App\Http\Controllers\Feedback\FeedbackProjectSettingsController;
 use App\Http\Controllers\Feedback\FeedbackPublicReportController;
@@ -115,6 +116,20 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
         ->name('feedback.mcp');
     Route::match(['get', 'delete'], '/mcp', [FeedbackMcpController::class, 'methodNotAllowed'])
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware]);
+
+    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫調整說明、改成待審核。
+    Route::prefix('/api/patrol')
+        ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware])
+        ->middleware('throttle:feedback-patrol')
+        ->name('feedback.patrol.')
+        ->group(function (): void {
+            Route::get('/projects', [FeedbackPatrolController::class, 'projects'])->name('projects');
+            Route::get('/projects/{project}/attention', [FeedbackPatrolController::class, 'attention'])->name('attention');
+            Route::get('/projects/{project}/reports/{report}', [FeedbackPatrolController::class, 'show'])->name('show');
+            Route::post('/projects/{project}/reports/{report}/messages', [FeedbackPatrolController::class, 'message'])->name('message');
+            Route::put('/projects/{project}/reports/{report}/adjustment', [FeedbackPatrolController::class, 'adjustment'])->name('adjustment');
+            Route::post('/projects/{project}/reports/{report}/needs-input', [FeedbackPatrolController::class, 'needsInput'])->name('needs-input');
+        });
 
     Route::post('/public-reports', [FeedbackPublicReportController::class, 'store'])
         ->middleware('throttle:feedback-public-submit')

@@ -17,7 +17,7 @@ class FeedbackAccountsMigrationTest extends TestCase
 
     public function test_existing_client_logins_and_data_move_to_the_first_client_account(): void
     {
-        Artisan::call('migrate:rollback', ['--step' => 4, '--force' => true]);
+        Artisan::call('migrate:rollback', ['--step' => 5, '--force' => true]);
 
         $hash = Hash::make('teacher-original-password');
         $now = '2026-10-19 08:00:00';
@@ -82,7 +82,7 @@ class FeedbackAccountsMigrationTest extends TestCase
             ->assertRedirect('/p/question-bank');
 
         // 退回舊版時帳密放回專案欄位。
-        Artisan::call('migrate:rollback', ['--step' => 4, '--force' => true]);
+        Artisan::call('migrate:rollback', ['--step' => 5, '--force' => true]);
         $this->assertSame($hash, DB::table('feedback_projects')->where('id', $projectId)->value('client_password_hash'));
     }
 }

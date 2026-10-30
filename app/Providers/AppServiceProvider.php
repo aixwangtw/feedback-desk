@@ -33,6 +33,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // 排程 API：每個 token 每分鐘 60 次，同一 IP 每分鐘 120 次（含錯誤 token）。
+        RateLimiter::for('feedback-patrol', fn (Request $request): array => [
+            Limit::perMinute(60)->by('patrol-token|'.hash('sha256', (string) $request->bearerToken())),
+            Limit::perMinute(120)->by('patrol-ip|'.$request->ip()),
+        ]);
+
         RateLimiter::for('feedback-public-submit', fn (Request $request): array => [
             Limit::perMinute(max(1, (int) config('feedback.public_reporting.throttle.per_minute')))->by('minute|'.$request->ip()),
             Limit::perHour(max(1, (int) config('feedback.public_reporting.throttle.per_hour')))->by('hour|'.$request->ip()),

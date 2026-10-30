@@ -20,8 +20,8 @@ async function setup() {
     return { seeded, developer, plain: issued.token, tokenId: issued.id };
 }
 
-async function addMessage(report: Report, authorType: 'reporter' | 'owner', at: string): Promise<void> {
-    await env.DB.prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(report.id, authorType, null, '留言', at, at).run();
+async function addMessage(report: Report, authorType: 'reporter' | 'owner', at: string, body = '留言'): Promise<void> {
+    await env.DB.prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(report.id, authorType, null, body, at, at).run();
 }
 
 describe('scheduled patrol API', () => {
@@ -97,7 +97,7 @@ describe('scheduled patrol API', () => {
         await env.DB.prepare("UPDATE reports SET status = 'needs_input', owner_last_read_at = ? WHERE id = ?").bind(now, unanswered.id).run();
 
         const { report: unread } = await seedReport(project, { title: '未讀' });
-        await addMessage(unread, 'reporter', hourAgo);
+        await addMessage(unread, 'reporter', hourAgo, '還是不行');
         await addMessage(unread, 'owner', now);
         await env.DB.prepare("UPDATE reports SET status = 'completed' WHERE id = ?").bind(unread.id).run();
 
@@ -116,6 +116,42 @@ describe('scheduled patrol API', () => {
         expect(byId.has(answered.public_id)).toBe(false);
         expect(byId.has(deleted.public_id)).toBe(false);
         expect((await patrol('GET', '/projects/no-such-project/attention', plain)).status).toBe(404);
+    });
+
+    it('leaves out completed reports whose newer client message is only a thank-you', async () => {
+        const { seeded, plain } = await setup();
+        const project = seeded.project;
+        const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+        const twoHoursAgo = new Date(Date.now() - 7_200_000).toISOString();
+        const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+        const complete = async (report: Report, status = 'completed') =>
+            env.DB.prepare('UPDATE reports SET status = ?, adjustment_updated_at = ? WHERE id = ?').bind(status, dayAgo, report.id).run();
+
+        const { report: thanked } = await seedReport(project, { title: '道謝' });
+        await addMessage(thanked, 'reporter', hourAgo, '好的，謝謝！');
+        await complete(thanked);
+
+        const { report: questioned } = await seedReport(project, { title: '追問' });
+        await addMessage(questioned, 'reporter', twoHoursAgo, '謝謝，不過第三題怎麼還是一樣');
+        await addMessage(questioned, 'reporter', hourAgo, '麻煩了');
+        await complete(questioned);
+
+        const { report: asked } = await seedReport(project, { title: '問號' });
+        await addMessage(asked, 'reporter', hourAgo, '可以再調大一點?');
+        await complete(asked);
+
+        const { report: reopened } = await seedReport(project, { title: '重新打開' });
+        await addMessage(reopened, 'reporter', hourAgo, '謝謝');
+        await complete(reopened, 'new');
+
+        const { report: pending } = await seedReport(project, { title: '待審核道謝' });
+        await addMessage(pending, 'reporter', hourAgo, '謝謝');
+        await complete(pending, 'needs_input');
+
+        const data = await (await patrol('GET', `/projects/${project.slug}/attention`, plain)).json<{ total: number; reports: Array<{ public_id: string }> }>();
+        const ids = data.reports.map((r) => r.public_id).sort();
+        expect(ids).toEqual([questioned.public_id, asked.public_id, reopened.public_id, pending.public_id].sort());
+        expect(data.total).toBe(4);
     });
 
     it('reads a report, leaves a message, writes the adjustment note and sets needs_input, logging only summaries', async () => {

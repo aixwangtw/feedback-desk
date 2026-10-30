@@ -14,6 +14,6 @@
                 <option value="{{ $report->category }}" selected>{{ $report->category }}</option>
             @endif
         </select>
-        <span class="text-xs text-slate-500" role="status" aria-live="polite" data-category-quick-feedback></span>
+        <span class="text-xs text-slate-500 empty:hidden" role="status" aria-live="polite" data-category-quick-feedback></span>
     </form>
 @endif

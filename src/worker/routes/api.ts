@@ -1,11 +1,12 @@
 import { Hono, type MiddlewareHandler } from 'hono';
 import { nowIso } from '../../shared/time';
 import { randomString, sha256Hex } from '../lib/crypto';
-import { findClientAccount, findDeveloper, findProjectBySlug, findReportInProject } from '../lib/db';
+import { findClientAccount, findDeveloper, findDeveloperByUsername, findProjectBySlug, findReportInProject } from '../lib/db';
 import { AGENT_HEADER, normalizeAgent } from '../lib/agents';
 import type { ClientContext } from '../lib/client-service';
 import * as clients from '../lib/client-service';
 import type { ClientAccount, Developer, Project } from '../lib/models';
+import { issuePatrolToken, listPatrolTokens, revokePatrolToken } from '../lib/patrol';
 import { attempt, clientIp } from '../lib/rate-limit';
 import { signedUploadUrl } from '../lib/signed';
 import * as team from '../lib/team';
@@ -233,6 +234,8 @@ api.use('/developers', requireToken);
 api.use('/developers/*', requireToken);
 api.use('/tokens', requireToken);
 api.use('/tokens/*', requireToken);
+api.use('/patrol-tokens', requireToken);
+api.use('/patrol-tokens/*', requireToken);
 
 api.get('/me', (c) => {
     const developer = c.get('apiDeveloper');
@@ -403,6 +406,20 @@ api.post('/tokens', async (c) => {
     return c.json(await team.createToken(c.env, tokenHolder(c), String(input.name ?? 'cli'), c.get('now'), days, normalizeAgent(input.agent)), 201);
 });
 api.delete('/tokens/:id', async (c) => c.json(await team.revokeToken(c.env, tokenHolder(c), Number(c.req.param('id')))));
+
+// Scheduled patrol tokens (/api/patrol): any team account manages them, like other team accounts.
+api.get('/patrol-tokens', async (c) => (ctx(c), c.json(await listPatrolTokens(c.env))));
+api.post('/patrol-tokens', async (c) => {
+    const team_ = ctx(c);
+    const input = await body<{ developer?: string; name?: string }>(c);
+    const username = String(input.developer ?? '').trim();
+    const developer = username === '' ? team_.developer : await findDeveloperByUsername(c.env.DB, username);
+    if (!developer || developer.disabled_at) {
+        throw new team.ServiceError('developer_not_found', '找不到這個團隊個人帳號（或已停用）。', 404);
+    }
+    return c.json(await issuePatrolToken(c.env, developer, String(input.name ?? ''), c.get('now')), 201);
+});
+api.delete('/patrol-tokens/:id', async (c) => (ctx(c), c.json(await revokePatrolToken(c.env, Number(c.req.param('id')), c.get('now')))));
 
 export async function reportExists(c: AppContext, slug: string, publicId: string): Promise<{ projectId: number; reportId: number } | null> {
     const project = await findProjectBySlug(c.env.DB, slug);

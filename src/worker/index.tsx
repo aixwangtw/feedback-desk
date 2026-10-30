@@ -7,6 +7,7 @@ import { normalizeAgent } from './lib/agents';
 import { api, tokenOwner } from './routes/api';
 import { HttpError, viewContext, type AppEnv } from './routes/context';
 import { device } from './routes/device';
+import { patrol } from './routes/patrol';
 import { files } from './routes/files';
 import { account } from './routes/account';
 import { web } from './routes/web';
@@ -142,6 +143,7 @@ app.all('/mcp', async (c) => {
 });
 
 app.route('/api/v1', api);
+app.route('/api/patrol', patrol);
 app.route('/', files);
 app.route('/', device);
 app.route('/', account);

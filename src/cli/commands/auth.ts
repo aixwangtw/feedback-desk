@@ -163,6 +163,49 @@ export async function token(rt: Runtime, argv: string[]): Promise<number> {
     throw new CliError('用法：feedback-desk token create|list|revoke');
 }
 
+/**
+ * `patrol-token issue|list|revoke`: tokens for the scheduled patrol API (/api/patrol), which can
+ * only read reports, leave messages, write adjustment notes and set needs_input.
+ */
+export async function patrolToken(rt: Runtime, argv: string[]): Promise<number> {
+    const [action, ...rest] = argv;
+    const args = parse(rest, { developer: { type: 'string' }, name: { type: 'string' }, id: { type: 'string' } });
+    const api = apiFor(rt, str(args, 'url'));
+    if (action === 'issue') {
+        const created = await api.post<{ token: string; id: number; name: string; developer: string }>('/patrol-tokens', {
+            developer: str(args, 'developer'),
+            name: str(args, 'name') ?? '排程',
+        });
+        if (bool(args, 'json')) {
+            rt.out(JSON.stringify(created, null, 2));
+            return 0;
+        }
+        rt.out(`已建立排程 token #${created.id}（${escapeInline(created.developer)}，${escapeInline(created.name)}）。明文只顯示這一次：`);
+        rt.out(created.token);
+        rt.out('排程 API 網址前綴：/api/patrol（只能讀單、留言、寫調整說明、改成待審核）。');
+        return 0;
+    }
+    if (action === 'list') {
+        const { tokens } = await api.get<{ tokens: Array<{ id: number; developer: string; name: string; last_used_at: string | null; revoked_at: string | null; created_at: string }> }>('/patrol-tokens');
+        if (bool(args, 'json')) {
+            rt.out(JSON.stringify(tokens, null, 2));
+            return 0;
+        }
+        rt.out(table(['編號', '帳號', '用途', '建立時間', '最後使用', '撤銷時間'], tokens.map((t) => [String(t.id), t.developer, t.name, t.created_at, t.last_used_at ?? '', t.revoked_at ?? ''])));
+        return 0;
+    }
+    if (action === 'revoke') {
+        const id = Number(str(args, 'id') ?? args.positionals[0]);
+        if (!Number.isInteger(id) || id < 1) {
+            throw new CliError('請用 --id 指定排程 token 編號（patrol-token list 查得到）。');
+        }
+        await api.delete(`/patrol-tokens/${id}`);
+        rt.out(`已撤銷排程 token #${id}。`);
+        return 0;
+    }
+    throw new CliError('用法：feedback-desk patrol-token issue [--developer 帳號] [--name 用途]|list|revoke --id 編號');
+}
+
 // ---------------------------------------------------------------- MCP client setup
 
 export const MCP_NAME = 'feedback-desk';

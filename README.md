@@ -460,6 +460,21 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 
 `APP_SECRET`（加密登入 cookie、簽署下載網址）在第一次部署時自動產生，存成 Cloudflare 的加密變數，不會寫進資料夾。之後部署不會重新產生；Worker 存在但缺少它時，要加 `deploy --new-secret` 才會產生新的（所有登入會失效）。
 
+### 排程專用 API（雲端例行巡檢）
+
+給定時執行、沒有人在旁邊的 AI 排程用。先用 `npx feedback-desk patrol-token issue --developer 帳號 --name "雲端排程"` 建立 token（明文只顯示一次），請求帶 `Authorization: Bearer fdp_...`。每個 token 每分鐘 60 次、同一 IP 每分鐘 120 次。
+
+| 方法與路徑 | 用途 |
+| --- | --- |
+| `GET /api/patrol/projects` | 列出所有專案。 |
+| `GET /api/patrol/projects/{slug}/attention` | 需要處理的單：待處理、有團隊還沒看過的客戶留言、或客戶最後留言晚於最後一次調整說明與團隊留言；附完整內容與附件網址，一次最多 20 張，`total` 是全部張數。 |
+| `GET /api/patrol/projects/{slug}/reports/{public_id}` | 讀單張。 |
+| `POST /api/patrol/projects/{slug}/reports/{public_id}/messages` | 留言，內容 `{"body": "..."}`。 |
+| `PUT /api/patrol/projects/{slug}/reports/{public_id}/adjustment` | 寫調整說明，內容 `{"note": "...", "append": true}`。 |
+| `POST /api/patrol/projects/{slug}/reports/{public_id}/needs-input` | 改成待審核。 |
+
+沒有改成已完成或刪除的路徑。別人認領中的單寫調整說明、改狀態會回 409。不用時 `patrol-token revoke --id 編號` 撤銷；停用團隊帳號也會一併撤銷。
+
 ## 命令列有哪些指令？
 
 指令前面都加 `npx --allow-git=all github:aixwangtw/feedback-desk`，`--help` 可看完整說明。管理類指令透過 API 執行，需要先 `login`；CI 或 agent 也可以用環境變數 `FEEDBACK_DESK_URL`、`FEEDBACK_DESK_TOKEN` 指定站台與 token，token 只會送到 `FEEDBACK_DESK_URL` 指定的站。
@@ -474,6 +489,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `mcp install [--claude] [--codex] [--scope user\|local]` | 寫入 Claude Code、Codex 的 MCP 設定，各用一個獨立 token，重新執行會撤銷舊的。 |
 | `mcp token --agent <名稱>` | 給其他 MCP 用戶端（OpenClaw、Hermes Agent、Grok Build…）的專用 token，印出網址與標頭寫法。 |
 | `token create [--expires 天數] [--agent 名稱]\|list\|revoke <id>` | 管理自己的 API token；`--agent` 標示這個 token 給哪個 AI 用。 |
+| `patrol-token issue [--developer 帳號] [--name 用途]\|list\|revoke --id 編號` | 排程（雲端例行巡檢）專用 token，代表一個團隊帳號，只能用 `/api/patrol` 列專案與待處理單、讀單、留言、寫調整說明、改成待審核；不能改成已完成或刪除。只存雜湊，明文只顯示一次；寫入動作另有操作紀錄。 |
 | `project create <名稱> [--slug] [--client-name] [--no-client]` | 建立專案並印出客戶與開發團隊入口連結。 |
 | `project list` | 列出專案。 |
 | `project categories <slug\|all> ["分類1,分類2"] [--clear]` | 查看或設定專案的開單分類（逗號或換行分隔，最多 20 個、每個 50 字）；沒設定就不顯示分類。開發團隊也可在網頁「我的帳號」→「專案設定」改。 |

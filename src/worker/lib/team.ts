@@ -978,12 +978,13 @@ async function otherDeveloper(ctx: TeamContext, username: string, action: string
     return developer;
 }
 
-/** Disables the account: web logins and API tokens stop working at once; tokens are deleted. */
+/** Disables the account: web logins and API tokens stop working at once; tokens are deleted, patrol tokens revoked. */
 export async function setDeveloperDisabled(ctx: TeamContext, username: string, disabled: boolean) {
     const developer = await otherDeveloper(ctx, username, disabled ? '停用' : '啟用');
     const statements = [ctx.env.DB.prepare('UPDATE developers SET disabled_at = ?, updated_at = ? WHERE id = ?').bind(disabled ? nowIso(ctx.now) : null, nowIso(ctx.now), developer.id)];
     if (disabled) {
         statements.push(...revokeDeveloperCredentials(ctx.env.DB, developer.id));
+        statements.push(ctx.env.DB.prepare('UPDATE patrol_tokens SET revoked_at = ? WHERE developer_id = ? AND revoked_at IS NULL').bind(nowIso(ctx.now), developer.id));
     }
     const results = await ctx.env.DB.batch(statements);
     return { developer: developerSummary({ ...developer, disabled_at: disabled ? nowIso(ctx.now) : null }), tokens_revoked: disabled ? results[1].meta.changes ?? 0 : 0 };

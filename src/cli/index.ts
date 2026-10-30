@@ -1,6 +1,6 @@
 import { adjust, claim, create, handoff, message, release, report, reports, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
-import { login, logout, mcp, token } from './commands/auth';
+import { login, logout, mcp, patrolToken, token } from './commands/auth';
 import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
 import { CLI_COMMAND, CliError, defaultRuntime, type Runtime } from './runtime';
 
@@ -28,6 +28,9 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   mcp token --agent 名稱           給其他 MCP 用戶端（OpenClaw、Hermes Agent、Grok Build…）的 token 與連線資訊
   token create [--expires 天數] [--agent 名稱]|list|revoke <id>
                                    管理 API token
+  patrol-token issue [--developer 帳號] [--name 用途]|list|revoke --id 編號
+                                   排程專用 token（/api/patrol）：只能讀單、留言、寫調整說明、改成待審核，
+                                   不能改成已完成或刪除；只存雜湊、可撤銷、限制速率
 
 專案與帳號
   project create <名稱> [--slug] [--client-name] [--no-client]
@@ -84,6 +87,7 @@ const COMMANDS: Record<string, Command> = {
     logout,
     mcp,
     token,
+    'patrol-token': patrolToken,
     project,
     'public-reporting': publicReporting,
     developer,

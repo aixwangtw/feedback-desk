@@ -372,6 +372,26 @@ describe('mcp token for other agents', () => {
     });
 });
 
+describe('patrol-token', () => {
+    it('issues, lists and revokes scheduled patrol tokens', async () => {
+        const fake = signedIn(({ url, method }) => {
+            if (url.endsWith('/patrol-tokens') && method === 'POST') return jsonResponse({ token: 'fdp_plain_once', id: 3, name: '雲端排程', developer: 'alex' }, 201);
+            if (url.endsWith('/patrol-tokens')) return jsonResponse({ tokens: [{ id: 3, developer: 'alex', name: '雲端排程', last_used_at: null, revoked_at: null, created_at: '2026-10-30T00:00:00.000Z' }] });
+            if (url.endsWith('/patrol-tokens/3') && method === 'DELETE') return jsonResponse({ revoked: 3 });
+            return jsonResponse({}, 404);
+        });
+        expect(await main(['patrol-token', 'issue', '--developer', 'alex', '--name', '雲端排程'], fake.rt)).toBe(0);
+        expect(fake.calls[0].body).toEqual({ developer: 'alex', name: '雲端排程' });
+        expect(fake.text()).toContain('fdp_plain_once');
+        expect(await main(['patrol-token', 'list'], fake.rt)).toBe(0);
+        expect(fake.text()).toContain('雲端排程');
+        expect(await main(['patrol-token', 'revoke'], fake.rt)).toBe(1);
+        expect(await main(['patrol-token', 'revoke', '--id', '3'], fake.rt)).toBe(0);
+        expect(fake.calls.at(-1)?.method).toBe('DELETE');
+        expect(fake.text()).toContain('已撤銷排程 token #3');
+    });
+});
+
 describe('handoff commands', () => {
     it('claims, takes over with --force, writes handoff notes and opens reports with images', async () => {
         const fake = signedIn(({ url }) => {

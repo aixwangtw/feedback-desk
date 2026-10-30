@@ -171,11 +171,11 @@ describe('guest client entry', () => {
         await seedReport(seeded.project);
         const html = await (await browser().get(`/p/${slug}`)).text();
         const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-        const order = ['標題', '狀態', '分類', '圖片', '調整說明', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
+        const order = ['標題', '狀態', '分類', '圖片', '調整重點', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
         expect(order.every((index) => index >= 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
         const row = html.slice(html.indexOf('data-report-row='));
-        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('調整說明：'));
+        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('調整重點：'));
         expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('data-report-category'));
     });
 });

@@ -29,7 +29,7 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   token create [--expires 天數] [--agent 名稱]|list|revoke <id>
                                    管理 API token
   patrol-token issue [--developer 帳號] [--name 用途]|list|revoke --id 編號
-                                   排程專用 token（/api/patrol）：只能讀單、留言、寫調整說明、改成待審核，
+                                   排程專用 token（/api/patrol）：只能讀單、留言、寫調整重點、改成待審核，
                                    不能改成已完成或刪除；只存雜湊、可撤銷、限制速率
 
 專案與帳號

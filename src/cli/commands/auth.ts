@@ -182,7 +182,7 @@ export async function patrolToken(rt: Runtime, argv: string[]): Promise<number> 
         }
         rt.out(`已建立排程 token #${created.id}（${escapeInline(created.developer)}，${escapeInline(created.name)}）。明文只顯示這一次：`);
         rt.out(created.token);
-        rt.out('排程 API 網址前綴：/api/patrol（只能讀單、留言、寫調整說明、改成待審核）。');
+        rt.out('排程 API 網址前綴：/api/patrol（只能讀單、留言、寫調整重點、改成待審核）。');
         return 0;
     }
     if (action === 'list') {

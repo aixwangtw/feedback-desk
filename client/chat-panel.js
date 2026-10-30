@@ -213,7 +213,7 @@ if (root) {
                 : `${item.preview_is_mine ? '你：' : ''}${item.preview}`;
             bottom.append(el('span', `min-w-0 flex-1 truncate text-xs ${item.preview === null ? 'italic text-slate-400' : (item.has_update ? 'text-slate-800' : 'text-slate-500')}`, previewText));
             if (item.adjustment_updated) {
-                bottom.append(el('span', 'shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white', '調整說明更新'));
+                bottom.append(el('span', 'shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white', '調整重點更新'));
             }
             if (item.unread > 0) {
                 const badge = el('span', 'shrink-0 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[11px] font-bold leading-4 text-white', item.unread > 99 ? '99+' : item.unread);
@@ -315,7 +315,7 @@ if (root) {
             } else {
                 const previousAdjustment = state.lastThreadHtml === '' ? null : thread.querySelector('[data-chat-adjustment]');
                 thread.innerHTML = data.html;
-                // 刷新時保留使用者展開／收合的調整說明。
+                // 刷新時保留使用者展開／收合的調整重點。
                 const adjustment = thread.querySelector('[data-chat-adjustment]');
                 if (previousAdjustment && adjustment) {
                     adjustment.open = previousAdjustment.open;

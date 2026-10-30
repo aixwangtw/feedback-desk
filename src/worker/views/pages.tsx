@@ -182,7 +182,7 @@ export interface DeviceRequest {
 
 const DEVICE_WARNING = (
     <div role="alert" class="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900" data-device-warning>
-        如果你剛才沒有在自己的終端機執行 feedback-desk login，請不要授權。授權後，對方可以用你的身分做你在網站上能做的事：團隊帳號是所有專案的回報單、調整說明、狀態與帳號管理；客戶帳號是你自己專案的看單、開單與留言。
+        如果你剛才沒有在自己的終端機執行 feedback-desk login，請不要授權。授權後，對方可以用你的身分做你在網站上能做的事：團隊帳號是所有專案的回報單、調整重點、狀態與帳號管理；客戶帳號是你自己專案的看單、開單與留言。
     </div>
 );
 

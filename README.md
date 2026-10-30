@@ -7,7 +7,7 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 
 ---
 
-跟客戶、團隊夥伴溝通系統調整的回報工具。客戶用專屬連結或自己的帳號進來開單、附截圖、留言；開發團隊（或 Claude Code、Codex）讀單、修改、寫附圖的調整說明、把單改成待審核；客戶確認後結案。
+跟客戶、團隊夥伴溝通系統調整的回報工具。客戶用專屬連結或自己的帳號進來開單、附截圖、留言；開發團隊（或 Claude Code、Codex）讀單、修改、寫附圖的調整重點、把單改成待審核；客戶確認後結案。
 
 整套系統部署在你自己的 Cloudflare 帳號，只用 Workers 免費方案的額度，不需要自己的主機。部署、建帳號、讀單、改狀態都用同一個命令列工具完成；Claude Code、Codex 透過 MCP 或命令列直接處理單。
 
@@ -16,21 +16,21 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 - 多專案：每個專案的單與截圖分開，各自有客戶入口與開發團隊入口。
 - 開單：客戶一次可以新增多個問題，每題最多 5 張截圖。
 - 清單：搜尋、依狀態與建立者篩選、欄位排序，列表與看板兩種檢視，看板可以拖拉卡片改狀態。預設排序是有未讀留言的單最前，再來是有留言的單（依最新留言時間），沒有留言的單依建立時間。
-- 三種狀態：待處理、待審核（開發團隊改好並寫了調整說明）、已完成（客戶確認）。
-- 留言串：雙方都能留言附圖，以聊天樣式顯示；調整說明只有開發團隊能寫。
-- 未讀提示：清單與看板的留言按鈕以紅色數字顯示未讀數（開發團隊看客戶的新留言；客戶看開發團隊的新回覆，調整說明更新也算一則），開發團隊可只看有未讀留言的單。
+- 三種狀態：待處理、待審核（開發團隊改好並寫了調整重點）、已完成（客戶確認）。
+- 留言串：雙方都能留言附圖，以聊天樣式顯示；調整重點只有開發團隊能寫。
+- 未讀提示：清單與看板的留言按鈕以紅色數字顯示未讀數（開發團隊看客戶的新留言；客戶看開發團隊的新回覆，調整重點更新也算一則），開發團隊可只看有未讀留言的單。
 - 留言對話面板：登入後右下角的對話按鈕可集中查看每張單的留言、搜尋、直接回覆並附圖，開啟即標為已讀；手機上全螢幕顯示。
 - 開發團隊自己建的單，客戶看不到；客戶刪除的單只是隱藏，開發團隊看得到也能還原。
 - 每人一個帳號：同一個專案可以開多個客戶帳號，單、留言、附件都記錄是誰寫的，清單、單頁與對話面板顯示建立者名字，未讀也是每個人各自計算。每個人（團隊與客戶）都能在「我的帳號」改自己的顯示名稱與密碼。
-- 多人、多個 AI 接手：開單、留言、調整說明、改狀態都記錄帳號與 AI 工具，客戶帳號用 AI 做的事畫面顯示「王小明（Codex）」，開發者端只顯示名字。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
+- 多人、多個 AI 接手：開單、留言、調整重點、改狀態都記錄帳號與 AI 工具，客戶帳號用 AI 做的事畫面顯示「王小明（Codex）」，開發者端只顯示名字。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
 - 首頁公開回報（選用）：不認識的人不用登入就能對指定專案回報，拿到私密網址追蹤。
-- AI 處理：Claude Code、Codex 或任何支援 MCP 的 AI agent（不支援 MCP 的用命令列）讀單、寫調整說明、上傳圖片、改狀態。
+- AI 處理：Claude Code、Codex 或任何支援 MCP 的 AI agent（不支援 MCP 的用命令列）讀單、寫調整重點、上傳圖片、改狀態。
 
 | 身分 | 能做什麼 | 怎麼進來 |
 | --- | --- | --- |
 | 客戶（client） | 新增、編輯、刪除這個專案客戶端的單，留言，確認完成。同專案的客戶彼此看得到對方開的單與留言；看不到開發團隊建立的單、交接紀錄與其他專案。 | 專屬連結 `/p/{slug}/access?token=...`，或自己的客戶帳號（`/p/{slug}/login`）；客戶帳號也能用命令列與 MCP（看單、開單附圖、留言） |
-| 開發團隊（owner） | 看所有專案全部的單，改狀態、寫調整說明、認領、寫交接紀錄、還原被刪除的單，也能自己開單、管理帳號。 | 專屬連結 `/owner/{slug}/access?token=...`，或團隊個人帳號（`/owner/{slug}/login`，每個專案都能登入） |
-| 公開回報者 | 只能看自己送出的那張單和留言，看得到調整說明與團隊回覆。 | 送出後顯示的私密網址；同一個瀏覽器也會記住 |
+| 開發團隊（owner） | 看所有專案全部的單，改狀態、寫調整重點、認領、寫交接紀錄、還原被刪除的單，也能自己開單、管理帳號。 | 專屬連結 `/owner/{slug}/access?token=...`，或團隊個人帳號（`/owner/{slug}/login`，每個專案都能登入） |
+| 公開回報者 | 只能看自己送出的那張單和留言，看得到調整重點與團隊回覆。 | 送出後顯示的私密網址；同一個瀏覽器也會記住 |
 
 ## 如何安裝與使用
 
@@ -164,7 +164,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk login
 <img src="docs/screenshots/cli-device-code.jpg" alt="授權命令列工具的頁面：輸入終端機上的授權碼" width="600">
 
 - 授權碼不會放在網址裡，所以別人傳來的連結沒辦法替你填好。**如果你沒有在自己的終端機執行 login，不要在這個頁面授權**：授權後對方可以用你的身分做你在網站上能做的事（團隊帳號是所有專案；客戶帳號是自己專案的看單、開單、留言）。
-- 客戶帳號也能 login，之後用命令列或 MCP 看單、開單附圖、留言；改狀態、寫調整說明、管理帳號只有團隊帳號能做。
+- 客戶帳號也能 login，之後用命令列或 MCP 看單、開單附圖、留言；改狀態、寫調整重點、管理帳號只有團隊帳號能做。
 - 授權碼 10 分鐘後過期，過期就重新執行 `login`。
 - 出現 `連不到 https://…：fetch failed`，但瀏覽器打得開網站：多半是網路連線較慢或 IPv6 不通（WSL 常見），請先更新到最新版再試（新版已放寬連線等待時間）；仍不行時可以加環境變數 `NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2500`（Node 22 實測有效）。
 - 這個做法在遠端主機、容器裡也能用：瀏覽器可以在另一台電腦上開。
@@ -211,7 +211,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk developer create amy --name "
 
 把「客戶入口」連結（或客戶帳號密碼）用私訊交給客戶。拿到連結的人都能進入這個專案的客戶頁面，所以不要貼在公開的地方。
 
-客戶打開連結後，可以按「新增問題」一次填多個問題並附截圖、在每張單留言，看到「待審核」的單時照調整說明確認，沒問題就按完成。登入會在這個瀏覽器記住 30 天。
+客戶打開連結後，可以按「新增問題」一次填多個問題並附截圖、在每張單留言，看到「待審核」的單時照調整重點確認，沒問題就按完成。登入會在這個瀏覽器記住 30 天。
 
 ### 8. 把 MCP 加進 Claude Code、Codex
 
@@ -281,7 +281,7 @@ Codex：已寫入 /home/you/.codex/config.toml 的 [mcp_servers.feedback-desk]�
    （MCP：claim_report；指令：npx --allow-git=all github:aixwangtw/feedback-desk claim website {public_id}）。
 4. 在程式碼修改。說明看不懂或需要客戶補資料時，不要猜，寫交接紀錄說明卡在哪、釋放認領，最後回報給我。
 5. 修改完成後實際操作頁面驗收，並截圖存成 png 或 jpg。
-6. 寫一段給客戶看的調整說明並附上截圖，講做了什麼、客戶該去哪裡確認，不要出現程式碼或檔名
+6. 寫一段給客戶看的調整重點並附上截圖，講做了什麼、客戶該去哪裡確認，不要出現程式碼或檔名
    （指令：npx --allow-git=all github:aixwangtw/feedback-desk adjust website {public_id} --note "..." --image 截圖路徑）。
 7. 把狀態改成待審核並釋放認領
    （指令：npx --allow-git=all github:aixwangtw/feedback-desk status website {public_id} needs_input，再 release website {public_id}）。
@@ -295,7 +295,7 @@ Codex：已寫入 /home/you/.codex/config.toml 的 [mcp_servers.feedback-desk]�
 
 - 團隊帳號的 MCP 工具：`list_reports`、`get_report`、`create_report`、`request_image_upload`、`write_adjustment`、`set_status`、`add_message`、`claim_report`、`release_report`、`write_handoff`，以及管理客戶帳號的 `list_clients`、`create_client`、`set_client_disabled`、`delete_client`。客戶帳號只有 `list_reports`、`get_report`、`create_report`、`add_message`。
 - 外部使用者寫的內容（標題、說明、留言、附件檔名、公開回報者稱呼）放在回傳結果的 `untrusted_content` 欄位，工具說明也提醒 agent 只把它當需求描述。
-- 認領不是鎖：別人認領中的單仍然看得到。用 MCP 或命令列改狀態、寫調整說明時會先停下並說明是誰在處理，確定要接手才加 force（`--force`），系統會記錄「接手」。網頁上不擋，單頁右側會提示誰在處理，並可按「接手」。交接紀錄、認領與最近動態只有團隊看得到。
+- 認領不是鎖：別人認領中的單仍然看得到。用 MCP 或命令列改狀態、寫調整重點時會先停下並說明是誰在處理，確定要接手才加 force（`--force`），系統會記錄「接手」。網頁上不擋，單頁右側會提示誰在處理，並可按「接手」。交接紀錄、認領與最近動態只有團隊看得到。
 - 列單預設不含首頁公開回報（不認識的人寫的單）。要讓 AI 處理公開回報，請先自己看過內容，再指定那張單給它。
 - 客戶確認後的結案由人來做：客戶按完成，或你在開發團隊頁面改狀態。
 - 工作規則寫在 MCP 的 server instructions 與 `set_status` 工具說明裡，不論用哪個 AI 工具都會看到：「使用者只給回饋看板網址並說『修』，就代表授權直接處理：逐張修好、自己檢查確認 OK 後，把狀態改成待審核（needs_input）。不可以直接改成已完成（completed），已完成要等提出的人或負責人確認。驗證沒過或需要人決定的單，不要改狀態，寫交接紀錄或留言說明原因。」在 AI 工具裡用命令列改成已完成時會印出提醒，但不擋，負責人可能在 AI 工具裡替已確認的單結案。
@@ -467,13 +467,13 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | 方法與路徑 | 用途 |
 | --- | --- |
 | `GET /api/patrol/projects` | 列出所有專案。 |
-| `GET /api/patrol/projects/{slug}/attention` | 需要處理的單：待處理、有團隊還沒看過的客戶留言、或客戶最後留言晚於最後一次調整說明與團隊留言；附完整內容與附件網址，一次最多 20 張，`total` 是全部張數。 |
+| `GET /api/patrol/projects/{slug}/attention` | 需要處理的單：待處理、有團隊還沒看過的客戶留言、或客戶最後留言晚於最後一次調整重點與團隊留言；附完整內容與附件網址，一次最多 20 張，`total` 是全部張數。 |
 | `GET /api/patrol/projects/{slug}/reports/{public_id}` | 讀單張。 |
 | `POST /api/patrol/projects/{slug}/reports/{public_id}/messages` | 留言，內容 `{"body": "..."}`。 |
-| `PUT /api/patrol/projects/{slug}/reports/{public_id}/adjustment` | 寫調整說明，內容 `{"note": "...", "append": true}`。 |
+| `PUT /api/patrol/projects/{slug}/reports/{public_id}/adjustment` | 寫調整重點，內容 `{"note": "...", "append": true}`。 |
 | `POST /api/patrol/projects/{slug}/reports/{public_id}/needs-input` | 改成待審核。 |
 
-沒有改成已完成或刪除的路徑。別人認領中的單寫調整說明、改狀態會回 409。不用時 `patrol-token revoke --id 編號` 撤銷；停用團隊帳號也會一併撤銷。
+沒有改成已完成或刪除的路徑。別人認領中的單寫調整重點、改狀態會回 409。不用時 `patrol-token revoke --id 編號` 撤銷；停用團隊帳號也會一併撤銷。
 
 ## 命令列有哪些指令？
 
@@ -489,7 +489,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `mcp install [--claude] [--codex] [--scope user\|local]` | 寫入 Claude Code、Codex 的 MCP 設定，各用一個獨立 token，重新執行會撤銷舊的。 |
 | `mcp token --agent <名稱>` | 給其他 MCP 用戶端（OpenClaw、Hermes Agent、Grok Build…）的專用 token，印出網址與標頭寫法。 |
 | `token create [--expires 天數] [--agent 名稱]\|list\|revoke <id>` | 管理自己的 API token；`--agent` 標示這個 token 給哪個 AI 用。 |
-| `patrol-token issue [--developer 帳號] [--name 用途]\|list\|revoke --id 編號` | 排程（雲端例行巡檢）專用 token，代表一個團隊帳號，只能用 `/api/patrol` 列專案與待處理單、讀單、留言、寫調整說明、改成待審核；不能改成已完成或刪除。只存雜湊，明文只顯示一次；寫入動作另有操作紀錄。 |
+| `patrol-token issue [--developer 帳號] [--name 用途]\|list\|revoke --id 編號` | 排程（雲端例行巡檢）專用 token，代表一個團隊帳號，只能用 `/api/patrol` 列專案與待處理單、讀單、留言、寫調整重點、改成待審核；不能改成已完成或刪除。只存雜湊，明文只顯示一次；寫入動作另有操作紀錄。 |
 | `project create <名稱> [--slug] [--client-name] [--no-client]` | 建立專案並印出客戶與開發團隊入口連結。 |
 | `project list` | 列出專案。 |
 | `project categories <slug\|all> ["分類1,分類2"] [--clear]` | 查看或設定專案的開單分類（逗號或換行分隔，最多 20 個、每個 50 字）；沒設定就不顯示分類。開發團隊也可在網頁「我的帳號」→「專案設定」改。 |
@@ -504,7 +504,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--unread] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
 | `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/` 並印出路徑。 |
 | `create <project> --title --description [--category] [--image]...` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。 |
-| `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整說明與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
+| `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整重點與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |
 | `message <project> <public_id\|編號> --body [--image]...` | 以自己的帳號留言。 |
 | `claim` / `release <project> <public_id\|編號> [--force]` | 認領／釋放，讓其他人與 AI 知道誰在處理。 |

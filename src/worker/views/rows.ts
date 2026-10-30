@@ -117,11 +117,11 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
         html += '<span class="text-xs text-slate-400">—</span>';
     }
     html += '</td>';
-    html += '<td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle"><span class="text-xs font-semibold text-slate-500 sm:hidden">調整說明：</span>';
+    html += '<td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle"><span class="text-xs font-semibold text-slate-500 sm:hidden">調整重點：</span>';
     if (hasAdjustment) {
         if (report.adjustment_note) {
             const note = esc(report.adjustment_note);
-            html += `<button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="${note}" aria-label="預覽「${title}」的調整說明" data-dialog-open="detail-report-${id}" data-adjustment-preview="true"><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note="true">${note}</span></button>`;
+            html += `<button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="${note}" aria-label="預覽「${title}」的調整重點" data-dialog-open="detail-report-${id}" data-adjustment-preview="true"><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note="true">${note}</span></button>`;
         }
         if (row.adjustmentAttachments.length > 0) {
             html += '<div class="mt-1 flex flex-wrap gap-1">';
@@ -177,10 +177,10 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         html += `<div class="mt-3 flex items-center gap-2">${thumb(url(first), first.original_name)}<span class="text-xs font-medium text-slate-500">${row.attachments.length} 張附件</span></div>`;
     }
     if (hasAdjustment) {
-        html += '<div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card="true"><p class="text-[11px] font-bold text-teal-800">調整說明</p>';
+        html += '<div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card="true"><p class="text-[11px] font-bold text-teal-800">調整重點</p>';
         if (report.adjustment_note) {
             const note = esc(report.adjustment_note);
-            html += `<button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="${note}" aria-label="預覽「${title}」的調整說明" data-dialog-open="detail-report-${id}" data-adjustment-preview="true"><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note="true">${note}</span></button>`;
+            html += `<button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="${note}" aria-label="預覽「${title}」的調整重點" data-dialog-open="detail-report-${id}" data-adjustment-preview="true"><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note="true">${note}</span></button>`;
         }
         const firstAdjustment = row.adjustmentAttachments[0];
         if (firstAdjustment) {

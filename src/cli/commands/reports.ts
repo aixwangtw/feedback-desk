@@ -208,7 +208,7 @@ export async function report(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(e(detail.description));
     printAttachments(rt, '附件', detail.attachments);
     rt.out('');
-    rt.out('## 調整說明');
+    rt.out('## 調整重點');
     rt.out(detail.adjustment_note ? e(detail.adjustment_note) : '（尚未填寫）');
     printAttachments(rt, '調整附圖', detail.adjustment_attachments);
     rt.out('');
@@ -298,7 +298,7 @@ export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
         rt.out(JSON.stringify(result, null, 2));
         return 0;
     }
-    rt.out(`已更新調整說明：${escapeInline(result.title)}`);
+    rt.out(`已更新調整重點：${escapeInline(result.title)}`);
     if (note !== undefined) rt.out(twoColumn('文字', append ? '已追加' : '已覆寫'));
     rt.out(twoColumn('新增圖片', String(result.images_added)));
     rt.out(twoColumn('目前圖片總數', String(result.images_total)));

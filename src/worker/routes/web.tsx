@@ -1589,7 +1589,7 @@ web.post('/p/:slug/reports/:publicId/adjustment', async (c) => {
     const remove = form.getAll('remove_adjustment_attachments[]').map((value) => Number(value));
     const errors: string[] = [];
     if (charLength(note.trim()) > MAX_ADJUSTMENT_NOTE) {
-        errors.push(`調整說明 不能超過 ${MAX_ADJUSTMENT_NOTE} 個字元。`);
+        errors.push(`調整重點 不能超過 ${MAX_ADJUSTMENT_NOTE} 個字元。`);
     }
     if (ids.length > 5) {
         errors.push('調整圖片 最多只能有 5 項。');
@@ -1609,6 +1609,6 @@ web.post('/p/:slug/reports/:publicId/adjustment', async (c) => {
     }
     await updateAdjustment(c.env, report, { note, append: false, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
     await markRead(c.env, report, 'owner', c.get('now'));
-    access.setFlash({ success: '已更新調整說明。' });
+    access.setFlash({ success: '已更新調整重點。' });
     return c.redirect(`${paths.report(project.slug, report.public_id)}#adjustment`, 302);
 });

@@ -537,7 +537,7 @@ export async function writeAdjustment(
     if (hasNote) {
         const merged = mergeNote(report.adjustment_note, input.note as string, input.append ?? false);
         if (charLength(merged ?? '') > MAX_ADJUSTMENT_NOTE) {
-            throw new ServiceError('note_too_long', `調整說明超過 ${MAX_ADJUSTMENT_NOTE} 字上限。`, 422);
+            throw new ServiceError('note_too_long', `調整重點超過 ${MAX_ADJUSTMENT_NOTE} 字上限。`, 422);
         }
     }
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'adjustment', reportId: report.id });

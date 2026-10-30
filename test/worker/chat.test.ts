@@ -114,7 +114,7 @@ describe('chat panel list', () => {
         const base = Date.now() - 600_000;
         const { developer } = await seedDeveloper();
         const { report: replied } = await seedReport(seeded.project, { title: '開發者回了', at: base });
-        const { report: adjusted } = await seedReport(seeded.project, { title: '調整說明有更新', at: base + 1000 });
+        const { report: adjusted } = await seedReport(seeded.project, { title: '調整重點有更新', at: base + 1000 });
         const { report: deleted } = await seedReport(seeded.project, { title: '已刪除的單', at: base + 2000 });
         await seedReport(seeded.project, { title: '開發者自己的單', creator: 'developer', developerId: developer.id, at: base + 3000 });
         await insertMessage(replied, 'owner', at(base, 10), '看過了');
@@ -124,7 +124,7 @@ describe('chat panel list', () => {
 
         const client = await new Browser().asClient(seeded);
         const data = await list(client, seeded);
-        expect(data.items.map((item) => item.title)).toEqual(['開發者回了', '調整說明有更新']);
+        expect(data.items.map((item) => item.title)).toEqual(['開發者回了', '調整重點有更新']);
         expect(data.items[0]).toMatchObject({ unread: 2, preview: 'AI 回覆', preview_is_mine: false, number: 3 });
         expect(data.items[1]).toMatchObject({ unread: 1, adjustment_updated: true, has_update: true, number: 2 });
         expect(data.unread_total).toBe(3);

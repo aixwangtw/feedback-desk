@@ -182,7 +182,7 @@ patrol.put('/projects/:slug/reports/:ref/adjustment', async (c) => {
     const append = input.append === true;
     return logged(c, 'adjustment', { note_length: charLength(note), append }, async () => {
         if (note.trim() === '') {
-            throw new team.ServiceError('note_required', '請提供調整說明（note）。', 422);
+            throw new team.ServiceError('note_required', '請提供調整重點（note）。', 422);
         }
         return team.writeAdjustment(ctx(c), c.req.param('slug'), c.req.param('ref'), { note, append });
     });

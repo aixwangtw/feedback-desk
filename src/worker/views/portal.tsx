@@ -147,10 +147,10 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     <p class="mt-2 text-sm leading-6 text-slate-600">{viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。'}</p>
                     <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>待處理</span><span>已收到{labels.client}的回報，等{labels.owner}處理。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>待審核</span><span>{labels.owner}已改好並寫了調整說明，請{labels.client}確認。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>待審核</span><span>{labels.owner}已改好並寫了調整重點，請{labels.client}確認。</span></li>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>已完成</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
                     </ul>
-                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖、調整說明、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整說明、調整附圖。'}</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。'}</p>
                 </div>
                 <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
             </div>
@@ -270,7 +270,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
                                     {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
                                     <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
-                                    <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
+                                    <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
                                     <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                                     {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
                                     {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-28 px-4 py-3.5 text-center')}

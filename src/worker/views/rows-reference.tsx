@@ -74,11 +74,11 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                 )}
             </td>
             <td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
-                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整說明：</span>
+                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整重點：</span>
                 {hasAdjustment ? (
                     <>
                         {report.adjustment_note ? (
-                            <button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title={report.adjustment_note} aria-label={`預覽「${report.title}」的調整說明`} data-dialog-open={`detail-report-${report.public_id}`} data-adjustment-preview><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{report.adjustment_note}</span></button>
+                            <button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title={report.adjustment_note} aria-label={`預覽「${report.title}」的調整重點`} data-dialog-open={`detail-report-${report.public_id}`} data-adjustment-preview><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{report.adjustment_note}</span></button>
                         ) : null}
                         {row.adjustmentAttachments.length > 0 ? (
                             <div class="mt-1 flex flex-wrap gap-1">
@@ -163,9 +163,9 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
 
             {hasAdjustment ? (
                 <div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card>
-                    <p class="text-[11px] font-bold text-teal-800">調整說明</p>
+                    <p class="text-[11px] font-bold text-teal-800">調整重點</p>
                     {report.adjustment_note ? (
-                        <button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title={report.adjustment_note} aria-label={`預覽「${report.title}」的調整說明`} data-dialog-open={`detail-report-${report.public_id}`} data-adjustment-preview><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{report.adjustment_note}</span></button>
+                        <button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title={report.adjustment_note} aria-label={`預覽「${report.title}」的調整重點`} data-dialog-open={`detail-report-${report.public_id}`} data-adjustment-preview><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{report.adjustment_note}</span></button>
                     ) : null}
                     {firstAdjustment ? (
                         <div class="mt-2 flex items-center gap-2">

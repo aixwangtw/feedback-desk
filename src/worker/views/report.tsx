@@ -42,7 +42,8 @@ export const AdjustmentBlock: FC<{
     showHeading?: boolean;
 }> = ({ report, adjustmentAttachments, attachmentUrl, compact, showHeading = true }) => (
     <div data-adjustment>
-        {showHeading ? <h2 class={`${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-950`}>調整說明</h2> : null}
+        {showHeading ? <h2 class={`${compact ? 'text-sm' : 'text-base'} font-semibold text-slate-950`}>調整重點</h2> : null}
+        {showHeading ? <p class="mt-0.5 text-xs text-slate-400">留言重點整理，會隨時更新</p> : null}
         {report.adjustment_note ? (
             <div class="mt-2" data-adjustment-note><RichText text={report.adjustment_note} compact={compact} /></div>
         ) : adjustmentAttachments.length === 0 ? (
@@ -135,7 +136,7 @@ export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: A
             {hasAdjustment ? (
                 <details class="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 px-3.5 py-2.5 text-sm" open={adjustmentWasNew} data-chat-adjustment>
                     <summary class="cursor-pointer font-semibold text-teal-900">
-                        調整說明
+                        調整重點
                         {adjustmentWasNew ? <span class="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">有更新</span> : null}
                     </summary>
                     <div class="mt-2">
@@ -183,7 +184,7 @@ export interface WorkState {
 const EVENT_LABELS: Record<string, string> = {
     created: '開單',
     message: '留言',
-    adjustment: '寫調整說明',
+    adjustment: '寫調整重點',
     status: '改狀態',
     claim: '認領',
     release: '釋放認領',
@@ -219,7 +220,7 @@ export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; wor
             )}
             {work.claim && !work.claim.yours ? (
                 <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" data-claim-warning>
-                    已有人認領。改狀態或調整說明前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
+                    已有人認領。改狀態或調整重點前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
                 </p>
             ) : null}
             {canClaim ? (
@@ -370,7 +371,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
 
                             {isOwner ? (
                                 <details class="mt-5 border-t border-slate-100 pt-4" open={adjustmentErrors.length > 0} data-adjustment-editor>
-                                    <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整說明（僅{labels.owner}）</summary>
+                                    <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整重點（僅{labels.owner}）</summary>
                                     <form method="post" action={paths.reportAdjustment(slug, report.public_id)} class="mt-4 grid gap-4" data-upload-form>
                                         <ErrorList errors={adjustmentErrors} />
                                         <div>
@@ -400,7 +401,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                                 加入調整圖片
                                                 <input id="adjustment-images" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="adjustment-preview" data-upload-url={`${paths.uploads(slug)}?purpose=adjustment&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max="5" data-upload-max-bytes={String(MAX_IMAGE_BYTES)} />
                                             </label>
-                                            <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整說明</button>
+                                            <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整重點</button>
                                         </div>
                                         <div id="adjustment-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                                     </form>

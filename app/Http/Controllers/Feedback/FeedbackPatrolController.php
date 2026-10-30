@@ -26,6 +26,11 @@ class FeedbackPatrolController extends Controller
 
     private const MAX_ATTENTION_REPORTS = 30;
 
+    /**
+     * 已完成的單，客戶後來的留言含這些字才當成新問題；只是道謝之類的留言不列出。
+     */
+    private const QUESTION_MARKERS = ['?', '？', '嗎', '還是', '沒有', '錯', '不行', '不對', '不能', '無法', '怎麼', '為什麼', '問題'];
+
     public function projects(Request $request): JsonResponse
     {
         if ($this->authenticate($request) === null) {
@@ -43,6 +48,8 @@ class FeedbackPatrolController extends Controller
 
     /**
      * 需要處理的單：待處理（new）、有開發者還沒在網頁看過的客戶留言、或最後一則客戶留言晚於最後一次調整說明與團隊留言。
+     * 已完成的單只有在客戶的新留言看起來是新問題（含問號、「還是」「沒有」「錯」「不行」「怎麼」等字）時才列出；
+     * 客戶重新打開的單狀態已不是已完成，照一般規則列出。
      * 每張單附完整內容、留言與附件下載網址（一小時有效）。
      */
     public function attention(Request $request, string $project, FeedbackMcpTools $tools): JsonResponse
@@ -83,6 +90,9 @@ class FeedbackPatrolController extends Controller
             if ($reporterAt !== null && $reporterAt > $handledAt) {
                 $why[] = 'reporter_message_after_last_reply';
             }
+            if ($why !== [] && $report->status === FeedbackReportStatus::Completed && ! $this->hasNewQuestion($report, $handledAt)) {
+                $why = [];
+            }
             if ($why !== []) {
                 $reasons[$report->public_id] = $why;
             }
@@ -101,6 +111,28 @@ class FeedbackPatrolController extends Controller
             'returned' => count($reports),
             'reports' => $reports,
         ]);
+    }
+
+    /**
+     * 最後一次團隊回覆之後的客戶留言（沒有就看最後一則客戶留言）是否含新問題的字眼。
+     */
+    private function hasNewQuestion(FeedbackReport $report, int $handledAt): bool
+    {
+        $reporterMessages = $report->feedbackMessages()->where('author_type', FeedbackAuthorType::Reporter->value);
+        $bodies = (clone $reporterMessages)->where('created_at', '>', date('Y-m-d H:i:s', $handledAt))->pluck('body');
+        if ($bodies->isEmpty()) {
+            $bodies = $reporterMessages->latest('created_at')->latest('id')->limit(1)->pluck('body');
+        }
+
+        foreach ($bodies as $body) {
+            foreach (self::QUESTION_MARKERS as $marker) {
+                if (str_contains((string) $body, $marker)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public function show(Request $request, string $project, string $report, FeedbackMcpTools $tools): JsonResponse

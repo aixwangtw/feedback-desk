@@ -126,6 +126,46 @@ class FeedbackPatrolApiTest extends TestCase
         $this->withToken($this->plain)->getJson(route('feedback.patrol.attention', 'missing'))->assertNotFound();
     }
 
+    public function test_completed_report_with_only_a_thank_you_message_is_not_listed(): void
+    {
+        $thanked = FeedbackReport::factory()->for($this->project)->create([
+            'status' => FeedbackReportStatus::Completed,
+            'adjustment_updated_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $thanked->id, 'body' => '好的，謝謝！', 'created_at' => now()->subHour()]);
+
+        $questioned = FeedbackReport::factory()->for($this->project)->create([
+            'status' => FeedbackReportStatus::Completed,
+            'adjustment_updated_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $questioned->id, 'body' => '謝謝，不過第三題怎麼還是一樣', 'created_at' => now()->subHours(2)]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $questioned->id, 'body' => '麻煩了', 'created_at' => now()->subHour()]);
+
+        $askedWithMark = FeedbackReport::factory()->for($this->project)->create([
+            'status' => FeedbackReportStatus::Completed,
+            'adjustment_updated_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $askedWithMark->id, 'body' => '可以再調大一點?', 'created_at' => now()->subHour()]);
+
+        $reopened = FeedbackReport::factory()->for($this->project)->create([
+            'status' => FeedbackReportStatus::New,
+            'adjustment_updated_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $reopened->id, 'body' => '謝謝', 'created_at' => now()->subHour()]);
+
+        $pendingThanks = FeedbackReport::factory()->for($this->project)->create([
+            'status' => FeedbackReportStatus::NeedsInput,
+            'adjustment_updated_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->create(['feedback_report_id' => $pendingThanks->id, 'body' => '謝謝', 'created_at' => now()->subHour()]);
+
+        $response = $this->withToken($this->plain)->getJson(route('feedback.patrol.attention', 'site'))->assertOk();
+
+        $ids = collect($response->json('reports'))->pluck('public_id')->all();
+        $this->assertEqualsCanonicalizing([$questioned->public_id, $askedWithMark->public_id, $reopened->public_id, $pendingThanks->public_id], $ids);
+        $this->assertSame(4, $response->json('total'));
+    }
+
     public function test_show_returns_report_detail(): void
     {
         $report = FeedbackReport::factory()->for($this->project)->create();

@@ -1,4 +1,4 @@
-{{-- 回饋單「調整說明」唯讀區塊；老師與開發者共用。 --}}
+{{-- 回饋單「調整重點」唯讀區塊；老師與開發者共用。 --}}
 @php
     $compact = $compact ?? false;
     $showHeading = $showHeading ?? true;
@@ -6,7 +6,8 @@
 
 <div data-adjustment>
     @if ($showHeading)
-        <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整說明</h2>
+        <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整重點</h2>
+        <p class="mt-0.5 text-xs text-slate-400">留言重點整理，會隨時更新</p>
     @endif
     @if (filled($report->adjustment_note))
         <div class="mt-2" data-adjustment-note>{{ \App\Support\FeedbackRichText::render($report->adjustment_note, $compact) }}</div>

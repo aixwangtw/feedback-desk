@@ -20,7 +20,7 @@
     @endif
     @if ($work['claim'] && ! $work['claim']['yours'])
         <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" data-claim-warning>
-            已有人認領。改狀態或調整說明前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
+            已有人認領。改狀態或調整重點前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
         </p>
     @endif
     @if ($canClaim)

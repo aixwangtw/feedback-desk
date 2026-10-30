@@ -35,7 +35,7 @@ test('剛建立的沒留言單不會排到有留言的單前面', () => {
     assert.ok(compareConversations(oldThread, fresh) < 0);
 });
 
-test('只有調整說明更新（沒有留言但未讀）也排在最前', () => {
+test('只有調整重點更新（沒有留言但未讀）也排在最前', () => {
     const adjustmentOnly = item('adjustment', { unread: 1, created: '2026-09-01T00:00:00+00:00', number: 7 });
     assert.equal(orderConversations([...fixtures(), adjustmentOnly])[2].id, 'adjustment');
 });

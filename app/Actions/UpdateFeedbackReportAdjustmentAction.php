@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\File\File;
 
 /**
- * 寫入回饋單的「調整說明」（文字＋圖片）。不會改動回饋單狀態。
+ * 寫入回饋單的「調整重點」（文字＋圖片）。不會改動回饋單狀態。
  */
 class UpdateFeedbackReportAdjustmentAction
 {

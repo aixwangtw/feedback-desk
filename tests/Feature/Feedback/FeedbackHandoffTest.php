@@ -75,7 +75,7 @@ class FeedbackHandoffTest extends TestCase
         $this->assertSame($this->amy->id, $this->report->claimed_by_developer_id);
         $this->assertSame('Codex', $this->report->claimed_agent);
 
-        // 別人（或同一人換另一個 AI）要改狀態、寫調整說明，沒加 --force 就停下。
+        // 別人（或同一人換另一個 AI）要改狀態、寫調整重點，沒加 --force 就停下。
         $this->artisan('feedback:status', ['project' => 'site', 'report' => $this->report->public_id, 'status' => 'needs_input', '--as' => 'ben'])
             ->expectsOutputToContain('王小明')
             ->assertFailed();

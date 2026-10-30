@@ -135,7 +135,7 @@ if (root) {
         });
     };
 
-    // 客戶端清單／看板上的「說明已更新」標籤：這張單已讀過（面板資料不再標示更新）就拿掉。
+    // 客戶端清單／看板上的「重點已更新」標籤：這張單已讀過（面板資料不再標示更新）就拿掉。
     const syncAdjustmentTags = () => {
         document.querySelectorAll('[data-adjustment-updated]').forEach((tag) => {
             const item = state.items.find((candidate) => candidate.id === tag.dataset.adjustmentUpdated);
@@ -216,8 +216,8 @@ if (root) {
                 : `${item.preview_is_mine ? '你：' : ''}${item.preview}`;
             bottom.append(el('span', `min-w-0 flex-1 truncate text-xs ${item.preview === null ? 'italic text-slate-400' : (item.has_update ? 'text-slate-800' : 'text-slate-500')}`, previewText));
             if (item.adjustment_updated) {
-                // 調整說明更新不算未讀留言：低調的文字標籤，不用紅色數字。
-                bottom.append(el('span', 'shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-medium text-slate-500', '說明已更新'));
+                // 調整重點更新不算未讀留言：低調的文字標籤，不用紅色數字。
+                bottom.append(el('span', 'shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-medium text-slate-500', '重點已更新'));
             }
             if (item.unread > 0) {
                 const badge = el('span', 'shrink-0 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[11px] font-bold leading-4 text-white', item.unread > 99 ? '99+' : item.unread);
@@ -311,7 +311,7 @@ if (root) {
             } else {
                 const previousAdjustment = state.lastThreadHtml === '' ? null : thread.querySelector('[data-chat-adjustment]');
                 thread.innerHTML = data.html;
-                // 刷新時保留使用者展開／收合的調整說明。
+                // 刷新時保留使用者展開／收合的調整重點。
                 const adjustment = thread.querySelector('[data-chat-adjustment]');
                 if (previousAdjustment && adjustment) {
                     adjustment.open = previousAdjustment.open;

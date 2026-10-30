@@ -255,7 +255,7 @@ class FeedbackGuestClientTest extends TestCase
 
         $html = $this->get(route('feedback.portal', $this->project))->getContent();
         $header = substr($html, strpos($html, '<thead'));
-        $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>調整說明</th>'));
+        $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>調整重點</th>'));
         $this->assertLessThan(strpos($header, '建立日期'), strpos($header, '>建立者</th>'));
         $row = substr($html, strpos($html, '<tbody'));
         $this->assertLessThan(strpos($row, 'data-report-creator'), strpos($row, '調整內文QRS'));

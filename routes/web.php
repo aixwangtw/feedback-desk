@@ -117,7 +117,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::match(['get', 'delete'], '/mcp', [FeedbackMcpController::class, 'methodNotAllowed'])
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware]);
 
-    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫調整說明、改成待審核。
+    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫調整重點、改成待審核。
     Route::prefix('/api/patrol')
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware])
         ->middleware('throttle:feedback-patrol')

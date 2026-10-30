@@ -26,7 +26,7 @@ class UpdateFeedbackAdjustmentRequest extends FormRequest
     protected $errorBag = 'adjustment';
 
     /**
-     * 只有開發者能編輯調整說明，老師端唯讀。
+     * 只有開發者能編輯調整重點，老師端唯讀。
      */
     public function authorize(): bool
     {
@@ -66,7 +66,7 @@ class UpdateFeedbackAdjustmentRequest extends FormRequest
     public function attributes(): array
     {
         return [
-            'adjustment_note' => '調整說明',
+            'adjustment_note' => '調整重點',
             'adjustment_images' => '調整圖片',
             'adjustment_images.*' => '調整圖片',
             'remove_adjustment_attachments.*' => '要刪除的調整圖片',

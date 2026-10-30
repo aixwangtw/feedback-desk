@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * 多人、多個 AI 接手同一張單：認領、釋放、接手、交接紀錄與最近動態。網頁、MCP 與 artisan 指令共用。
- * 認領不是鎖：別人認領中的單仍看得到；MCP 與指令要改狀態、寫調整說明時先停下說明是誰在處理，
+ * 認領不是鎖：別人認領中的單仍看得到；MCP 與指令要改狀態、寫調整重點時先停下說明是誰在處理，
  * 確定要接手才加 force，系統記錄「接手」。網頁不擋，只提示並提供「接手」按鈕。
  */
 class FeedbackReportWork
@@ -85,7 +85,7 @@ class FeedbackReportWork
     }
 
     /**
-     * 改狀態、寫調整說明前的檢查（MCP 與 artisan 指令）：別人認領中時，沒加 force 就停下並說明是誰；
+     * 改狀態、寫調整重點前的檢查（MCP 與 artisan 指令）：別人認領中時，沒加 force 就停下並說明是誰；
      * 加了 force 就由這個帳號接手（沒有個人帳號時只釋放），記錄接手。回傳原本的認領者。
      */
     public function guard(FeedbackReport $report, FeedbackActor $actor, bool $force): ?string

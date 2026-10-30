@@ -15,7 +15,7 @@ class FeedbackReportEvent extends Model
     public const LABELS = [
         'created' => '開單',
         'message' => '留言',
-        'adjustment' => '寫調整說明',
+        'adjustment' => '寫調整重點',
         'status' => '改狀態',
         'claim' => '認領',
         'release' => '釋放認領',

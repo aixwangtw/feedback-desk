@@ -16,7 +16,7 @@ use Illuminate\Console\Command;
     {--id= : revoke 用：token 編號（list 看得到）}')]
 #[Description('管理排程專用 API token（建立、列出、撤銷）')]
 #[Help(<<<'HELP'
-排程 API（/api/patrol/...）只能列專案、讀待處理單、留言、寫調整說明、改成待審核，
+排程 API（/api/patrol/...）只能列專案、讀待處理單、留言、寫調整重點、改成待審核，
 不能改成已完成、不能刪除。token 只存雜湊，明文只在建立時顯示一次。
 
   php artisan feedback:patrol-token issue --developer=alex --name="Claude 雲端排程"

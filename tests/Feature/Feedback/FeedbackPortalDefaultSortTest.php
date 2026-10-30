@@ -63,14 +63,14 @@ class FeedbackPortalDefaultSortTest extends TestCase
         $this->message($readThread, FeedbackAuthorType::Reporter, now()->subDays(10));
         $replied = $this->report('開發者剛回覆', now()->subMonths(2));
         $this->message($replied, FeedbackAuthorType::Owner, now()->subDays(15));
-        $this->report('調整說明更新但沒留言', now()->subMonths(3), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(10)]);
+        $this->report('調整重點更新但沒留言', now()->subMonths(3), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(10)]);
         $this->report('更早建立還沒留言', now()->subWeek());
         // 開發者自己建的單不會出現在客戶端。
         $this->report('開發者自己的單', now(), ['creator_type' => FeedbackCreatorType::OwnerShared]);
         $this->actingAsClient();
 
-        // 調整說明更新不算未讀，沒留言的單照建立時間排在最後段。
-        $expected = ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整說明更新但沒留言'];
+        // 調整重點更新不算未讀，沒留言的單照建立時間排在最後段。
+        $expected = ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整重點更新但沒留言'];
         $this->assertSame($expected, $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()));
         $this->assertSame($expected, array_column($this->getJson(route('feedback.conversations.index', $this->project))->json('items'), 'title'));
     }

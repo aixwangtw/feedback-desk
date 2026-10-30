@@ -58,10 +58,10 @@
             <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' }}</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到{{ config('feedback.labels.client') }}的回報，等{{ config('feedback.labels.owner') }}處理。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>{{ config('feedback.labels.owner') }}已改好並寫了調整說明，請{{ config('feedback.labels.client') }}確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>{{ config('feedback.labels.owner') }}已改好並寫了調整重點，請{{ config('feedback.labels.client') }}確認。</span></li>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>已完成</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
             </ul>
-            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整說明、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整說明、調整附圖。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。' }}</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
@@ -179,7 +179,7 @@
                             <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
                         @endif
                         <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
-                        <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>
+                        <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
@@ -232,10 +232,10 @@
                                 @endif
                             </td>
                             <td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
-                                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整說明：</span>
+                                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整重點：</span>
                                 @if ($report->hasAdjustment())
                                     @if (filled($report->adjustment_note))
-                                        <button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整說明" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
+                                        <button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整重點" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
                                     @endif
                                     @if ($report->adjustmentAttachments->isNotEmpty())
                                         <div class="mt-1 flex flex-wrap gap-1">
@@ -346,9 +346,9 @@
 
                                         @if ($report->hasAdjustment())
                                             <div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card>
-                                                <p class="text-[11px] font-bold text-teal-800">調整說明</p>
+                                                <p class="text-[11px] font-bold text-teal-800">調整重點</p>
                                                 @if (filled($report->adjustment_note))
-                                                    <button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整說明" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
+                                                    <button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整重點" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
                                                 @endif
                                                 @if ($report->adjustmentAttachments->isNotEmpty())
                                                     @php $adjustmentImage = $report->adjustmentAttachments->first(); @endphp

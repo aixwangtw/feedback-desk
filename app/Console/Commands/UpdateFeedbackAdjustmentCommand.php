@@ -19,15 +19,15 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）；搭配 --by-id 時為資料庫 id}
     {--by-id : 把 report 當資料庫 id（純數字）；未加時純數字會被拒絕}
-    {--note= : 調整說明文字；未給則保留原文字，--note="" 會清空}
+    {--note= : 調整重點文字；未給則保留原文字，--note="" 會清空}
     {--append : 把 --note 接在既有內容後面（中間空一行）；未加則覆寫}
     {--image=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內）}
     {--as= : 以這個團隊個人帳號記錄（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}
     {--force : 別人認領中仍要做（記錄為接手）}')]
-#[Description('寫入回饋單的「調整說明」文字與圖片（不改動回饋單狀態）')]
+#[Description('寫入回饋單的「調整重點」文字與圖片（不改動回饋單狀態）')]
 #[Help(<<<'HELP'
-寫入回饋單的「調整說明」，客戶與開發團隊都會在回饋單內容下方看到。
+寫入回饋單的「調整重點」，客戶與開發團隊都會在回饋單內容下方看到。
 
   覆寫文字：
     php artisan feedback:adjust my-project 0199c3a1-... --note="已修正登入頁排版"
@@ -105,7 +105,7 @@ class UpdateFeedbackAdjustmentCommand extends Command
         if ($note !== null) {
             $merged = UpdateFeedbackReportAdjustmentAction::mergeNote($report->adjustment_note, $note, $append);
             if (mb_strlen((string) $merged) > UpdateFeedbackReportAdjustmentAction::MAX_NOTE_LENGTH) {
-                $this->components->error('調整說明超過 '.UpdateFeedbackReportAdjustmentAction::MAX_NOTE_LENGTH.' 字上限。');
+                $this->components->error('調整重點超過 '.UpdateFeedbackReportAdjustmentAction::MAX_NOTE_LENGTH.' 字上限。');
 
                 return self::FAILURE;
             }
@@ -131,7 +131,7 @@ class UpdateFeedbackAdjustmentCommand extends Command
             $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
         }
 
-        $this->components->info('已更新調整說明：'.OutputFormatter::escape($report->title));
+        $this->components->info('已更新調整重點：'.OutputFormatter::escape($report->title));
         if ($note !== null) {
             $this->components->twoColumnDetail('文字', $append ? '已追加' : '已覆寫');
         }

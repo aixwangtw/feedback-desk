@@ -44,17 +44,17 @@ class FeedbackAdjustmentTest extends TestCase
 
         $html = $this->get(route('feedback.reports.show', [$this->project, $this->report]))
             ->assertOk()
-            ->assertSee('調整說明')
+            ->assertSee('調整重點')
             ->assertSee("已修正排版\n第二行")
             ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
-            ->assertDontSee('編輯調整說明')
+            ->assertDontSee('編輯調整重點')
             ->assertDontSee(route('feedback.reports.adjustment.update', [$this->project, $this->report]))
             ->getContent();
 
         $this->assertLessThan(
             strpos($html, 'data-adjustment'),
             strpos($html, e($this->report->description)),
-            '調整說明應在回饋單內容下方。',
+            '調整重點應在回饋單內容下方。',
         );
 
         $this->get(route('feedback.portal', $this->project))
@@ -70,7 +70,7 @@ class FeedbackAdjustmentTest extends TestCase
         $this->get(route('feedback.reports.show', [$this->project, $this->report]))
             ->assertOk()
             ->assertDontSee('data-adjustment', false)
-            ->assertDontSee('調整說明');
+            ->assertDontSee('調整重點');
         $this->get(route('feedback.portal', $this->project))
             ->assertOk()
             ->assertDontSee('data-adjustment', false);
@@ -82,9 +82,9 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->get(route('feedback.reports.show', [$this->project, $this->report]))
             ->assertOk()
-            ->assertSee('調整說明')
+            ->assertSee('調整重點')
             ->assertSee('尚未填寫')
-            ->assertSee('編輯調整說明')
+            ->assertSee('編輯調整重點')
             ->assertSee(route('feedback.reports.adjustment.update', [$this->project, $this->report]));
     }
 
@@ -368,7 +368,7 @@ class FeedbackAdjustmentTest extends TestCase
 
     public function test_list_view_shows_the_adjustment_column_with_note_and_image(): void
     {
-        $this->report->update(['adjustment_note' => '清單可見的調整說明']);
+        $this->report->update(['adjustment_note' => '清單可見的調整重點']);
         $image = $this->adjustmentImage();
         FeedbackReport::factory()->for($this->project)->create(['title' => '沒有調整的單']);
 
@@ -376,20 +376,20 @@ class FeedbackAdjustmentTest extends TestCase
 
         $html = $this->get(route('feedback.portal', $this->project))
             ->assertOk()
-            ->assertSee('<th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整說明</th>', false)
-            ->assertSee('清單可見的調整說明')
+            ->assertSee('<th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>', false)
+            ->assertSee('清單可見的調整重點')
             ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
             ->getContent();
 
         $table = Str::between($html, 'data-report-table', '</table>');
-        $this->assertStringContainsString('清單可見的調整說明', $table);
+        $this->assertStringContainsString('清單可見的調整重點', $table);
         $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $image]), $table);
         $this->assertStringNotContainsString('data-adjustment-image', Str::before(Str::after($table, '沒有調整的單'), '</tr>'));
     }
 
     public function test_board_view_shows_the_adjustment_note_and_image_count(): void
     {
-        $this->report->update(['adjustment_note' => '看板可見的調整說明', 'status' => FeedbackReportStatus::New]);
+        $this->report->update(['adjustment_note' => '看板可見的調整重點', 'status' => FeedbackReportStatus::New]);
         $image = $this->adjustmentImage();
         $this->adjustmentImage();
 
@@ -398,7 +398,7 @@ class FeedbackAdjustmentTest extends TestCase
         $this->get(route('feedback.portal', $this->project).'?view=board')
             ->assertOk()
             ->assertSee('data-adjustment-card', false)
-            ->assertSee('看板可見的調整說明')
+            ->assertSee('看板可見的調整重點')
             ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
             ->assertSee('2 張調整圖');
     }

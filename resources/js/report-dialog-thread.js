@@ -44,7 +44,7 @@ const setupThread = (section) => {
             if (data.html !== lastHtml) {
                 const template = document.createElement('template');
                 template.innerHTML = data.html;
-                // 調整說明已在視窗上方顯示，這裡只放留言串。
+                // 調整重點已在視窗上方顯示，這裡只放留言串。
                 template.content.querySelectorAll('[data-chat-adjustment]').forEach((node) => node.remove());
                 const nearEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
                 body.replaceChildren(template.content);

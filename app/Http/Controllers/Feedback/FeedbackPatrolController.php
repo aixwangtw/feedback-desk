@@ -17,7 +17,7 @@ use Illuminate\Http\Request;
 
 /**
  * 排程（雲端例行巡檢）專用 REST API。用 Authorization: Bearer fdp_... 驗證，以 token 綁定的團隊個人帳號身分操作。
- * 只能：列專案、列待處理單、讀單、留言、寫調整說明、改成待審核（needs_input）。不能改成已完成、不能刪除。
+ * 只能：列專案、列待處理單、讀單、留言、寫調整重點、改成待審核（needs_input）。不能改成已完成、不能刪除。
  * 讀單與寫入共用 MCP 工具的邏輯；寫入動作另記在 feedback_patrol_logs。
  */
 class FeedbackPatrolController extends Controller
@@ -47,7 +47,7 @@ class FeedbackPatrolController extends Controller
     }
 
     /**
-     * 需要處理的單：待處理（new）、有開發者還沒在網頁看過的客戶留言、或最後一則客戶留言晚於最後一次調整說明與團隊留言。
+     * 需要處理的單：待處理（new）、有開發者還沒在網頁看過的客戶留言、或最後一則客戶留言晚於最後一次調整重點與團隊留言。
      * 已完成的單只有在客戶的新留言看起來是新問題（含問號、「還是」「沒有」「錯」「不行」「怎麼」等字）時才列出；
      * 客戶重新打開的單狀態已不是已完成，照一般規則列出。
      * 每張單附完整內容、留言與附件下載網址（一小時有效）。

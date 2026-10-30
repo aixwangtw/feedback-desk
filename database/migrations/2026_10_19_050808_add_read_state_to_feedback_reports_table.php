@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * 記錄開發者與客戶各自最後一次開啟單的時間，以及調整說明最後變動的時間。
+     * 記錄開發者與客戶各自最後一次開啟單的時間，以及調整重點最後變動的時間。
      */
     public function up(): void
     {

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
- * 排程專用 API：token 驗證與撤銷、待處理清單、留言、調整說明、只能改成待審核、寫入紀錄、速率限制。
+ * 排程專用 API：token 驗證與撤銷、待處理清單、留言、調整重點、只能改成待審核、寫入紀錄、速率限制。
  */
 class FeedbackPatrolApiTest extends TestCase
 {

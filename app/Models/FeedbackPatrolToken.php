@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 /**
- * 排程專用 API token：代表一個團隊個人帳號，只能讀單、留言、寫調整說明、改成待審核。只存 SHA-256 雜湊。
+ * 排程專用 API token：代表一個團隊個人帳號，只能讀單、留言、寫調整重點、改成待審核。只存 SHA-256 雜湊。
  */
 #[Fillable(['feedback_developer_id', 'name', 'token_hash', 'last_used_at', 'revoked_at'])]
 #[Hidden(['token_hash'])]

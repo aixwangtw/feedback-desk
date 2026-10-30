@@ -30,6 +30,6 @@ class FeedbackAdjustmentController extends Controller
 
         return redirect()
             ->to(route('feedback.reports.show', [$feedbackProject, $feedbackReport]).'#adjustment')
-            ->with('success', '已更新調整說明。');
+            ->with('success', '已更新調整重點。');
     }
 }

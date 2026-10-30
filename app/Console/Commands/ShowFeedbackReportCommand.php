@@ -18,7 +18,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id，或團隊端清單編號（純數字）}
     {--json : 輸出 JSON}')]
-#[Description('讀取單張回饋單的完整內容（說明、附件路徑、調整說明、留言）')]
+#[Description('讀取單張回饋單的完整內容（說明、附件路徑、調整重點、留言）')]
 #[Help(<<<'HELP'
 讀取單張回饋單的完整內容，附件會印出伺服器上的絕對檔案路徑，可直接開啟看圖。
 
@@ -153,7 +153,7 @@ class ShowFeedbackReportCommand extends Command
         $this->renderAttachments('附件', $data['attachments']);
 
         $this->newLine();
-        $this->line('## 調整說明');
+        $this->line('## 調整重點');
         $this->line(filled($data['adjustment_note']) ? $this->e($data['adjustment_note']) : '（尚未填寫）');
         $this->renderAttachments('調整附圖', $data['adjustment_attachments']);
 

@@ -123,7 +123,7 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 開發者在「調整說明」附上的圖片。
+     * 開發者在「調整重點」附上的圖片。
      *
      * @return HasMany<FeedbackAttachment, $this>
      */
@@ -347,7 +347,7 @@ class FeedbackReport extends Model
 
     /**
      * 客戶端清單要用的：這位客戶（或共用客戶端）上次開啟之後，開發者（含 AI）新增的留言數，
-     * 另外帶出上次開啟時間（viewer_read_at）給「調整說明有更新」判斷。
+     * 另外帶出上次開啟時間（viewer_read_at）給「調整重點有更新」判斷。
      *
      * @param  Builder<FeedbackReport>  $query
      */
@@ -369,7 +369,7 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 客戶端的「有新動態」：開發者在客戶上次開啟後留言，或更新了調整說明（後者不算未讀留言）。
+     * 客戶端的「有新動態」：開發者在客戶上次開啟後留言，或更新了調整重點（後者不算未讀留言）。
      * 需先用 withClientNewReplyCount 載入留言數。
      */
     public function hasNewReplyForClient(): bool
@@ -378,7 +378,7 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 開發者在客戶上次開啟這張單之後更新了調整說明。查詢有帶 viewer_read_at（withClientNewReplyCount）時以它為準，
+     * 開發者在客戶上次開啟這張單之後更新了調整重點。查詢有帶 viewer_read_at（withClientNewReplyCount）時以它為準，
      * 否則傳入客戶帳號另外查。
      */
     public function adjustmentIsNewForClient(?FeedbackClientAccount $viewer = null): bool
@@ -415,7 +415,7 @@ class FeedbackReport extends Model
 
     /**
      * 清單、看板與對話面板共用的未讀數（紅色數字），只算對方的新留言：開發者看客戶的新留言；客戶看開發者（含 AI）的新留言。
-     * 調整說明更新不算未讀，另用 adjustmentIsNewForClient 顯示「說明已更新」標籤。
+     * 調整重點更新不算未讀，另用 adjustmentIsNewForClient 顯示「重點已更新」標籤。
      * 需先用 withOwnerMessageStats 或 withClientNewReplyCount 載入留言數。
      */
     public function unreadCountFor(bool $forOwner): int
@@ -425,7 +425,7 @@ class FeedbackReport extends Model
 
     /**
      * 留言對話面板、問題清單與看板共用的預設排序（resources/js/chat-order.js 用同一套規則）：
-     * 有未讀留言的最前（調整說明更新不算）、其次有留言但已讀的，兩者依最新留言時間新到舊；沒有留言的最後，依建立時間新到舊。
+     * 有未讀留言的最前（調整重點更新不算）、其次有留言但已讀的，兩者依最新留言時間新到舊；沒有留言的最後，依建立時間新到舊。
      * 同時間再依編號新到舊（編號最新為 1）。鍵值由大到小排即為上述順序。
      *
      * @return array{0: int, 1: int, 2: int}

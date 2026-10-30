@@ -119,14 +119,14 @@ class FeedbackConversationPanelTest extends TestCase
         $this->message($readThread, FeedbackAuthorType::Reporter, now()->subDays(10), '老師的問題');
         $replied = $this->report('開發者剛回覆', now()->subMonths(2));
         $this->message($replied, FeedbackAuthorType::Owner, now()->subDays(15), '開發者回覆');
-        $this->report('調整說明更新但沒留言', now()->subMonths(3), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(10)]);
+        $this->report('調整重點更新但沒留言', now()->subMonths(3), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(10)]);
         $this->report('更早建立還沒留言', now()->subWeek());
 
         $this->actingAsClient();
         $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
 
         $this->assertSame(
-            ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整說明更新但沒留言'],
+            ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整重點更新但沒留言'],
             array_column($response->json('items'), 'title'),
         );
     }
@@ -137,7 +137,7 @@ class FeedbackConversationPanelTest extends TestCase
         $this->message($answered, FeedbackAuthorType::Reporter, now()->subHours(5), '老師的問題');
         $this->message($answered, FeedbackAuthorType::Owner, now()->subHours(2), '開發者回覆');
         $this->message($answered, FeedbackAuthorType::Agent, now()->subHour(), 'AI 回覆');
-        $adjusted = $this->report('調整說明有更新', now()->subDays(2), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(5)]);
+        $adjusted = $this->report('調整重點有更新', now()->subDays(2), ['adjustment_note' => '改好了', 'adjustment_updated_at' => now()->subMinutes(5)]);
         $this->report('老師刪掉的單', now()->subDays(1), ['client_deleted_at' => now()]);
         FeedbackReport::factory()->for($this->project)->byOwnerShared()->create(['title' => '開發者自己的單']);
 
@@ -145,12 +145,12 @@ class FeedbackConversationPanelTest extends TestCase
         $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
 
         $titles = array_column($response->json('items'), 'title');
-        $this->assertSame(['開發者回了', '調整說明有更新'], $titles);
+        $this->assertSame(['開發者回了', '調整重點有更新'], $titles);
         $this->assertSame(2, $response->json('items.0.unread'));
         $this->assertSame('AI 回覆', $response->json('items.0.preview'));
         $this->assertFalse($response->json('items.0.preview_is_mine'));
         $this->assertTrue($response->json('items.1.adjustment_updated'));
-        // 調整說明更新不算未讀留言，只用 adjustment_updated 標示；浮動按鈕總數只算留言。
+        // 調整重點更新不算未讀留言，只用 adjustment_updated 標示；浮動按鈕總數只算留言。
         $this->assertSame(0, $response->json('items.1.unread'));
         $this->assertTrue($response->json('items.1.has_update'));
         $this->assertSame(2, $response->json('unread_total'));
@@ -402,7 +402,7 @@ class FeedbackConversationPanelTest extends TestCase
         $this->actingAsClient();
         $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
         $this->assertStringContainsString('data-viewer="client"', $page);
-        // 客戶端：老師自己的留言不算未讀，調整說明更新也不算，不顯示紅色數字，改顯示「說明已更新」標籤。
+        // 客戶端：老師自己的留言不算未讀，調整重點更新也不算，不顯示紅色數字，改顯示「重點已更新」標籤。
         $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言）/', $page);
         $this->assertStringNotContainsString('data-unread-badge', $page);
         $this->assertStringContainsString('data-adjustment-updated="'.$report->public_id.'"', $page);

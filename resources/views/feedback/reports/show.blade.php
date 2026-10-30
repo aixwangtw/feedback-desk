@@ -67,7 +67,7 @@
                     @if ($isOwner)
                         @php $adjustmentErrors = $errors->getBag('adjustment'); @endphp
                         <details class="mt-5 border-t border-slate-100 pt-4" @if ($adjustmentErrors->any()) open @endif data-adjustment-editor>
-                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整說明（僅{{ config('feedback.labels.owner') }}）</summary>
+                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整重點（僅{{ config('feedback.labels.owner') }}）</summary>
                             <form method="POST" action="{{ route('feedback.reports.adjustment.update', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
                                 @csrf
                                 @method('PUT')
@@ -103,7 +103,7 @@
                                         加入調整圖片
                                         <input id="adjustment-images" name="adjustment_images[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="adjustment-preview">
                                     </label>
-                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整說明</button>
+                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整重點</button>
                                 </div>
                                 <div id="adjustment-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                             </form>

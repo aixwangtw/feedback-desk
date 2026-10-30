@@ -193,13 +193,13 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->assertSame($changedAt->toDateTimeString(), $report->refresh()->adjustment_updated_at->toDateTimeString());
 
         $this->actingAsClient();
-        // 沒有留言、只有調整說明更新時：不出現留言按鈕與紅色數字，改顯示低調的「說明已更新」標籤。
+        // 沒有留言、只有調整重點更新時：不出現留言按鈕與紅色數字，改顯示低調的「重點已更新」標籤。
         foreach (['list', 'board'] as $view) {
             $html = $this->get(route('feedback.portal', [$this->project, 'view' => $view]))
                 ->assertOk()
                 ->assertDontSee('data-unread-badge', false)
                 ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false)
-                ->assertSee('說明已更新')
+                ->assertSee('重點已更新')
                 ->getContent();
             // 清單列／卡片上沒有留言按鈕（詳情視窗內直接顯示留言串）。
             $this->assertSame(0, substr_count($html, 'data-chat-open="'.$report->public_id.'" data-message-count'));

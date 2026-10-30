@@ -53,8 +53,8 @@ class FeedbackUnreadMessagesTest extends TestCase
             ->assertSee('只看未讀留言')
             ->getContent();
 
-        // 清單列與該單詳情視窗的「開啟對話」按鈕各一個紅色未讀數字。
-        $this->assertSame(2, substr_count($html, 'data-unread-badge'));
+        // 清單列的留言按鈕有紅色未讀數字；詳情視窗改為直接顯示留言串，不再另放按鈕。
+        $this->assertSame(1, substr_count($html, 'data-unread-badge'));
 
         $this->get(route('feedback.portal', [$this->project, 'unread' => 1]))
             ->assertOk()
@@ -201,8 +201,8 @@ class FeedbackUnreadMessagesTest extends TestCase
                 ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false)
                 ->assertSee('說明已更新')
                 ->getContent();
-            // 只剩詳情視窗固定有的「開啟對話」按鈕，清單列／卡片上沒有留言按鈕。
-            $this->assertSame(1, substr_count($html, 'data-chat-open="'.$report->public_id.'" data-message-count'));
+            // 清單列／卡片上沒有留言按鈕（詳情視窗內直接顯示留言串）。
+            $this->assertSame(0, substr_count($html, 'data-chat-open="'.$report->public_id.'" data-message-count'));
         }
         $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('unread_total'));
 

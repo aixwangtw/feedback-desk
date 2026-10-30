@@ -5,7 +5,7 @@
         @csrf
         @method('PATCH')
         <label for="quick-category-{{ $report->public_id }}{{ $attributes->get('data-suffix', '') }}" class="{{ $compact ? 'sr-only' : 'font-semibold text-slate-500' }}">分類</label>
-        <select id="quick-category-{{ $report->public_id }}{{ $attributes->get('data-suffix', '') }}" name="category" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10" data-category-quick>
+        <select id="quick-category-{{ $report->public_id }}{{ $attributes->get('data-suffix', '') }}" name="category" class="{{ $compact ? 'h-8 w-28 shrink-0 px-2 py-0' : 'px-2.5 py-1.5' }} rounded-lg border border-slate-300 bg-white text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10" data-category-quick>
             <option value="" @selected(blank($report->category))>未分類</option>
             @foreach ($categories as $category)
                 <option value="{{ $category }}" @selected($report->category === $category)>{{ $category }}</option>

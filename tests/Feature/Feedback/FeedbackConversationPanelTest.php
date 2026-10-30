@@ -408,7 +408,54 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertStringContainsString('data-adjustment-updated="'.$report->public_id.'"', $page);
         $this->assertStringNotContainsString('有新回覆', $page);
         $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
-        $this->assertStringContainsString('開啟對話', $dialog);
+        $this->assertStringContainsString('data-dialog-thread', $dialog);
+    }
+
+    public function test_detail_dialog_embeds_the_thread_and_a_reply_form_for_both_sides(): void
+    {
+        $report = $this->report('彈窗留言的單', now()->subDay(), ['adjustment_note' => '已調整好']);
+        $this->message($report, FeedbackAuthorType::Reporter, now()->subMinutes(5), '老師的問題');
+
+        foreach (['owner', 'client'] as $side) {
+            $side === 'owner' ? $this->actingAsOwner() : $this->actingAsClient();
+            $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+            $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
+
+            $this->assertStringContainsString('已調整好', $dialog);
+            $this->assertStringContainsString('data-thread-url="'.route('feedback.conversations.show', [$this->project, $report]).'"', $dialog);
+            $this->assertStringContainsString('action="'.route('feedback.messages.store', [$this->project, $report]).'"', $dialog);
+            $this->assertMatchesRegularExpression('/name="_token" value="[^"]+"/', Str::between($dialog, 'data-dialog-thread-form', '</form>'));
+            $this->assertStringContainsString('name="body"', $dialog);
+            $this->assertStringContainsString('name="screenshots[]"', $dialog);
+        }
+    }
+
+    public function test_loading_the_dialog_thread_marks_it_read_and_clears_the_red_count(): void
+    {
+        $report = $this->report('未讀的單', now()->subDay());
+        $this->message($report, FeedbackAuthorType::Reporter, now()->subMinutes(5), '老師留言');
+        $this->actingAsOwner();
+
+        $this->assertStringContainsString('data-unread-badge', $this->get(route('feedback.portal', $this->project))->getContent());
+
+        $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $report]))
+            ->assertOk()
+            ->assertJsonPath('id', $report->public_id);
+        $this->assertStringContainsString('老師留言', $thread->json('html'));
+
+        $this->assertStringNotContainsString('data-unread-badge', $this->get(route('feedback.portal', $this->project))->getContent());
+        $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('unread_total'));
+    }
+
+    public function test_reply_from_the_dialog_form_is_saved_and_shown_in_the_thread(): void
+    {
+        $report = $this->report('要回覆的單', now()->subDay());
+        $this->actingAsClient();
+
+        $this->postJson(route('feedback.messages.store', [$this->project, $report]), ['body' => '彈窗內的留言'])->assertCreated();
+
+        $html = $this->getJson(route('feedback.conversations.show', [$this->project, $report]))->assertOk()->json('html');
+        $this->assertStringContainsString('彈窗內的留言', $html);
     }
 
     public function test_report_page_shows_the_full_conversation_as_chat_bubbles(): void

@@ -579,5 +579,18 @@ if (root) {
         }
     });
 
+    // 詳情視窗內開啟留言也算已讀：本地歸零，下次刷新再以伺服器為準。
+    document.addEventListener('feedback:report-read', (event) => {
+        const item = state.items.find((candidate) => candidate.id === event.detail?.id);
+        if (item && (item.unread > 0 || item.adjustment_updated)) {
+            item.unread = 0;
+            item.adjustment_updated = false;
+            item.has_update = false;
+            recountBadge();
+            renderList();
+            syncPage();
+        }
+    });
+
     loadList();
 }

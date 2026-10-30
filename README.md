@@ -462,7 +462,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 
 ### 排程專用 API（雲端例行巡檢）
 
-給定時執行、沒有人在旁邊的 AI 排程用。先用 `npx feedback-desk patrol-token issue --developer 帳號 --name "雲端排程"` 建立 token（明文只顯示一次），請求帶 `Authorization: Bearer fdp_...`。每個 token 每分鐘 60 次、同一 IP 每分鐘 120 次。
+給定時執行、沒有人在旁邊的 AI 排程用。先用 `npx --allow-git=all github:aixwangtw/feedback-desk patrol-token issue --developer 帳號 --name "雲端排程"` 建立 token（明文只顯示一次），請求帶 `Authorization: Bearer fdp_...`。每個 token 每分鐘 60 次、同一 IP 每分鐘 120 次。
 
 | 方法與路徑 | 用途 |
 | --- | --- |

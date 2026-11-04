@@ -289,11 +289,11 @@ api.get('/projects/:slug/reports', async (c) => {
 });
 
 api.post('/projects/:slug/reports', async (c) => {
-    const input = await body<{ title?: string; description?: string; category?: string; upload_ids?: string[] }>(c);
+    const input = await body<{ title?: string; description?: string; category?: string; upload_ids?: string[]; for_client?: boolean; notice?: string | null }>(c);
     if (isClient(c)) {
         return c.json(await clients.createOwnReport(clientCtx(c), c.req.param('slug'), input), 201);
     }
-    return c.json(await team.createTeamReport(ctx(c), c.req.param('slug'), { title: input.title ?? '', description: input.description ?? '', category: input.category, upload_ids: input.upload_ids }), 201);
+    return c.json(await team.createTeamReport(ctx(c), c.req.param('slug'), { title: input.title ?? '', description: input.description ?? '', category: input.category, upload_ids: input.upload_ids, for_client: input.for_client === true, notice: input.notice }), 201);
 });
 
 function lookupMode(c: AppContext): 'auto' | 'public_id' | 'id' {

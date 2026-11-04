@@ -75,6 +75,8 @@ export interface Report {
     status: ReportStatus;
     completed_at: string | null;
     client_deleted_at: string | null;
+    /** 1: 團隊開的單分享給客戶（客戶看得到、算進客戶編號）；客戶自己開的單不看這個欄位（migration 0011）。 */
+    shared_with_client: number;
     latest_activity_at: string;
     /** Last time the team opened the report; client messages after it are unread. */
     owner_last_read_at: string | null;
@@ -133,8 +135,11 @@ export function isPublicReport(report: Pick<Report, 'creator_type'>): boolean {
     return report.creator_type === 'public';
 }
 
-export function isCreatedByClient(report: Pick<Report, 'creator_type'>): boolean {
-    return report.creator_type === 'client';
+/** SQL 條件：客戶端看得到的單（客戶自己開的，或團隊分享給客戶的）。與 isVisibleToClient 一致。 */
+export const CLIENT_VISIBLE_SQL = "(creator_type = 'client' OR shared_with_client = 1)";
+
+export function isVisibleToClient(report: Pick<Report, 'creator_type' | 'shared_with_client'>): boolean {
+    return report.creator_type === 'client' || report.shared_with_client === 1;
 }
 
 export function isDeletedByClient(report: Pick<Report, 'client_deleted_at'>): boolean {

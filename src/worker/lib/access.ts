@@ -2,7 +2,7 @@ import { config, type Env } from '../env';
 import { CookieJar } from './cookies';
 import { hmac, sha256Hex, timingSafeEqualString } from './crypto';
 import { findClientAccount, findClientAccountInProject, findDeveloper, placeholders } from './db';
-import { isCreatedByClient, isDeletedByClient, isPublicReport, type ClientAccount, type Developer, type Project, type Report } from './models';
+import { isDeletedByClient, isPublicReport, isVisibleToClient, type ClientAccount, type Developer, type Project, type Report } from './models';
 
 export const AUTH_COOKIE = 'fd_auth';
 export const PUBLIC_COOKIE = 'fd_public';
@@ -469,7 +469,7 @@ export class Access {
     }
 
     /**
-     * A report deleted by the client, or created by the team, exists only for the owner.
+     * A report deleted by the client, or created by the team and not shared with the client, exists only for the owner.
      * A public report is visible only to the owner and to the reporter holding its token.
      */
     async reportVisible(project: Project, report: Report): Promise<boolean> {
@@ -477,7 +477,7 @@ export class Access {
         if (isPublicReport(report)) {
             return owner || (await this.hasReporterGrant(report));
         }
-        return owner || (!isDeletedByClient(report) && isCreatedByClient(report));
+        return owner || (!isDeletedByClient(report) && isVisibleToClient(report));
     }
 
     private async publicTokens(): Promise<Record<string, string>> {

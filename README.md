@@ -503,10 +503,10 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `developer disable\|enable\|delete <帳號>` | 停用、重新啟用、刪除團隊帳號（建立過的單保留）。不能對自己目前登入的帳號操作。 |
 | `reports <project> [--status] [--creator] [--include-deleted] [--include-public] [--unread] [--json]` | 列出回報單，最新在前；預設不含首頁公開回報。 |
 | `report <project> <public_id\|編號> [--json] [--no-download]` | 讀單張回報單；附件預設下載到 `~/.cache/feedback-desk/` 並印出路徑。 |
-| `create <project> --title --description [--category] [--image]...` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。 |
+| `create <project> --title --description [--category] [--attach]... [--for-client [--notice]]` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。`--attach` 可重複，附 jpg／png／webp 圖片（每張 10 MB 內、最多 5 張，PDF 請先轉成圖片；`--image` 是舊名，仍可用）；任一張不合格就整張單不建立。團隊帳號加 `--for-client` 會把這張單分享給客戶：客戶的清單、看板看得到並可看附圖、列入客戶編號，系統自動以團隊身分留一則通知留言（`--notice` 可改文字，須搭配 `--for-client`），客戶端顯示未讀；沒加的團隊單客戶完全看不到。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整重點與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |
-| `message <project> <public_id\|編號> --body [--image]...` | 以自己的帳號留言。 |
+| `message <project> <public_id\|編號> --body [--attach]...` | 以自己的帳號留言；`--attach`（舊名 `--image`）規則同 `create`。 |
 | `claim` / `release <project> <public_id\|編號> [--force]` | 認領／釋放，讓其他人與 AI 知道誰在處理。 |
 | `handoff <project> <public_id\|編號> --note [--release]` | 寫交接紀錄（做到哪、下一步），只有團隊看得到。 |
 

@@ -9,6 +9,12 @@ import { CliError, type Runtime } from '../runtime';
 import { apiFor } from './auth';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGES = 5;
+
+/** 附圖路徑：--attach（新）與 --image（舊名相容）可以混用。 */
+function attachPaths(args: ReturnType<typeof parse>): string[] {
+    return [...list(args, 'image'), ...list(args, 'attach')].filter((path) => path !== '');
+}
 
 interface ListedReport {
     number: number;
@@ -252,6 +258,9 @@ export function readImages(paths: string[]): Array<{ path: string; name: string;
         }
         const bytes = new Uint8Array(readFileSync(path));
         const mime = detectImage(bytes);
+        if (!mime && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-') {
+            throw new CliError(`不收 PDF，請先轉成 jpg／png／webp 圖片再附：${path}`);
+        }
         if (!mime) {
             throw new CliError(`只接受 jpg／png／webp 圖片：${path}`);
         }
@@ -334,14 +343,18 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
 }
 
 export async function message(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { body: { type: 'string' }, image: { type: 'string', multiple: true } });
+    const args = parse(argv, { body: { type: 'string' }, image: { type: 'string', multiple: true }, attach: { type: 'string', multiple: true } });
     const slug = requirePositional(args, 0, '<project>');
     const ref = requirePositional(args, 1, '<report>');
     const body = str(args, 'body');
     if (!body || body.trim() === '') {
         throw new CliError('請用 --body 提供留言內容。');
     }
-    const images = readImages(list(args, 'image'));
+    const paths = attachPaths(args);
+    if (paths.length > MAX_IMAGES) {
+        throw new CliError(`一則留言最多附 ${MAX_IMAGES} 張圖。`);
+    }
+    const images = readImages(paths);
     const api = apiFor(rt, str(args, 'url'));
     const base = `/projects/${encodePath(slug)}/reports/${encodePath(ref)}`;
     const uploadIds: string[] = [];
@@ -405,30 +418,46 @@ export async function handoff(rt: Runtime, argv: string[]): Promise<number> {
 
 /** New report (team or client account), with images. */
 export async function create(rt: Runtime, argv: string[]): Promise<number> {
-    const args = parse(argv, { title: { type: 'string' }, description: { type: 'string' }, category: { type: 'string' }, image: { type: 'string', multiple: true } });
+    const args = parse(argv, {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        category: { type: 'string' },
+        image: { type: 'string', multiple: true },
+        attach: { type: 'string', multiple: true },
+        'for-client': { type: 'boolean' },
+        notice: { type: 'string' },
+    });
     const slug = requirePositional(args, 0, '<project>');
     const title = str(args, 'title');
     const description = str(args, 'description');
     if (!title || title.trim() === '' || !description || description.trim() === '') {
         throw new CliError('請用 --title 與 --description 寫下問題。');
     }
-    const images = readImages(list(args, 'image'));
-    if (images.length > 5) {
-        throw new CliError('一張單最多附 5 張圖。');
+    const forClient = bool(args, 'for-client');
+    const notice = str(args, 'notice');
+    if (notice !== undefined && !forClient) {
+        throw new CliError('--notice 需要搭配 --for-client。');
     }
+    const paths = attachPaths(args);
+    if (paths.length > MAX_IMAGES) {
+        throw new CliError(`一張單最多附 ${MAX_IMAGES} 張圖。`);
+    }
+    // 先全部檢查過再上傳：任何一張不合格，整張單都不建立。
+    const images = readImages(paths);
     const api = apiFor(rt, str(args, 'url'));
     const uploadIds: string[] = [];
     for (const image of images) {
         uploadIds.push((await api.upload(`/projects/${encodePath(slug)}/uploads`, image.bytes, image.name, image.mime)).id);
     }
     const category = str(args, 'category');
-    const result = await api.post<{ public_id: string; title: string; url: string; images_added: number }>(`/projects/${encodePath(slug)}/reports`, { title, description, ...(category ? { category } : {}), upload_ids: uploadIds });
+    const result = await api.post<{ public_id: string; title: string; url: string; images_added: number }>(`/projects/${encodePath(slug)}/reports`, { title, description, ...(category ? { category } : {}), upload_ids: uploadIds, ...(forClient ? { for_client: true } : {}), ...(notice !== undefined ? { notice } : {}) });
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result, null, 2));
         return 0;
     }
     rt.out(`已開單：${escapeInline(result.title)}（附圖 ${result.images_added} 張）`);
     rt.out(twoColumn('public_id', result.public_id));
+    if (forClient) rt.out(twoColumn('客戶', '已分享給客戶，並留了通知留言'));
     rt.out(result.url);
     return 0;
 }

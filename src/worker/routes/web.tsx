@@ -4,7 +4,7 @@ import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
 import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
-import { isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
+import { CLIENT_VISIBLE_SQL, isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
     addMessage,
@@ -592,7 +592,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     } else if (deletedFilter === 'only') {
         filters.push('client_deleted_at IS NOT NULL');
     }
-    const clientOnly = isOwner ? '' : "AND creator_type = 'client'";
+    const clientOnly = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL}`;
     const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
     const orderBy =
         sort === 'conversation'
@@ -611,8 +611,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
     const totalSql = isOwner
         ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ?'
-        : "SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND creator_type = 'client' AND client_deleted_at IS NULL";
-    const countConditions = isOwner ? '' : "AND creator_type = 'client' AND client_deleted_at IS NULL";
+        : `SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
+    const countConditions = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
     const [list, total, counts, unread] = await db.batch([
         db.prepare(listSql).bind(project.id, ...bindings, PER_PAGE, (page - 1) * PER_PAGE),
         db.prepare(totalSql).bind(project.id),
@@ -1047,7 +1047,7 @@ web.get('/p/:slug/conversations', async (c) => {
     const db = c.env.DB;
     const now = c.get('now');
     const cfg = config(c.env);
-    const scope = isOwner ? '' : "AND creator_type = 'client'";
+    const scope = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL}`;
     const today = formatAbsolute(nowIso(now), cfg.utcOffsetMinutes).slice(0, 10);
     const etag = `W/"conv|${viewerKey(isOwner, viewer)}|${isOwner ? project.chat_version_owner : project.chat_version_client}|${today}"`;
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };

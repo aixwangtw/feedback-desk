@@ -10,7 +10,7 @@ import { config } from '../env';
 import type { Author } from './access';
 import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
 import { attachmentsForReport, findClientAccount, findProjectBySlug, messagesForReport } from './db';
-import type { Attachment, ClientAccount, Project, Report } from './models';
+import { CLIENT_VISIBLE_SQL, type Attachment, type ClientAccount, type Project, type Report } from './models';
 import {
     addMessage,
     clientReadAt,
@@ -51,7 +51,7 @@ export async function ownProject(ctx: ClientContext, slug: string): Promise<Proj
     return (await findProjectBySlug(ctx.env.DB, slug)) ?? ctx.project;
 }
 
-const VISIBLE = "creator_type = 'client' AND client_deleted_at IS NULL";
+const VISIBLE = `${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
 
 /** public_id, or the client-side list number when all digits. */
 export async function resolveOwnReport(ctx: ClientContext, project: Project, identifier: string): Promise<Report> {
@@ -62,7 +62,7 @@ export async function resolveOwnReport(ctx: ClientContext, project: Project, ide
         report =
             position < 1
                 ? null
-                : await ctx.env.DB.prepare(`SELECT * FROM reports WHERE project_id = ? AND creator_type = 'client' ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?`)
+                : await ctx.env.DB.prepare(`SELECT * FROM reports WHERE project_id = ? AND ${CLIENT_VISIBLE_SQL} ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?`)
                       .bind(project.id, position - 1)
                       .first<Report>();
         if (report && report.client_deleted_at !== null) {
@@ -81,7 +81,7 @@ export async function listOwnReports(ctx: ClientContext, slug: string) {
     const project = await ownProject(ctx, slug);
     const { results } = await ctx.env.DB.prepare(
         `WITH numbered AS (
-            SELECT r.*, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number, ${viewerReadAtColumnSql('r', ctx.account)} FROM reports r WHERE project_id = ? AND creator_type = 'client'
+            SELECT r.*, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number, ${viewerReadAtColumnSql('r', ctx.account)} FROM reports r WHERE project_id = ? AND ${CLIENT_VISIBLE_SQL}
         )
         SELECT n.*, ${viewerUnreadSql('n', false, ctx.account, true)} AS unread_count, ${latestMessageSql('n')} AS latest_message_at, ${creatorClientNameSql('n')} AS creator_client_name,
             (SELECT COUNT(*) FROM messages m WHERE m.report_id = n.id) AS messages_count,

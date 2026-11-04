@@ -426,6 +426,87 @@ describe('handoff commands', () => {
     });
 });
 
+describe('attachments on create and message', () => {
+    const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    let uploads = 0;
+    const handler: Handler = ({ url }) => {
+        if (url.endsWith('/uploads') || url.includes('/uploads?')) return jsonResponse({ id: `up-${++uploads}`, name: 'x', size: 12 }, 201);
+        if (url.endsWith('/messages')) return jsonResponse({ title: '單', author: '王小明', images_added: 1 });
+        if (url.endsWith('/reports')) return jsonResponse({ public_id: 'uuid-9', title: '新單', url: 'https://desk.example.com/p/demo/reports/uuid-9', images_added: 2 }, 201);
+        return jsonResponse({}, 404);
+    };
+    const base = ['create', 'demo', '--title', '新單', '--description', '說明'];
+    const file = (fake: { cwd: string }, name: string, bytes: Uint8Array) => {
+        const path = join(fake.cwd, name);
+        writeFileSync(path, bytes);
+        return path;
+    };
+
+    it('accepts one or several --attach images (and the old --image) in a single report', async () => {
+        const fake = signedIn(handler);
+        const a = file(fake, 'a.png', PNG);
+        const b = file(fake, 'b.jpg', JPEG);
+        const c = file(fake, 'c.webp', WEBP);
+        expect(await main([...base, '--attach', a], fake.rt)).toBe(0);
+        expect(fake.calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+        const multi = signedIn(handler);
+        expect(await main([...base, '--attach', a, '--attach', b, '--image', c], multi.rt)).toBe(0);
+        expect(multi.calls.filter((call) => call.method === 'PUT').map((call) => call.headers['content-type']).sort()).toEqual(['image/jpeg', 'image/png', 'image/webp']);
+        expect((multi.calls[3].body as { upload_ids: string[] }).upload_ids).toHaveLength(3);
+    });
+
+    it('creates nothing when any attachment is missing, the wrong format, a PDF, too large or more than five', async () => {
+        const fake = signedIn(handler);
+        const good = file(fake, 'a.png', PNG);
+        const text = file(fake, 'notes.txt', new TextEncoder().encode('hello world!'));
+        const pdf = file(fake, 'doc.pdf', new TextEncoder().encode('%PDF-1.7 ....'));
+        const big = file(fake, 'big.png', new Uint8Array(10 * 1024 * 1024 + 1).fill(1));
+        for (const bad of [join(fake.cwd, 'missing.png'), text, pdf, big]) {
+            expect(await main([...base, '--attach', good, '--attach', bad], fake.rt)).toBe(1);
+        }
+        expect(await main([...base, ...Array.from({ length: 6 }, () => ['--attach', good]).flat()], fake.rt)).toBe(1);
+        expect(fake.calls).toHaveLength(0);
+        expect(fake.err.join('\n')).toContain('PDF');
+    });
+
+    it('attaches images to a message with --attach and keeps --image working', async () => {
+        const fake = signedIn(handler);
+        const a = file(fake, 'a.png', PNG);
+        expect(await main(['message', 'demo', 'uuid-1', '--body', '看圖', '--attach', a, '--image', a], fake.rt)).toBe(0);
+        expect(fake.calls.filter((call) => call.url.includes('/uploads?purpose=message'))).toHaveLength(2);
+        expect((fake.calls[2].body as { upload_ids: string[] }).upload_ids).toHaveLength(2);
+        const bad = signedIn(handler);
+        expect(await main(['message', 'demo', 'uuid-1', '--body', '看圖', '--attach', join(bad.cwd, 'nope.png')], bad.rt)).toBe(1);
+        expect(bad.calls).toHaveLength(0);
+    });
+});
+
+describe('create --for-client', () => {
+    const handler: Handler = ({ url }) => (url.endsWith('/reports') ? jsonResponse({ public_id: 'uuid-9', title: '新單', url: 'https://desk.example.com/p/demo/reports/uuid-9', images_added: 0, shared_with_client: true }, 201) : jsonResponse({}, 404));
+    const base = ['create', 'demo', '--title', '新單', '--description', '說明'];
+
+    it('sends for_client and the custom notice, and tells the user the client was notified', async () => {
+        const fake = signedIn(handler);
+        expect(await main([...base, '--for-client'], fake.rt)).toBe(0);
+        expect(fake.calls[0].body).toEqual({ title: '新單', description: '說明', upload_ids: [], for_client: true });
+        expect(fake.text()).toContain('已分享給客戶');
+        const custom = signedIn(handler);
+        expect(await main([...base, '--for-client', '--notice', '請看附圖'], custom.rt)).toBe(0);
+        expect(custom.calls[0].body).toEqual({ title: '新單', description: '說明', upload_ids: [], for_client: true, notice: '請看附圖' });
+        const plain = signedIn(handler);
+        await main(base, plain.rt);
+        expect(plain.calls[0].body).toEqual({ title: '新單', description: '說明', upload_ids: [] });
+    });
+
+    it('refuses --notice without --for-client before calling the server', async () => {
+        const fake = signedIn(handler);
+        expect(await main([...base, '--notice', '請看'], fake.rt)).toBe(1);
+        expect(fake.calls).toHaveLength(0);
+        expect(fake.err.join('\n')).toContain('--for-client');
+    });
+});
+
 describe('report commands', () => {
     const listed = {
         include_public: false,

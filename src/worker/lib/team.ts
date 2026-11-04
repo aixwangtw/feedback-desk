@@ -21,7 +21,7 @@ import {
     placeholders,
     usernameTaken,
 } from './db';
-import type { Attachment, ClientAccount, Developer, Project, Report } from './models';
+import { CLIENT_VISIBLE_SQL, isVisibleToClient, type Attachment, type ClientAccount, type Developer, type Project, type Report } from './models';
 import {
     addMessage,
     changeStatus,
@@ -174,7 +174,7 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
         `WITH numbered AS (
             SELECT r.*,
                 ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number,
-                CASE WHEN creator_type = 'client' THEN ROW_NUMBER() OVER (PARTITION BY creator_type = 'client' ORDER BY created_at DESC, id DESC) END AS client_number,
+                CASE WHEN ${CLIENT_VISIBLE_SQL} THEN ROW_NUMBER() OVER (PARTITION BY ${CLIENT_VISIBLE_SQL} ORDER BY created_at DESC, id DESC) END AS client_number,
                 (SELECT COUNT(*) FROM messages m WHERE m.report_id = r.id) AS messages_count,
                 (SELECT COUNT(*) FROM attachments a WHERE a.report_id = r.id) AS attachments_count,
                 ${unreadMessagesSql('r')} AS unread_messages_count,
@@ -238,7 +238,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
     const labels = config(ctx.env).labels;
     return {
         number: await sequenceNumber(ctx.env.DB, report, false),
-        client_number: report.creator_type === 'client' ? await sequenceNumber(ctx.env.DB, report, true) : null,
+        client_number: isVisibleToClient(report) ? await sequenceNumber(ctx.env.DB, report, true) : null,
         public_id: report.public_id,
         project: project.slug,
         title: report.title,
@@ -473,17 +473,54 @@ export async function writeHandoff(ctx: TeamContext, slug: string, identifier: s
     return { public_id: report.public_id, title: report.title, saved: true, released: release };
 }
 
-/** A report created by a team account (through the API, CLI or MCP). */
-export async function createTeamReport(ctx: TeamContext, slug: string, input: { title: string; description: string; category?: string | null; upload_ids?: string[] }) {
+/** 分享給客戶的團隊單，自動留的通知留言預設文字。 */
+export const DEFAULT_CLIENT_NOTICE = '開了一張新單，請看說明與附圖，有問題直接在這裡留言回覆。';
+
+/**
+ * A report created by a team account (through the API, CLI or MCP). With `for_client` the report is
+ * shared with the client (shows in their list, counts in their numbering, starts unread for them) and
+ * a team message tells them about it; `notice` replaces the default text and needs `for_client`.
+ */
+export async function createTeamReport(
+    ctx: TeamContext,
+    slug: string,
+    input: { title: string; description: string; category?: string | null; upload_ids?: string[]; for_client?: boolean; notice?: string | null },
+) {
     const project = await projectOrFail(ctx.env, slug);
     const { title, description, uploadIds } = validateNewReport(input);
+    const forClient = input.for_client === true;
+    const customNotice = (input.notice ?? '').trim();
+    if (input.notice !== undefined && input.notice !== null && !forClient) {
+        throw new ServiceError('notice_needs_for_client', '--notice 需要搭配 --for-client。', 422);
+    }
+    const notice = customNotice === '' ? DEFAULT_CLIENT_NOTICE : customNotice;
+    if (forClient && charLength(notice) > MAX_MESSAGE) {
+        throw new ServiceError('body_too_long', `通知留言不能超過 ${MAX_MESSAGE} 個字元。`, 422);
+    }
     const category = validateNewReportCategory(project, input.category);
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'report', reportId: null });
     if (uploads === null) {
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這個專案，請重新上傳。', 422);
     }
-    const { report } = await createReport(ctx.env, project, { title, description, category, uploads, author: teamAuthor(ctx) }, { creator_type: 'developer', creator_developer_id: ctx.developer.id }, ctx.now);
-    return { public_id: report.public_id, title: report.title, category: report.category, url: absolute(ctx, paths.report(project.slug, report.public_id)), images_added: uploads.length };
+    const { report } = await createReport(
+        ctx.env,
+        project,
+        { title, description, category, uploads, author: teamAuthor(ctx), shared_with_client: forClient },
+        { creator_type: 'developer', creator_developer_id: ctx.developer.id },
+        ctx.now,
+    );
+    if (forClient) {
+        const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
+        await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body: notice, uploads: [], author: teamAuthor(ctx) }, ctx.now);
+    }
+    return {
+        public_id: report.public_id,
+        title: report.title,
+        category: report.category,
+        url: absolute(ctx, paths.report(project.slug, report.public_id)),
+        images_added: uploads.length,
+        shared_with_client: forClient,
+    };
 }
 
 /** 分類可省略；有給時必須是專案設定的分類之一（沒設定分類的專案不能給）。 */

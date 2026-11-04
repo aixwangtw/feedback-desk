@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { nowIso } from '../../shared/time';
 import { findClientAccount, findDeveloper } from '../lib/db';
-import type { Attachment } from '../lib/models';
+import { isVisibleToClient, type Attachment } from '../lib/models';
 import { consumeUploadNonce, readUploadGrant, verifyAttachmentSignature } from '../lib/signed';
 import { MAX_IMAGE_BYTES, storeImageStream, UploadError } from '../lib/uploads';
 import { reportExists } from './api';
@@ -25,9 +25,9 @@ files.put('/files/upload', async (c) => {
     } else if (target && grant.actor.startsWith('c')) {
         // Client accounts: their own project, reports they can see, message images only.
         const account = await findClientAccount(c.env.DB, id);
-        const report = account ? await c.env.DB.prepare('SELECT creator_type, client_deleted_at FROM reports WHERE id = ?').bind(target.reportId).first<{ creator_type: string; client_deleted_at: string | null }>() : null;
+        const report = account ? await c.env.DB.prepare('SELECT creator_type, shared_with_client, client_deleted_at FROM reports WHERE id = ?').bind(target.reportId).first<{ creator_type: 'client' | 'developer' | 'owner_shared' | 'public'; shared_with_client: number; client_deleted_at: string | null }>() : null;
         allowed =
-            account !== null && !account.disabled_at && account.project_id === target.projectId && grant.purpose === 'message' && report?.creator_type === 'client' && report.client_deleted_at === null;
+            account !== null && !account.disabled_at && account.project_id === target.projectId && grant.purpose === 'message' && report !== null && isVisibleToClient(report) && report.client_deleted_at === null;
     }
     if (!target || !allowed) {
         return c.json({ error: 'not_found', message: '找不到回饋單。' }, 404);

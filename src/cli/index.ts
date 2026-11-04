@@ -57,11 +57,11 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   reports <project> [--status new] [--creator client] [--include-deleted] [--include-public] [--unread] [--json]
   report <project> <public_id|編號> [--json] [--no-download] [--download-dir 路徑]
                                    附件預設下載到 ~/.cache/feedback-desk（權限 700）
-  create <project> --title 標題 --description 說明 [--category 分類] [--image 檔案]...
+  create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖檔]... [--for-client [--notice 通知文字]]
                                    開新單（團隊與客戶帳號都可以）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
   status <project> <public_id|編號> <new|needs_input|completed|待處理|待審核|已完成> [--force]
-  message <project> <public_id|編號> --body 文字 [--image 檔案]...
+  message <project> <public_id|編號> --body 文字 [--attach 圖檔]...
 
 多人／多個 AI 接手（團隊帳號）
   claim <project> <public_id|編號> [--force]

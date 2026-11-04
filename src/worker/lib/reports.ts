@@ -6,7 +6,7 @@ import { config } from '../env';
 import type { Author, Creator } from './access';
 import { randomString, sha256Hex } from './crypto';
 import { placeholders } from './db';
-import type { Attachment, ClientAccount, Project, Report, Upload } from './models';
+import { CLIENT_VISIBLE_SQL, type Attachment, type ClientAccount, type Project, type Report, type Upload } from './models';
 import { claimStatements } from './uploads';
 
 export const MAX_TITLE = 160;
@@ -29,7 +29,7 @@ export function eventStatement(db: D1Database, report: { id: number } | { public
 export async function createReport(
     env: Env,
     project: Project,
-    data: { title: string; description: string; reporter_name?: string | null; category?: string | null; uploads: Upload[]; author?: Author },
+    data: { title: string; description: string; reporter_name?: string | null; category?: string | null; uploads: Upload[]; author?: Author; shared_with_client?: boolean },
     creator: Creator,
     now = Date.now(),
 ): Promise<{ report: Report; reporterToken: string }> {
@@ -40,8 +40,8 @@ export async function createReport(
     const results = await db.batch([
         db
             .prepare(
-                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, category, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?) RETURNING *`,
+                `INSERT INTO reports (project_id, public_id, reporter_token_hash, reporter_name, category, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, description, status, latest_activity_at, owner_last_read_at, client_last_read_at, created_at, updated_at, shared_with_client)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?) RETURNING *`,
             )
             .bind(
                 project.id,
@@ -56,11 +56,12 @@ export async function createReport(
                 data.title,
                 data.description,
                 at,
-                // Reports from the client side start read for the client; team-created ones for both sides.
-                creator.creator_type === 'client' || creator.creator_type === 'public' ? null : at,
+                // Reports from the client side start read for the client; team-created ones for both sides, except ones shared with the client (they start unread for the client).
+                creator.creator_type === 'client' || creator.creator_type === 'public' || data.shared_with_client ? null : at,
                 at,
                 at,
                 at,
+                data.shared_with_client ? 1 : 0,
             ),
         ...claimStatements(db, data.uploads, {
             reportPublicId: publicId,
@@ -392,7 +393,7 @@ export async function statusCounts(
 ): Promise<Record<ReportStatus, number>> {
     const conditions = ['project_id = ?'];
     if (options.clientCreatedOnly) {
-        conditions.push("creator_type = 'client'");
+        conditions.push(CLIENT_VISIBLE_SQL);
     }
     if (!options.includeClientDeleted) {
         conditions.push('client_deleted_at IS NULL');
@@ -414,7 +415,7 @@ export async function statusCounts(
 export async function sequenceNumber(db: D1Database, report: Report, clientCreatedOnly: boolean): Promise<number> {
     const row = await db
         .prepare(
-            `SELECT COUNT(*) AS position FROM reports WHERE project_id = ? ${clientCreatedOnly ? "AND creator_type = 'client'" : ''}
+            `SELECT COUNT(*) AS position FROM reports WHERE project_id = ? ${clientCreatedOnly ? `AND ${CLIENT_VISIBLE_SQL}` : ''}
              AND (created_at > ? OR (created_at = ? AND id >= ?))`,
         )
         .bind(report.project_id, report.created_at, report.created_at, report.id)

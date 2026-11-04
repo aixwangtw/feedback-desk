@@ -4,20 +4,21 @@ namespace App\Console\Commands;
 
 use App\Actions\PostFeedbackMessageAction;
 use App\Console\Commands\Concerns\ResolvesFeedbackActor;
+use App\Console\Commands\Concerns\ValidatesFeedbackImageFiles;
 use App\Models\FeedbackProject;
 use App\Support\StandardInput;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Http\UploadedFile;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:message
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）}
     {--text= : 留言內容；未給時從標準輸入讀取}
-    {--file=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內，最多 5 張）}
+    {--attach=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內，與 --file 合計最多 5 張）}
+    {--file=* : 同 --attach（舊名稱，保留相容）}
     {--as= : 以這個團隊個人帳號留言（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}')]
 #[Description('以開發團隊身分在回饋單留言（可附圖，不改動回饋單狀態），完成後輸出留言 id')]
@@ -31,7 +32,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     printf '已修正\n請再試一次' | php artisan feedback:message my-project 0199c3a1-...
 
   附圖：
-    php artisan feedback:message my-project 0199c3a1-... --text="修正後畫面" --file=/tmp/after.png
+    php artisan feedback:message my-project 0199c3a1-... --text="修正後畫面" --attach=/tmp/after.png --attach=/tmp/before.png
 
 說明：
   - report 只接受 public_id；純數字會被拒絕，避免和畫面上的「編號」搞混。
@@ -41,12 +42,7 @@ HELP)]
 class PostFeedbackMessageCommand extends Command
 {
     use ResolvesFeedbackActor;
-
-    private const MAX_IMAGES = 5;
-
-    private const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-
-    private const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+    use ValidatesFeedbackImageFiles;
 
     public function handle(PostFeedbackMessageAction $postMessage, StandardInput $standardInput): int
     {
@@ -85,20 +81,9 @@ class PostFeedbackMessageCommand extends Command
             return self::FAILURE;
         }
 
-        $imagePaths = array_values(array_filter((array) $this->option('file'), fn ($path) => $path !== null && $path !== ''));
-        if (count($imagePaths) > self::MAX_IMAGES) {
-            $this->components->error('一次最多附 '.self::MAX_IMAGES.' 張圖。');
-
+        $images = $this->validatedImageFiles([...(array) $this->option('attach'), ...(array) $this->option('file')]);
+        if ($images === null) {
             return self::FAILURE;
-        }
-
-        $images = [];
-        foreach ($imagePaths as $path) {
-            $image = $this->validatedImage($path);
-            if ($image === null) {
-                return self::FAILURE;
-            }
-            $images[] = $image;
         }
 
         $actor = $this->resolveActor();
@@ -114,32 +99,5 @@ class PostFeedbackMessageCommand extends Command
         $this->line(route('feedback.reports.show', [$project, $report]));
 
         return self::SUCCESS;
-    }
-
-    /**
-     * 檢查圖片後包成上傳檔交給留言動作；原檔只會被複製，不會移動或刪除。
-     */
-    private function validatedImage(string $path): ?UploadedFile
-    {
-        if (! is_file($path) || ! is_readable($path)) {
-            $this->components->error("找不到或無法讀取圖片：{$path}");
-
-            return null;
-        }
-
-        $mime = mime_content_type($path) ?: '';
-        if (! in_array($mime, self::ALLOWED_MIME_TYPES, true) || @getimagesize($path) === false) {
-            $this->components->error("只接受 jpg／png／webp 圖片：{$path}");
-
-            return null;
-        }
-
-        if (filesize($path) > self::MAX_IMAGE_BYTES) {
-            $this->components->error("圖片超過 10 MB：{$path}");
-
-            return null;
-        }
-
-        return new UploadedFile($path, basename($path), $mime, null, true);
     }
 }

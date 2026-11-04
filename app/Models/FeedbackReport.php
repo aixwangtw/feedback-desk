@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
     'creator_developer_id',
     'creator_client_account_id',
     'creator_agent',
+    'shared_with_client',
     'claimed_by_developer_id',
     'claimed_agent',
     'claimed_at',
@@ -161,14 +162,16 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 只留下老師建立的單；開發者建立的單老師完全看不到。
+     * 只留下客戶端看得到的單：客戶建立的，加上開發團隊開單時指定給客戶看的（shared_with_client）；其他團隊單客戶完全看不到。
      *
      * @param  Builder<FeedbackReport>  $query
      */
     #[Scope]
     protected function createdByClient(Builder $query): void
     {
-        $query->where('creator_type', FeedbackCreatorType::Client->value);
+        $query->where(fn (Builder $query) => $query
+            ->where('feedback_reports.creator_type', FeedbackCreatorType::Client->value)
+            ->orWhere('feedback_reports.shared_with_client', true));
     }
 
     /**
@@ -193,9 +196,12 @@ class FeedbackReport extends Model
         };
     }
 
+    /**
+     * 客戶端看得到、並列入客戶編號的單（客戶建立的，或團隊開單時指定給客戶看的）。
+     */
     public function isCreatedByClient(): bool
     {
-        return $this->creator_type === FeedbackCreatorType::Client;
+        return $this->creator_type === FeedbackCreatorType::Client || (bool) $this->shared_with_client;
     }
 
     public function isPublicReport(): bool
@@ -495,6 +501,7 @@ class FeedbackReport extends Model
         return [
             'status' => FeedbackReportStatus::class,
             'creator_type' => FeedbackCreatorType::class,
+            'shared_with_client' => 'boolean',
             'completed_at' => 'datetime',
             'client_deleted_at' => 'datetime',
             'latest_activity_at' => 'datetime',

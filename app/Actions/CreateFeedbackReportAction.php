@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 class CreateFeedbackReportAction
 {
     /**
-     * @param  array{title: string, description: string, reporter_name?: string|null, category?: string|null, screenshots?: list<UploadedFile>}  $data
+     * @param  array{title: string, description: string, reporter_name?: string|null, category?: string|null, shared_with_client?: bool, screenshots?: list<UploadedFile>}  $data
      * @param  array{creator_type: FeedbackCreatorType, creator_developer_id: int|null, creator_client_account_id?: int|null}  $creator
      * @param  FeedbackActor|null  $actor  寫進最近動態與附件上傳者的帳號、AI 工具；公開回報不記
      * @return array{report: FeedbackReport, reporter_token: string}
@@ -31,13 +31,14 @@ class CreateFeedbackReportAction
                 'creator_developer_id' => $creator['creator_developer_id'],
                 'creator_client_account_id' => $creator['creator_client_account_id'] ?? null,
                 'creator_agent' => $actor?->agent,
+                'shared_with_client' => (bool) ($data['shared_with_client'] ?? false),
                 'reporter_name' => $data['reporter_name'] ?? null,
                 'category' => $data['category'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'],
                 'latest_activity_at' => now(),
-                // 建立者自己那一端視為已讀；客戶建立的單要等開發者開啟才算讀過。
-                'client_last_read_at' => now(),
+                // 建立者自己那一端視為已讀；客戶建立的單要等開發者開啟才算讀過，團隊開給客戶看的單要等客戶開啟才算讀過。
+                'client_last_read_at' => ($data['shared_with_client'] ?? false) ? null : now(),
                 'owner_last_read_at' => in_array($creator['creator_type'], [FeedbackCreatorType::Client, FeedbackCreatorType::Public], true) ? null : now(),
             ]);
 

@@ -151,6 +151,32 @@ class FeedbackVideoAttachmentTest extends TestCase
         $this->assertStringContainsString('圖片／影片', json_encode($response->json('errors'), JSON_UNESCAPED_UNICODE));
     }
 
+    public function test_list_board_and_detail_thumbnails_show_a_video_frame_with_a_play_icon(): void
+    {
+        $video = FeedbackAttachment::create([
+            'feedback_report_id' => $this->report->id,
+            'disk' => 'local',
+            'path' => 'feedback/demo.mp4',
+            'original_name' => 'demo.mp4',
+            'mime_type' => 'video/mp4',
+            'size' => strlen(self::MP4),
+        ]);
+        Storage::disk('local')->put('feedback/demo.mp4', self::MP4);
+        $src = route('feedback.attachments.show', [$this->project, $this->report, $video]);
+
+        $this->actingAsClient();
+        foreach (['list', 'board'] as $view) {
+            $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => $view]))->assertOk()->getContent();
+            $this->assertStringContainsString('<video muted playsinline preload="metadata" src="'.e($src).'#t=0.1"', $html);
+            $this->assertStringContainsString('data-attachment-video', $html);
+            $this->assertStringNotContainsString('<img src="'.e($src).'"', $html);
+        }
+        $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
+        $this->assertStringContainsString('>附件</th>', $list);
+        $this->assertStringNotContainsString('>圖片</th>', $list);
+        $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertOk()->assertSee('data-attachment-video', false);
+    }
+
     private function mp4File(): string
     {
         $path = tempnam(sys_get_temp_dir(), 'fd').'.mp4';

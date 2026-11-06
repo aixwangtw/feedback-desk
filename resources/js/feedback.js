@@ -152,6 +152,10 @@ if (imageLightbox) {
 
     document.addEventListener('click', (event) => {
         const trigger = event.target.closest('[data-lightbox-trigger]');
+        // 影片縮圖不進圖片燈箱：照連結在新分頁開影片。
+        if (trigger?.querySelector('[data-attachment-video]')) {
+            return;
+        }
         if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
             return;
         }

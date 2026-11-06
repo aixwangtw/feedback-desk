@@ -62,7 +62,7 @@
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並寫了調整重點，請{{ config('feedback.labels.client') }}確認。</span></li>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label() }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
             </ul>
-            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整圖（「N 張調整圖」）。' : '標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整附圖。' }}</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
@@ -194,7 +194,7 @@
                         @if ($reportCategories !== [])
                             <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
                         @endif
-                        <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
+                        <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
                         <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
                         <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                         <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
@@ -230,7 +230,7 @@
                                     <div class="flex flex-wrap gap-1 sm:justify-center">
                                         @foreach ($report->feedbackAttachments as $attachment)
                                             <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
                                             </a>
                                         @endforeach
                                     </div>
@@ -248,7 +248,7 @@
                                         <div class="mt-1 flex flex-wrap gap-1">
                                             @foreach ($report->adjustmentAttachments as $attachment)
                                                 <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-teal-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" data-adjustment-image title="放大預覽">
-                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
                                                 </a>
                                             @endforeach
                                         </div>
@@ -348,7 +348,7 @@
                                             <div class="mt-3 flex items-center gap-2">
                                                 @php $attachment = $report->feedbackAttachments->first(); @endphp
                                                 <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
                                                 </a>
                                                 <span class="text-xs font-medium text-slate-500">{{ $report->feedbackAttachments->count() }} 張附件</span>
                                             </div>
@@ -409,7 +409,7 @@
                     <div class="flex flex-wrap gap-2">
                         @foreach ($report->feedbackAttachments as $attachment)
                             <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
                             </a>
                         @endforeach
                     </div>
@@ -492,7 +492,7 @@
                         <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                             @foreach ($report->feedbackAttachments as $attachment)
                                 <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="aspect-video w-full object-cover" loading="lazy">
+                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover" />
                                     <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                         <input type="checkbox" name="remove_attachments[]" value="{{ $attachment->id }}" @checked($isEditing && in_array((string) $attachment->id, array_map('strval', old('remove_attachments', [])), true)) class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">
                                         刪除

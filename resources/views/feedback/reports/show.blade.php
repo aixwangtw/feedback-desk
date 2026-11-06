@@ -48,7 +48,7 @@
                     <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
                         @foreach ($report->feedbackAttachments as $attachment)
                             <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}">
-                                <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" loading="lazy">
+                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" />
                                 <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">放大預覽</span>
                             </a>
                         @endforeach
@@ -87,7 +87,7 @@
                                         <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                                             @foreach ($report->adjustmentAttachments as $attachment)
                                                 <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="aspect-video w-full object-cover" loading="lazy">
+                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover" />
                                                     <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                                         <input type="checkbox" name="remove_adjustment_attachments[]" value="{{ $attachment->id }}" class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">
                                                         刪除

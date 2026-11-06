@@ -61,6 +61,30 @@ class FeedbackChatPanelDraftTest extends TestCase
         $this->get(route('feedback.portal', $this->project))->assertOk()->assertSee('data-chat-draft', false);
     }
 
+    public function test_team_thread_lists_draft_attachments_with_the_draft_file_route_and_the_client_never_gets_them(): void
+    {
+        $draft = $this->draft();
+        $draft->update(['attachments' => [
+            ['disk' => 'local', 'path' => 'drafts/a.mp4', 'original_name' => '教學.mp4', 'mime_type' => 'video/mp4', 'size' => 10],
+            ['disk' => 'local', 'path' => 'drafts/b.png', 'original_name' => '截圖.png', 'mime_type' => 'image/png', 'size' => 10],
+        ]]);
+        $this->actingAsTeam();
+
+        $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
+        $thread->assertJsonPath('drafts.0.attachments_count', 2)
+            ->assertJsonPath('drafts.0.attachments.0.url', route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]))
+            ->assertJsonPath('drafts.0.attachments.0.is_video', true)
+            ->assertJsonPath('drafts.0.attachments.1.name', '截圖.png')
+            ->assertJsonPath('drafts.0.attachments.1.is_video', false);
+
+        $this->actingAsClient();
+        $client = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
+        $this->assertArrayNotHasKey('drafts', $client->json());
+        $this->assertStringNotContainsString('drafts/a.mp4', $client->getContent());
+        $this->assertStringNotContainsString('/files/0', $client->getContent());
+        $this->getJson(route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]))->assertForbidden();
+    }
+
     public function test_unsent_drafts_count_as_awaiting_for_the_team_only(): void
     {
         // 團隊最後發言、照理是「已回覆」；但還有沒送出的草稿，團隊端要放進未回覆並讓面板彈出。

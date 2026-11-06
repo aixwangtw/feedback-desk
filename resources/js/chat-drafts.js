@@ -12,7 +12,7 @@ export const draftMeta = (draft, index, total) => {
         parts.push(`第 ${index + 1}／${total} 則`);
     }
     if (draft.attachments_count > 0) {
-        parts.push(`附圖 ${draft.attachments_count} 張會一起送出`);
+        parts.push(`附件 ${draft.attachments_count} 個會一起送出`);
     }
 
     return parts.join('・');
@@ -20,3 +20,10 @@ export const draftMeta = (draft, index, total) => {
 
 /** 送出草稿時的表單欄位：只有 CSRF token 與輸入框文字（伺服器會去頭尾空白、空白會被拒絕）。 */
 export const draftFormFields = (token, body) => [['_token', token], ['body', body]];
+
+/** 面板裡草稿附件的呈現方式：影片直接播、圖片縮圖點了開大圖（網址都是 feedback.drafts.file，只有開發團隊拿得到）。 */
+export const draftAttachmentViews = (draft) => (draft.attachments ?? []).map((file) => ({
+    kind: file.is_video ? 'video' : 'image',
+    url: file.url,
+    name: file.name,
+}));

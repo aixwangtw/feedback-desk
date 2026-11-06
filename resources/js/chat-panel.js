@@ -2,7 +2,7 @@
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
 import { orderConversations } from './chat-order';
-import { draftFormFields, draftMeta, nextDraftIndex, shouldFillComposer } from './chat-drafts';
+import { draftAttachmentViews, draftFormFields, draftMeta, nextDraftIndex, shouldFillComposer } from './chat-drafts';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, rememberDismissed, shouldAutoOpen, tabCounts, visibleItems } from './chat-tabs';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
@@ -54,6 +54,7 @@ if (root) {
     const draftBox = $('[data-chat-draft]');
     const draftReplaces = $('[data-chat-draft-replaces]');
     const draftMetaText = $('[data-chat-draft-meta]');
+    const draftFiles = $('[data-chat-draft-files]');
     const draftOriginal = $('[data-chat-draft-original]');
     const draftNext = $('[data-chat-draft-next]');
     const draftExit = $('[data-chat-draft-exit]');
@@ -369,6 +370,44 @@ if (root) {
 
     const currentDraft = () => state.drafts[state.draftIndex] ?? null;
 
+    const renderDraftFiles = (draft) => {
+        if (!draftFiles) {
+            return;
+        }
+        const views = draftAttachmentViews(draft);
+        const signature = JSON.stringify(views);
+        if (draftFiles.dataset.signature === signature) {
+            return;
+        }
+        draftFiles.dataset.signature = signature;
+        draftFiles.replaceChildren(...views.map((view) => {
+            if (view.kind === 'video') {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.src = view.url;
+                video.title = view.name;
+                video.className = 'max-h-40 w-full rounded-lg border border-amber-200 bg-black';
+                return video;
+            }
+            const link = document.createElement('a');
+            link.href = view.url;
+            link.target = '_blank';
+            link.rel = 'noreferrer';
+            link.dataset.lightboxTrigger = '';
+            link.dataset.lightboxAlt = view.name;
+            link.className = 'block size-16 overflow-hidden rounded-lg border border-amber-200 bg-white';
+            const img = document.createElement('img');
+            img.src = view.url;
+            img.alt = view.name;
+            img.loading = 'lazy';
+            img.className = 'size-full object-cover';
+            link.append(img);
+            return link;
+        }));
+    };
+
     const renderDraftUi = () => {
         if (!draftBox) {
             return;
@@ -386,6 +425,7 @@ if (root) {
         draftOriginal.hidden = draft.replaces_body === null;
         draftOriginal.textContent = draft.replaces_body === null ? '' : `原留言：${draft.replaces_body}`;
         draftMetaText.textContent = draftMeta(draft, state.draftIndex, state.drafts.length);
+        renderDraftFiles(draft);
         draftNext.hidden = state.drafts.length < 2;
     };
 

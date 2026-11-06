@@ -69,6 +69,7 @@
                                     </span>
                                 </div>
                                 <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-amber-900" data-chat-draft-original hidden></p>
+                                <div class="mt-2 flex flex-wrap gap-2 empty:hidden" data-chat-draft-files></div>
                                 <p class="mt-1 text-amber-800">按「送出草稿」才會發給{{ config('feedback.labels.client') }}；輸入框裡改過的文字會照改過的送出。</p>
                             </div>
                             <button type="button" class="mb-2 inline-flex items-center rounded-lg border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100" data-chat-draft-resume hidden>帶入待審留言</button>

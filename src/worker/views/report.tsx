@@ -8,6 +8,7 @@ import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
 import { cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
 /** 已有分類不在專案清單時（例如分類改名後的舊單）仍列出，才能預選與保留。 */
@@ -112,11 +113,15 @@ export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttach
                                 <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{message.body}</p>
                                 {attachments.length > 0 ? (
                                     <div class="mt-2 flex flex-wrap gap-2">
-                                        {attachments.map((attachment) => (
-                                            <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`block ${compact ? 'size-20' : 'size-24 sm:size-28'} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
-                                                <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="size-full object-cover" loading="lazy" />
-                                            </a>
-                                        ))}
+                                        {attachments.map((attachment) =>
+                                            isVideoMime(attachment.mime_type) ? (
+                                                <video controls playsinline preload="metadata" src={attachmentUrl(attachment)} class={`${compact ? 'max-h-48' : 'max-h-72'} w-full max-w-md rounded-lg border border-white bg-black shadow-sm`} title={attachment.original_name} data-chat-video></video>
+                                            ) : (
+                                                <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`block ${compact ? 'size-20' : 'size-24 sm:size-28'} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
+                                                    <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="size-full object-cover" loading="lazy" />
+                                                </a>
+                                            ),
+                                        )}
                                     </div>
                                 ) : null}
                             </div>
@@ -215,11 +220,15 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                             <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-draft-body>{draft.body}</p>
                             {draft.files.length > 0 ? (
                                 <div class="mt-2 flex flex-wrap gap-2">
-                                    {draft.files.map((file, index) => (
-                                        <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
-                                            <img src={`${base}/${draft.id}/files/${index}`} alt={file.original_name} class="size-full object-cover" loading="lazy" />
-                                        </a>
-                                    ))}
+                                    {draft.files.map((file, index) =>
+                                        isVideoMime(file.mime_type) ? (
+                                            <video controls playsinline preload="metadata" src={`${base}/${draft.id}/files/${index}`} class="max-h-60 w-full max-w-md rounded-lg border border-slate-200 bg-black" title={file.original_name} data-draft-video></video>
+                                        ) : (
+                                            <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
+                                                <img src={`${base}/${draft.id}/files/${index}`} alt={file.original_name} class="size-full object-cover" loading="lazy" />
+                                            </a>
+                                        ),
+                                    )}
                                 </div>
                             ) : null}
                             <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -538,10 +547,10 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div class="flex flex-wrap items-center gap-3">
                                             <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                                加入截圖
-                                                <input id="message-screenshots" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} />
+                                                {isPublicReporter ? '加入截圖' : MESSAGE_UPLOAD_LABEL}
+                                                <input id="message-screenshots" type="file" accept={isPublicReporter ? IMAGE_ACCEPT : MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} data-upload-allow-video={isPublicReporter ? undefined : ''} />
                                             </label>
-                                            <span class="text-xs text-slate-500">{isPublicReporter ? `截圖最多 ${PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB。` : '截圖最多 5 張，每張 10 MB。'}</span>
+                                            <span class="text-xs text-slate-500">{isPublicReporter ? `截圖最多 ${PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB。` : `${MESSAGE_HINT}。`}</span>
                                         </div>
                                         <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
                                     </div>

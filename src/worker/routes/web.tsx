@@ -861,6 +861,8 @@ web.put('/p/:slug/uploads', async (c) => {
     const reportPublicId = c.req.query('report') ?? '';
     let maxBytes = MAX_IMAGE_BYTES;
     let reportId: number | null = null;
+    // 留言（含團隊與客戶）另收 mp4 影片；開單、調整重點、公開回報只收圖片。
+    let allowVideo = false;
     const ip = clientIp(c.req.raw);
     const publicLimits = (): Limit[] => {
         const cfg = config(c.env).publicReporting;
@@ -892,6 +894,8 @@ web.put('/p/:slug/uploads', async (c) => {
             }
             maxBytes = PUBLIC_MAX_IMAGE_BYTES;
             limits = publicLimits();
+        } else {
+            allowVideo = true;
         }
         reportId = report.id;
     } else if (purpose === 'public') {
@@ -920,7 +924,7 @@ web.put('/p/:slug/uploads', async (c) => {
         return c.json({ message: '上傳次數過多，請稍後再試。' }, 429, { 'Retry-After': String(retryAfter) });
     }
     try {
-        const upload = await storeImageStream(c.env, c.req.raw, { projectId: project.id, reportId, purpose, maxBytes, nowIso: nowIso(c.get('now')) });
+        const upload = await storeImageStream(c.env, c.req.raw, { projectId: project.id, reportId, purpose, maxBytes, allowVideo, nowIso: nowIso(c.get('now')) });
         if (fromPublic || Math.random() < 0.05) {
             c.executionCtx.waitUntil(pruneStaleUploads(c.env, c.get('now'), 20).catch(() => 0));
         }
@@ -1275,6 +1279,8 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             upload_url: `${paths.uploads(project.slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`,
             max_files: isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : MAX_SCREENSHOTS,
             max_bytes: isPublicReporter ? PUBLIC_MAX_IMAGE_BYTES : MAX_IMAGE_BYTES,
+            // 留言另收 mp4 影片（每支 50 MB）；公開回報只收圖片。
+            allow_video: !isPublicReporter,
             html,
         },
         200,
@@ -1342,21 +1348,62 @@ web.get('/p/:slug/reports/:publicId/attachments/:attachmentId', async (c) => {
     return streamAttachment(c, attachment);
 });
 
+/**
+ * One byte range from a Range header (`bytes=a-b`, `bytes=a-`, `bytes=-n`). Anything else (several
+ * ranges, other units, junk) is ignored and the whole file is sent; a start past the end is 'unsatisfiable'.
+ */
+export function parseByteRange(header: string | undefined, size: number): { offset: number; length: number } | 'unsatisfiable' | null {
+    const match = /^bytes=(\d*)-(\d*)$/.exec((header ?? '').trim());
+    if (!match || (match[1] === '' && match[2] === '') || size <= 0) {
+        return null;
+    }
+    if (match[1] === '') {
+        const suffix = Number(match[2]);
+        if (suffix === 0) {
+            return 'unsatisfiable';
+        }
+        const length = Math.min(suffix, size);
+        return { offset: size - length, length };
+    }
+    const start = Number(match[1]);
+    const end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+    if (start >= size) {
+        return 'unsatisfiable';
+    }
+    if (end < start) {
+        return null;
+    }
+    return { offset: start, length: end - start + 1 };
+}
+
+/**
+ * Streams an attachment from R2. Range requests get 206 with only that slice read from R2, so a video
+ * player can seek (and Safari plays mp4 at all) without the Worker holding the file in memory.
+ */
 export async function streamAttachment(c: AppContext, attachment: Attachment, cacheControl = 'private, max-age=3600'): Promise<Response> {
-    const object = await c.env.FILES.get(attachment.object_key);
+    const headers: Record<string, string> = {
+        'Content-Type': attachment.mime_type,
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(attachment.original_name)}`,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': cacheControl,
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+        'Accept-Ranges': 'bytes',
+    };
+    const range = parseByteRange(c.req.header('range'), attachment.size);
+    if (range === 'unsatisfiable') {
+        return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${attachment.size}` } });
+    }
+    const object = await c.env.FILES.get(attachment.object_key, range ? { range } : undefined);
     if (!object) {
         abort(404);
     }
-    return new Response(object.body, {
-        headers: {
-            'Content-Type': attachment.mime_type,
-            'Content-Length': String(object.size),
-            'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(attachment.original_name)}`,
-            'X-Content-Type-Options': 'nosniff',
-            'Cache-Control': cacheControl,
-            'Content-Security-Policy': "default-src 'none'; sandbox",
-        },
-    });
+    if (range) {
+        return new Response(object.body, {
+            status: 206,
+            headers: { ...headers, 'Content-Length': String(range.length), 'Content-Range': `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}` },
+        });
+    }
+    return new Response(object.body, { headers: { ...headers, 'Content-Length': String(object.size) } });
 }
 
 web.post('/p/:slug/reports/:publicId/update', async (c) => {

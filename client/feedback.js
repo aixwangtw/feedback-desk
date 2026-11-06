@@ -1,4 +1,5 @@
 import './chat-panel.js';
+import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
@@ -27,17 +28,28 @@ const renderImagePreviews = (input) => {
 
     Array.from(input.files).slice(0, 5).forEach((file) => {
         const figure = document.createElement('figure');
-        const image = document.createElement('img');
         const caption = document.createElement('figcaption');
+        figure.className = 'min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white';
+        caption.className = 'truncate px-2 py-1.5 text-[11px] text-slate-600';
+        caption.textContent = file.name;
+        if (isVideoMime(file.type)) {
+            // 影片不產生縮圖（不解碼大檔），只顯示「影片」與檔名。
+            const label = document.createElement('div');
+            label.className = 'grid aspect-video w-full place-items-center bg-slate-900 text-xs font-semibold text-white';
+            label.textContent = '影片';
+            label.dataset.videoPreview = '';
+            figure.append(label, caption);
+            target.append(figure);
+
+            return;
+        }
+        const image = document.createElement('img');
         const objectUrl = URL.createObjectURL(file);
 
-        figure.className = 'min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white';
         image.className = 'aspect-video w-full object-cover';
         image.alt = '';
         image.src = objectUrl;
         image.addEventListener('load', () => URL.revokeObjectURL(objectUrl), { once: true });
-        caption.className = 'truncate px-2 py-1.5 text-[11px] text-slate-600';
-        caption.textContent = file.name;
         figure.append(image, caption);
         target.append(figure);
     });
@@ -117,6 +129,16 @@ document.addEventListener('submit', async (event) => {
         }
         const max = Number(input.dataset.uploadMax || 5);
         const maxBytes = Number(input.dataset.uploadMaxBytes || 10 * 1024 * 1024);
+        // 留言欄位（data-upload-allow-video）另收 mp4 影片，規則與伺服器同一份。
+        if (input.dataset.uploadAllowVideo !== undefined) {
+            const problem = fileProblem(Array.from(input.files), { maxFiles: max, maxImageBytes: maxBytes, allowVideo: true });
+            if (problem) {
+                showUploadError(input, problem);
+                input.focus();
+                return;
+            }
+            continue;
+        }
         if (input.files.length > max) {
             showUploadError(input, `截圖最多 ${max} 張。`);
             input.focus();
@@ -133,12 +155,13 @@ document.addEventListener('submit', async (event) => {
     const submit = event.submitter || form.querySelector('[type="submit"]');
     const originalLabel = submit?.textContent;
     const total = inputs.reduce((sum, input) => sum + input.files.length, 0);
+    const uploadingLabel = inputs.some((input) => input.dataset.uploadAllowVideo !== undefined) ? '上傳圖片／影片中' : '上傳截圖中';
     let done = 0;
     form.dataset.uploadState = 'busy';
     form.querySelectorAll('input[data-upload-id]').forEach((hidden) => hidden.remove());
     if (submit) {
         submit.disabled = true;
-        submit.textContent = `上傳截圖中 0/${total}…`;
+        submit.textContent = `${uploadingLabel} 0/${total}…`;
     }
 
     try {
@@ -165,7 +188,7 @@ document.addEventListener('submit', async (event) => {
                 form.append(hidden);
                 done += 1;
                 if (submit) {
-                    submit.textContent = `上傳截圖中 ${done}/${total}…`;
+                    submit.textContent = `${uploadingLabel} ${done}/${total}…`;
                 }
             }
         }

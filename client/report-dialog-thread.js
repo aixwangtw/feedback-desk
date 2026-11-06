@@ -2,10 +2,11 @@
 // 可在視窗內留言、附圖。載入即算已讀，並通知對話面板同步紅色未讀數字、上方未讀提示與右下角數字。
 // 附圖跟其他表單一樣：每張圖各用一個 PUT 串流上傳，留言只帶回傳的 upload id（Workers 免費方案每請求 CPU 10 ms）。
 
+import { fileProblem } from '../src/shared/attachment-rules';
+
 const POLL_MS = 5000;
 const DEFAULT_MAX_FILES = 5;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const fetchThread = async (url) => {
     const response = await fetch(url, {
@@ -28,7 +29,7 @@ const readError = async (response, fallback) => {
         return data.message ?? Object.values(data.errors ?? {})[0]?.[0] ?? '留言內容有誤，請檢查後再送出。';
     }
     if (response.status === 413) {
-        return '附圖太大，請縮小或減少張數後再試。';
+        return '圖片／影片太大，請縮小或減少檔案數後再試。';
     }
     if (response.status === 429) {
         return '送出太頻繁，請稍候再試。';
@@ -73,6 +74,7 @@ const setupThread = (section) => {
             state.uploadUrl = data.upload_url;
             state.maxFiles = data.max_files ?? DEFAULT_MAX_FILES;
             state.maxBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
+            state.allowVideo = data.allow_video === true;
             if (data.html !== state.lastHtml) {
                 const template = document.createElement('template');
                 template.innerHTML = data.html;
@@ -96,20 +98,8 @@ const setupThread = (section) => {
         }
     };
 
-    const validateFiles = () => {
-        const files = Array.from(fileInput.files);
-        if (files.length > state.maxFiles) {
-            return `附圖最多 ${state.maxFiles} 張。`;
-        }
-        if (files.some((file) => !ALLOWED_TYPES.includes(file.type))) {
-            return '附圖只接受 JPG、PNG、WebP。';
-        }
-        if (files.some((file) => file.size > state.maxBytes)) {
-            return `每張附圖不可超過 ${Math.round(state.maxBytes / 1024 / 1024)} MB。`;
-        }
-
-        return null;
-    };
+    // 與伺服器同一份規則（src/shared/attachment-rules.ts）：圖片每張 10 MB、mp4 影片每支 50 MB、最多 5 個檔。
+    const validateFiles = () => fileProblem(Array.from(fileInput.files), { maxFiles: state.maxFiles, maxImageBytes: state.maxBytes, allowVideo: state.allowVideo === true });
 
     fileInput.addEventListener('change', () => {
         const problem = validateFiles();
@@ -147,7 +137,7 @@ const setupThread = (section) => {
                 await load();
             }
             for (const [index, file] of files.entries()) {
-                sendButton.textContent = `上傳附圖 ${index}/${files.length}…`;
+                sendButton.textContent = `上傳圖片／影片 ${index}/${files.length}…`;
                 const upload = await fetch(state.uploadUrl, {
                     method: 'PUT',
                     body: file,
@@ -160,7 +150,7 @@ const setupThread = (section) => {
                 });
                 const result = await upload.clone().json().catch(() => ({}));
                 if (!upload.ok || !result.id) {
-                    showError(result.message ? `「${file.name}」${result.message}` : await readError(upload, '附圖上傳失敗，請稍後再試。'));
+                    showError(result.message ? `「${file.name}」${result.message}` : await readError(upload, '圖片／影片上傳失敗，請稍後再試。'));
 
                     return;
                 }

@@ -1,3 +1,4 @@
+import { MESSAGE_HINT } from '../shared/attachment-rules';
 import { adjust, claim, create, draft, handoff, message, release, report, reports, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, patrolToken, token } from './commands/auth';
@@ -62,9 +63,11 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
   status <project> <public_id|編號> <new|needs_input|completed|等工程師|等{客戶稱呼}|已完成> [--force]
                                    舊名稱待處理／待審核也接受
-  message <project> <public_id|編號> --body 文字 [--attach 圖檔]...
+  message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
+                                   --attach 附件：${MESSAGE_HINT}（mp4）
                                    等工程師（new）的單留言後自動改成等客戶（needs_input，記得更新調整重點）
-  draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖檔]...
+  draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖片／影片]...
+                                   --attach 規則同 message
                                    待審留言：客戶看不到，團隊在單頁按「送出」才發出；
                                    --replace-message 送出時改寫那則團隊留言（不新增）
 

@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
+import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
 import { COMPLETED_BY_AGENT_WARNING } from '../../shared/work-rule';
 import { detectAgent, encodePath } from '../api';
 import { bool, list, parse, requirePositional, str } from '../args';
@@ -8,8 +9,7 @@ import { escapeInline, escapeTerminal, table, twoColumn } from '../output';
 import { CliError, type Runtime } from '../runtime';
 import { apiFor } from './auth';
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_IMAGES = 5;
+const MAX_IMAGES = MAX_FILES;
 
 /** 附圖路徑：--attach（新）與 --image（舊名相容）可以混用。 */
 function attachPaths(args: ReturnType<typeof parse>): string[] {
@@ -236,15 +236,12 @@ function printAttachments(rt: Runtime, label: string, attachments: AttachmentInf
     }
 }
 
-function detectImage(bytes: Uint8Array): string | null {
-    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
-    if ([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, i) => bytes[i] === byte)) return 'image/png';
-    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
-    return null;
-}
-
-/** Reads and checks local images before anything is sent. */
-export function readImages(paths: string[]): Array<{ path: string; name: string; bytes: Uint8Array; mime: string }> {
+/**
+ * Reads and checks local files before anything is sent. `allowVideo`（message、draft 的 --attach）另收 mp4 影片，
+ * 每支 50 MB；圖片每張 10 MB。開單、調整重點只收圖片。
+ */
+export function readImages(paths: string[], options: { allowVideo?: boolean } = {}): Array<{ path: string; name: string; bytes: Uint8Array; mime: string }> {
+    const allowVideo = options.allowVideo === true;
     return paths.map((path) => {
         let size: number;
         try {
@@ -252,18 +249,21 @@ export function readImages(paths: string[]): Array<{ path: string; name: string;
             if (!stat.isFile()) throw new Error('not a file');
             size = stat.size;
         } catch {
-            throw new CliError(`找不到或無法讀取圖片：${path}`);
+            throw new CliError(`找不到或無法讀取${allowVideo ? '圖片／影片' : '圖片'}：${path}`);
         }
-        if (size > MAX_IMAGE_BYTES) {
-            throw new CliError(`圖片超過 10 MB：${path}`);
+        if (size > (allowVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES)) {
+            throw new CliError(allowVideo ? `${VIDEO_TOO_LARGE.replace(/。$/, '')}：${path}` : `圖片超過 10 MB：${path}`);
         }
         const bytes = new Uint8Array(readFileSync(path));
-        const mime = detectImage(bytes);
+        const mime = detectAttachmentType(bytes.subarray(0, 12), allowVideo);
         if (!mime && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-') {
             throw new CliError(`不收 PDF，請先轉成 jpg／png／webp 圖片再附：${path}`);
         }
         if (!mime) {
-            throw new CliError(`只接受 jpg／png／webp 圖片：${path}`);
+            throw new CliError(allowVideo ? `${ATTACHMENT_TYPE_ERROR.replace(/。$/, '')}：${path}` : `只接受 jpg／png／webp 圖片：${path}`);
+        }
+        if (mime !== 'video/mp4' && size > MAX_IMAGE_BYTES) {
+            throw new CliError(`${imageTooLarge(MAX_IMAGE_BYTES).replace(/。$/, '')}：${path}`);
         }
         return { path, name: basename(path), bytes, mime };
     });
@@ -353,9 +353,9 @@ export async function message(rt: Runtime, argv: string[]): Promise<number> {
     }
     const paths = attachPaths(args);
     if (paths.length > MAX_IMAGES) {
-        throw new CliError(`一則留言最多附 ${MAX_IMAGES} 張圖。`);
+        throw new CliError(TOO_MANY_ATTACHMENTS);
     }
-    const images = readImages(paths);
+    const images = readImages(paths, { allowVideo: true });
     const api = apiFor(rt, str(args, 'url'));
     const base = `/projects/${encodePath(slug)}/reports/${encodePath(ref)}`;
     const uploadIds: string[] = [];
@@ -400,10 +400,10 @@ export async function draft(rt: Runtime, argv: string[]): Promise<number> {
     }
     const paths = attachPaths(args);
     if (paths.length > MAX_IMAGES) {
-        throw new CliError(`一則留言最多附 ${MAX_IMAGES} 張圖。`);
+        throw new CliError(TOO_MANY_ATTACHMENTS);
     }
-    // 先全部檢查過再上傳：任何一張不合格，草稿就不建立。
-    const images = readImages(paths);
+    // 先全部檢查過再上傳：任何一個不合格，草稿就不建立。
+    const images = readImages(paths, { allowVideo: true });
     const api = apiFor(rt, str(args, 'url'));
     const base = `/projects/${encodePath(slug)}/reports/${encodePath(ref)}`;
     const uploadIds: string[] = [];

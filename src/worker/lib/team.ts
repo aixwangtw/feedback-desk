@@ -1,3 +1,4 @@
+import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * Operations performed by a signed-in team account through the API (CLI) or MCP. Both callers go
  * through these functions, so the rules match the web pages and each other.
@@ -616,7 +617,7 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
     }
     const uploadIds = input.upload_ids ?? [];
     if (uploadIds.length > 5) {
-        throw new ServiceError('too_many_images', '一則留言最多附 5 張圖。', 422);
+        throw new ServiceError('too_many_images', TOO_MANY_ATTACHMENTS, 422);
     }
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'message', reportId: report.id });
     if (uploads === null) {
@@ -646,7 +647,7 @@ export async function createReportDraft(ctx: TeamContext, slug: string, identifi
     const replacesMessageId = parseReplaceMessageId(input.replace_message_id);
     const uploadIds = Array.isArray(input.upload_ids) ? input.upload_ids.map(String) : [];
     if (uploadIds.length > 5) {
-        throw new ServiceError('too_many_images', '一則留言最多附 5 張圖。', 422);
+        throw new ServiceError('too_many_images', TOO_MANY_ATTACHMENTS, 422);
     }
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'message', reportId: report.id });
     if (uploads === null) {

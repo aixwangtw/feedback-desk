@@ -5,7 +5,9 @@ import { placeholders } from './db';
 import type { Upload, UploadPurpose } from './models';
 import { charSlice } from '../../shared/text';
 
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_TOO_LARGE, type ImageMime } from '../../shared/attachment-rules';
+
+export { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES };
 export const PUBLIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const PUBLIC_MAX_SCREENSHOTS = 3;
 export const MAX_SCREENSHOTS = 5;
@@ -23,25 +25,11 @@ export async function pendingPublicUploads(db: D1Database): Promise<{ count: num
     return { count: row?.count ?? 0, bytes: row?.bytes ?? 0 };
 }
 
-export type ImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
+export type { ImageMime };
 
 /** Detects jpg/png/webp from the first bytes; the client-declared type is ignored. */
 export function detectImageType(head: Uint8Array): ImageMime | null {
-    if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) {
-        return 'image/jpeg';
-    }
-    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-    if (head.length >= 8 && png.every((byte, i) => head[i] === byte)) {
-        return 'image/png';
-    }
-    if (
-        head.length >= 12 &&
-        head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46 &&
-        head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50
-    ) {
-        return 'image/webp';
-    }
-    return null;
+    return detectAttachmentType(head, false) as ImageMime | null;
 }
 
 export class UploadError extends Error {
@@ -85,15 +73,21 @@ export function imageSourceFromRequest(request: Request): ImageSource {
 export async function storeImageStream(
     env: Env,
     input: Request | ImageSource,
-    options: { projectId: number; reportId: number | null; purpose: UploadPurpose; maxBytes: number; nowIso: string },
+    /**
+     * maxBytes is the image limit. allowVideo (留言與待審留言，非公開回報) also takes mp4 up to MAX_VIDEO_BYTES;
+     * the body is still streamed into R2 (a 50 MB video is never held in memory).
+     */
+    options: { projectId: number; reportId: number | null; purpose: UploadPurpose; maxBytes: number; nowIso: string; allowVideo?: boolean },
 ): Promise<Upload> {
     const source = input instanceof Request ? imageSourceFromRequest(input) : input;
     const length = source.length;
+    const allowVideo = options.allowVideo === true;
+    const imageLimit = allowVideo ? imageTooLarge(options.maxBytes) : `每張截圖不可超過 ${Math.round(options.maxBytes / 1024 / 1024)} MB。`;
     if (!Number.isInteger(length) || length <= 0) {
         throw new UploadError('需要 Content-Length。', 411);
     }
-    if (length > options.maxBytes) {
-        throw new UploadError(`每張截圖不可超過 ${Math.round(options.maxBytes / 1024 / 1024)} MB。`, 413);
+    if (length > (allowVideo ? Math.max(options.maxBytes, MAX_VIDEO_BYTES) : options.maxBytes)) {
+        throw new UploadError(allowVideo ? `${VIDEO_TOO_LARGE}${imageLimit}` : imageLimit, 413);
     }
     if (!source.body) {
         throw new UploadError('沒有收到檔案內容。');
@@ -116,10 +110,14 @@ export async function storeImageStream(
         head.set(chunk, offset);
         offset += chunk.byteLength;
     }
-    const mime = detectImageType(head);
+    const mime = detectAttachmentType(head, allowVideo);
     if (!mime) {
         await reader.cancel();
-        throw new UploadError('截圖必須是 jpg、png 或 webp 圖片。', 415);
+        throw new UploadError(allowVideo ? ATTACHMENT_TYPE_ERROR : '截圖必須是 jpg、png 或 webp 圖片。', 415);
+    }
+    if (mime !== 'video/mp4' && length > options.maxBytes) {
+        await reader.cancel();
+        throw new UploadError(imageLimit, 413);
     }
 
     const id = randomId(16);

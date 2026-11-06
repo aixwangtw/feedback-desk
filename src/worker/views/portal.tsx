@@ -12,6 +12,7 @@ import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
+import { MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { projectCategories } from '../../shared/categories';
 
 export interface PortalRow {
@@ -445,10 +446,10 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                             ></textarea>
                             <div class="flex items-center justify-between gap-2">
                                 <label for={`dialog-screenshots-${report.public_id}`} class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                    附圖
-                                    <input id={`dialog-screenshots-${report.public_id}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`dialog-preview-${report.public_id}`} data-dialog-thread-files />
+                                    {MESSAGE_UPLOAD_LABEL}
+                                    <input id={`dialog-screenshots-${report.public_id}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target={`dialog-preview-${report.public_id}`} data-dialog-thread-files />
                                 </label>
-                                <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">最多 5 張，每張 10 MB</span>
+                                <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500" title={MESSAGE_HINT}>{MESSAGE_HINT}</span>
                                 <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>
                             </div>
                         </form>

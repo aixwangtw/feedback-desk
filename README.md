@@ -20,7 +20,7 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 - 待審留言（草稿）：AI 或排程先寫好留言，客戶完全看不到；團隊在單頁按「送出」才發出（也能編輯、捨棄，或指定改寫某則團隊留言）。右下角對話面板打開有草稿的單時，草稿會帶進輸入框（虛線框標「待審留言（還沒發出）」，改寫原留言的另標「修改原留言」），可以先改文字再按「送出草稿」；清單標「有草稿」，有草稿的單算未回覆，面板自動彈出時直接打開第一張。預設排序是有未讀留言的單最前，再來是有留言的單（依最新留言時間），沒有留言的單依建立時間。
 - 三種狀態，名稱直接寫出在等誰：等工程師（new）、等客戶（needs_input，開發團隊回覆或改好並寫了調整重點；「客戶」跟著 `FEEDBACK_LABEL_CLIENT`，例如設成業主就顯示「等業主」）、已完成（completed，客戶確認）。資料庫的值不變；命令列、MCP 也接受改名前的「待處理」「待審核」。網頁上沒有改狀態的下拉或拖拉，狀態只靠留言自動切換，客戶確認沒問題按「完成」（清單操作欄、看板卡片、單頁右側）；命令列與排程 API 照舊可以改。
 - 留言自動切狀態：等客戶的單客戶留言後改回等工程師；團隊在等工程師的單留言後改成等客戶，並提醒「狀態已改為「等客戶」，記得更新調整重點。」。已完成的單不因留言改狀態；開單時附的通知留言不套用。
-- 留言串：雙方都能留言附圖，以聊天樣式顯示；調整重點只有開發團隊能寫。
+- 留言串：雙方都能留言附圖，也能附 mp4 影片（教操作的錄影，每支 50 MB；圖片每張 10 MB，一次最多 5 個檔），影片在留言串與待審留言裡直接播放，附件網址支援 Range 可拖拉進度；開單、調整重點、公開回報仍只收圖片。以聊天樣式顯示；調整重點只有開發團隊能寫。
 - 未讀提示：清單與看板的留言按鈕以紅色數字顯示未讀數（開發團隊看客戶的新留言；客戶看開發團隊的新回覆，調整重點更新也算一則），開發團隊可只看有未讀留言的單。
 - 留言對話面板：登入後右下角的對話按鈕可集中查看每張單的留言、搜尋、直接回覆並附圖，開啟即標為已讀；手機上全螢幕顯示。
 - 開發團隊自己建的單，客戶看不到；客戶刪除的單只是隱藏，開發團隊看得到也能還原。
@@ -510,8 +510,8 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `create <project> --title --description [--category] [--attach]... [--for-client [--notice]]` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。`--attach` 可重複，附 jpg／png／webp 圖片（每張 10 MB 內、最多 5 張，PDF 請先轉成圖片；`--image` 是舊名，仍可用）；任一張不合格就整張單不建立。團隊帳號加 `--for-client` 會把這張單分享給客戶：客戶的清單、看板看得到並可看附圖、列入客戶編號，系統自動以團隊身分留一則通知留言（`--notice` 可改文字，須搭配 `--for-client`），客戶端顯示未讀；沒加的團隊單客戶完全看不到。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整重點與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文名稱（等工程師／等客戶／已完成，客戶稱呼照站台設定；舊名稱待處理／待審核也接受）。網頁上不能改狀態，要改用這個指令。 |
-| `message <project> <public_id\|編號> --body [--attach]...` | 以自己的帳號留言；`--attach`（舊名 `--image`）規則同 `create`。等工程師的單留言後自動改成等客戶，並提醒更新調整重點。 |
-| `draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖檔]...` | 寫待審留言（草稿，`--text` 同 `--body`）：客戶看不到，團隊在單頁按「送出」才發出；`--replace-message` 送出時改寫那則團隊留言（不新增）。附圖規則同 `create`。只接受 public_id。 |
+| `message <project> <public_id\|編號> --body [--attach]...` | 以自己的帳號留言；`--attach`（舊名 `--image`）除了 jpg／png／webp 圖片（每張 10 MB）也收 mp4 影片（每支 50 MB），最多 5 個檔。等工程師的單留言後自動改成等客戶，並提醒更新調整重點。 |
+| `draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖檔或 mp4]...` | 寫待審留言（草稿，`--text` 同 `--body`）：客戶看不到，團隊在單頁按「送出」才發出；`--replace-message` 送出時改寫那則團隊留言（不新增）。附件規則同 `message`（可附 mp4，送出時影片一起帶到正式留言）。只接受 public_id。 |
 | `claim` / `release <project> <public_id\|編號> [--force]` | 認領／釋放，讓其他人與 AI 知道誰在處理。 |
 | `handoff <project> <public_id\|編號> --note [--release]` | 寫交接紀錄（做到哪、下一步），只有團隊看得到。 |
 

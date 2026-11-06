@@ -41,6 +41,7 @@ files.put('/files/upload', async (c) => {
             reportId: target.reportId,
             purpose: grant.purpose,
             maxBytes: MAX_IMAGE_BYTES,
+            allowVideo: grant.purpose === 'message',
             nowIso: nowIso(c.get('now')),
         });
         return c.json({ id: upload.id, name: upload.original_name, size: upload.size, mime_type: upload.mime_type }, 201);

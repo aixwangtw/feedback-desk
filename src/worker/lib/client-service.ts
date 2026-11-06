@@ -1,3 +1,4 @@
+import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * What a client account can do through the API (CLI) and MCP: the same as on the web pages, for
  * its own project only. Reports the team keeps to itself (team-created, public, deleted by the
@@ -195,7 +196,7 @@ export async function postOwnMessage(ctx: ClientContext, slug: string, identifie
     }
     const uploadIds = input.upload_ids ?? [];
     if (uploadIds.length > 5) {
-        throw new ServiceError('too_many_images', '一則留言最多附 5 張圖。', 422);
+        throw new ServiceError('too_many_images', TOO_MANY_ATTACHMENTS, 422);
     }
     const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'message', reportId: report.id });
     if (uploads === null) {

@@ -526,12 +526,36 @@ describe('draft (待審留言)', () => {
         const fake = signedIn(handler);
         const text = file(fake, 'notes.txt', new TextEncoder().encode('not an image'));
         expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', '--attach', text], fake.rt)).toBe(1);
-        expect(fake.errors()).toContain('只接受 jpg／png／webp');
+        expect(fake.errors()).toContain('只接受 JPG、PNG、WebP 圖片或 MP4 影片');
         expect(await main(['draft', 'demo', 'uuid-1', '--body', ' '], fake.rt)).toBe(1);
         expect(await main(['draft', 'demo', '12', '--body', 'x'], fake.rt)).toBe(1);
         expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', '--replace-message', 'abc'], fake.rt)).toBe(1);
         expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', ...Array.from({ length: 6 }, () => ['--attach', file(fake, 'a.png', PNG)]).flat()], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('一次最多附 5 個檔案');
         expect(fake.calls).toHaveLength(0);
+    });
+
+    it('message and draft --attach take mp4 videos (50 MB each); create and adjust stay images only', async () => {
+        const mp4 = new Uint8Array(64);
+        mp4.set([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypisom')]);
+        const fake = signedIn(handler);
+        const video = file(fake, '操作示範.mp4', mp4);
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', '附影片', '--attach', video], fake.rt)).toBe(0);
+        expect(fake.calls[0].headers['content-type']).toBe('video/mp4');
+        expect(fake.calls[0].url).toContain('purpose=message');
+
+        const mov = new Uint8Array(64);
+        mov.set([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypqt  ')]);
+        const refused = signedIn(handler);
+        expect(await main(['message', 'demo', 'uuid-1', '--body', 'x', '--attach', file(refused, 'clip.mov', mov)], refused.rt)).toBe(1);
+        expect(refused.errors()).toContain('只接受 JPG、PNG、WebP 圖片或 MP4 影片');
+        expect(await main(['create', 'demo', '--title', 't', '--description', 'd', '--attach', file(refused, 'a.mp4', mp4)], refused.rt)).toBe(1);
+        expect(refused.errors()).toContain('只接受 jpg／png／webp');
+        expect(refused.calls).toHaveLength(0);
+
+        const help = fakeRuntime();
+        expect(await main(['help'], help.rt)).toBe(0);
+        expect(help.text()).toContain('圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 50 MB');
     });
 
     it('message prints the reminder when the server moved the report to needs_input', async () => {

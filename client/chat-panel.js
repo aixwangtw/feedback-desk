@@ -5,6 +5,7 @@
 import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from '../src/shared/conversation';
 import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
 import { chatTabCounts, filterByTab, rememberDismissed, sessionStorageOrNull, shouldAutoOpen } from '../src/shared/chat-tabs';
+import { fileProblem, MAX_FILES as DEFAULT_MAX_FILES_RULE } from '../src/shared/attachment-rules';
 import { draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../src/shared/chat-drafts';
 
 const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
@@ -14,9 +15,8 @@ const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 60000;
 // 預設上限；開啟對話後以伺服器回傳的該單上限為準（公開回報的單較少）。
-const DEFAULT_MAX_FILES = 5;
+const DEFAULT_MAX_FILES = DEFAULT_MAX_FILES_RULE;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 // 與伺服器端清單、留言按鈕相同的樣式。
 const SUMMARY_TONES = {
     alert: UNREAD_SUMMARY_TONES.alert.split(' '),
@@ -462,6 +462,7 @@ if (root) {
         state.uploadUrl = data.upload_url;
         state.maxFiles = data.max_files ?? DEFAULT_MAX_FILES;
         state.maxFileBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
+        state.allowVideo = data.allow_video === true;
         applyDrafts(data);
 
         if (data.html !== state.lastThreadHtml) {
@@ -549,7 +550,7 @@ if (root) {
             if (draft) {
                 state.failedDrafts.delete(id);
                 bodyInput.value = draft.body;
-                showError(`上次送出失敗（${draft.message}），內容已填回，${draft.hadFiles ? '附圖請重新選擇後' : ''}再送出一次。`);
+                showError(`上次送出失敗（${draft.message}），內容已填回，${draft.hadFiles ? '圖片／影片請重新選擇後' : ''}再送出一次。`);
             }
         }
         state.currentId = id;
@@ -678,20 +679,8 @@ if (root) {
         errorBox.hidden = false;
     };
 
-    const validateFiles = () => {
-        const files = Array.from(fileInput.files);
-        if (files.length > state.maxFiles) {
-            return `附圖最多 ${state.maxFiles} 張。`;
-        }
-        if (files.some((file) => !ALLOWED_TYPES.includes(file.type))) {
-            return '附圖只接受 JPG、PNG、WebP。';
-        }
-        if (files.some((file) => file.size > state.maxFileBytes)) {
-            return `每張附圖不可超過 ${Math.round(state.maxFileBytes / 1024 / 1024)} MB。`;
-        }
-
-        return null;
-    };
+    // 與伺服器同一份規則（src/shared/attachment-rules.ts）：圖片每張 10 MB、mp4 影片每支 50 MB、最多 5 個檔。
+    const validateFiles = () => fileProblem(Array.from(fileInput.files), { maxFiles: state.maxFiles, maxImageBytes: state.maxFileBytes, allowVideo: state.allowVideo === true });
 
     fileInput.addEventListener('change', () => {
         const problem = validateFiles();
@@ -746,7 +735,7 @@ if (root) {
                 return data.message ?? Object.values(data.errors ?? {})[0]?.[0] ?? '留言內容有誤，請檢查後再送出。';
             }
             if (response.status === 413) {
-                return '附圖太大，請縮小或減少張數後再試。';
+                return '圖片／影片太大，請縮小或減少檔案數後再試。';
             }
             if (response.status === 429) {
                 return '送出太頻繁，請稍候再試。';
@@ -787,7 +776,7 @@ if (root) {
             params.set('body', body);
             const files = Array.from(fileInput.files);
             for (const [index, file] of files.entries()) {
-                sendButton.textContent = `上傳附圖 ${index}/${files.length}…`;
+                sendButton.textContent = `上傳圖片／影片 ${index}/${files.length}…`;
                 const upload = await fetch(uploadUrl, {
                     method: 'PUT',
                     body: file,
@@ -800,7 +789,7 @@ if (root) {
                 });
                 const result = await upload.clone().json().catch(() => ({}));
                 if (!upload.ok || !result.id) {
-                    fail(result.message ? `「${file.name}」${result.message}` : await readError(upload, '附圖上傳失敗，請稍後再試。'));
+                    fail(result.message ? `「${file.name}」${result.message}` : await readError(upload, '圖片／影片上傳失敗，請稍後再試。'));
 
                     return;
                 }

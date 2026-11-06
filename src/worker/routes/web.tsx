@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared/status';
 import { charLength, charSlice } from '../../shared/text';
+import { isVideoMime } from '../../shared/attachment-rules';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
 import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
@@ -1205,6 +1206,7 @@ function panelDraft(project: Project, report: Report, draft: DraftView) {
         replaces_message_id: draft.replaces_message_id,
         replaces_body: draft.replaces_body,
         attachments_count: draft.files.length,
+        attachments: draft.files.map((file, index) => ({ url: paths.draftFile(project.slug, report.public_id, draft.id, index), name: file.original_name, is_video: isVideoMime(file.mime_type) })),
         send_url: paths.draftSend(project.slug, report.public_id, draft.id),
         page_url: `${paths.report(project.slug, report.public_id)}#message-drafts`,
     };

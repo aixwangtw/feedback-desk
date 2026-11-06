@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../../src/shared/chat-drafts';
+import { draftAttachmentViews, draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../../src/shared/chat-drafts';
 import { adjustmentReminder } from '../../src/worker/lib/reports';
 import type { Report } from '../../src/worker/lib/models';
 import { Browser, seedProject, seedReport, workerEnv, type SeededProject } from './helpers';
@@ -15,7 +15,7 @@ const JSON_HEADERS = { accept: 'application/json' };
 
 interface ThreadJson {
     id: string;
-    drafts?: Array<{ id: number; body: string; author: string; replaces_message_id: number | null; replaces_body: string | null; attachments_count: number; send_url: string; page_url: string }>;
+    drafts?: Array<{ id: number; body: string; author: string; replaces_message_id: number | null; replaces_body: string | null; attachments_count: number; attachments: Array<{ url: string; name: string; is_video: boolean }>; send_url: string; page_url: string }>;
 }
 interface ListJson {
     items: Array<{ id: string; awaiting_reply: boolean; drafts_count?: number }>;
@@ -86,6 +86,7 @@ describe('對話面板的待審留言', () => {
                 replaces_message_id: originalId,
                 replaces_body: '原本的說明',
                 attachments_count: 0,
+                attachments: [],
                 send_url: sendUrl(seeded, report, draftId),
                 page_url: `/p/${seeded.project.slug}/reports/${report.public_id}#message-drafts`,
             },
@@ -122,6 +123,32 @@ describe('對話面板的待審留言', () => {
         expect(clientList).not.toHaveProperty('drafts_total');
         // 客戶端照原規則：團隊最後發言＝等客戶回覆，兩張都是未回覆；草稿完全不影響。
         expect(clientList.awaiting_total).toBe(2);
+    });
+
+    it('the team thread lists draft attachments with the draft file route; the client never gets them', async () => {
+        const { seeded, report } = await setup();
+        const id = await draft(report);
+        const files = [
+            { object_key: 'drafts/a.mp4', original_name: '教學.mp4', mime_type: 'video/mp4', size: 10 },
+            { object_key: 'drafts/b.png', original_name: '截圖.png', mime_type: 'image/png', size: 10 },
+        ];
+        await env.DB.prepare('UPDATE message_drafts SET attachments = ? WHERE id = ?').bind(JSON.stringify(files), id).run();
+        const base = `/p/${seeded.project.slug}/reports/${report.public_id}/drafts/${id}/files`;
+
+        const owner = await new Browser().asOwner(seeded);
+        const data = await thread(owner, seeded, report);
+        expect(data.drafts?.[0].attachments_count).toBe(2);
+        expect(data.drafts?.[0].attachments).toEqual([
+            { url: `${base}/0`, name: '教學.mp4', is_video: true },
+            { url: `${base}/1`, name: '截圖.png', is_video: false },
+        ]);
+
+        const client = await new Browser().asClient(seeded);
+        const text = await (await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS)).text();
+        expect(JSON.parse(text)).not.toHaveProperty('drafts');
+        expect(text).not.toContain('drafts/a.mp4');
+        expect(text).not.toContain('/files/0');
+        expect((await client.get(`${base}/0`)).status).toBe(403);
     });
 
     it('the client panel never receives drafts', async () => {
@@ -262,7 +289,15 @@ describe('對話面板待審留言的純邏輯', () => {
 
     it('describes the draft: author, which one, images', () => {
         expect(draftMeta({ author: 'Alex（Claude Code）', attachments_count: 0 }, 0, 1)).toBe('Alex（Claude Code）寫的');
-        expect(draftMeta({ author: 'Alex', attachments_count: 2 }, 1, 3)).toBe('Alex寫的・第 2／3 則・附圖 2 張會一起送出');
+        expect(draftMeta({ author: 'Alex', attachments_count: 2 }, 1, 3)).toBe('Alex寫的・第 2／3 則・附件 2 個會一起送出');
+    });
+
+    it('describes the draft attachments as video or image views', () => {
+        expect(draftAttachmentViews({})).toEqual([]);
+        expect(draftAttachmentViews({ attachments: [{ url: '/a', name: 'a.mp4', is_video: true }, { url: '/b', name: 'b.png', is_video: false }] })).toEqual([
+            { kind: 'video', url: '/a', name: 'a.mp4' },
+            { kind: 'image', url: '/b', name: 'b.png' },
+        ]);
     });
 
     it('sends only the composer text, never the panel images', () => {

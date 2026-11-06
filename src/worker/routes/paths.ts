@@ -31,6 +31,7 @@ export const paths = {
     reportClaim: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/claim`,
     reportHandoff: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/handoff`,
     draftSend: (slug: string, publicId: string, draftId: number) => `/p/${enc(slug)}/reports/${enc(publicId)}/drafts/${draftId}/send`,
+    draftFile: (slug: string, publicId: string, draftId: number, index: number) => `/p/${enc(slug)}/reports/${enc(publicId)}/drafts/${draftId}/files/${index}`,
     attachment: (slug: string, publicId: string, attachmentId: number) => `/p/${enc(slug)}/reports/${enc(publicId)}/attachments/${attachmentId}`,
     ownerAccess: (slug: string) => `/owner/${enc(slug)}/access`,
     ownerLogin: (slug: string) => `/owner/${enc(slug)}/login`,

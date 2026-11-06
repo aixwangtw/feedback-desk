@@ -239,7 +239,7 @@ export function createServer(ctx: team.TeamContext): McpServer {
         'set_status',
         {
             title: '改狀態',
-            description: `改變回報單狀態：${describedStatusOptions(statusLabels)}。改好並寫完調整重點後改成 needs_input，由客戶確認後再由人改成 completed。別人認領中的單會回 claimed_by_other，確定要接手才加 force=true（會記錄）。${WORK_RULE}${HANDOFF_FLOW}`,
+            description: `改變回報單狀態：${describedStatusOptions(statusLabels)}。改好並寫完調整重點後改成 needs_input；completed（已完成）只由客戶在網頁上按「完成」，這裡改成 completed 會被拒絕（completed_by_client_only）。別人認領中的單會回 claimed_by_other，確定要接手才加 force=true（會記錄）。${WORK_RULE}${HANDOFF_FLOW}`,
             inputSchema: z.object({
                 project: PROJECT,
                 report: REPORT.describe('public_id 或團隊端清單編號'),

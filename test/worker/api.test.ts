@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { verifyPassword } from '../../src/worker/lib/crypto';
+import { COMPLETED_BY_CLIENT_ONLY } from '../../src/shared/work-rule';
 import { api, BASE, Browser, mcpCall, PNG_BYTES, rpcResult, seedAttachment, seedDeveloper, seedProject, seedReport, seedToken } from './helpers';
 
 async function json<T = Record<string, unknown>>(response: Response): Promise<T> {
@@ -206,6 +207,15 @@ describe('API with a team token', () => {
         const status = await json<{ previous: { status: string }; current: { status: string; label: string } }>(await api('POST', `${base}/${report.public_id}/status`, token, { status: '待審核' }));
         expect(status).toMatchObject({ previous: { status: 'new', label: '等工程師' }, current: { status: 'needs_input', label: '等客戶' } });
         expect((await api('POST', `${base}/${report.public_id}/status`, token, { status: 'done' })).status).toBe(422);
+        // 已完成只由客戶在網頁上按「完成」：團隊 API 指定 completed（含中文「已完成」）一律擋下，狀態不變。
+        for (const value of ['completed', ' COMPLETED ', '已完成']) {
+            const refused = await api('POST', `${base}/${report.public_id}/status`, token, { status: value });
+            expect(refused.status).toBe(422);
+            expect(await json(refused)).toMatchObject({ error: 'completed_by_client_only', message: COMPLETED_BY_CLIENT_ONLY });
+        }
+        expect(await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(report.id).first('status')).toBe('needs_input');
+        expect((await api('POST', `${base}/${report.public_id}/status`, token, { status: 'new' })).status).toBe(200);
+        expect((await api('POST', `${base}/${report.public_id}/status`, token, { status: 'needs_input' })).status).toBe(200);
 
         const message = await json<{ author: string }>(await api('POST', `${base}/${report.public_id}/messages`, token, { body: '已處理' }));
         expect(message.author).toBe('王小明');

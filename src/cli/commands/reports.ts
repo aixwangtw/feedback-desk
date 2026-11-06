@@ -2,8 +2,8 @@ import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'nod
 import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
 import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
-import { COMPLETED_BY_AGENT_WARNING } from '../../shared/work-rule';
-import { detectAgent, encodePath } from '../api';
+import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
+import { encodePath } from '../api';
 import { bool, list, parse, requirePositional, str } from '../args';
 import { escapeInline, escapeTerminal, table, twoColumn } from '../output';
 import { CliError, type Runtime } from '../runtime';
@@ -324,6 +324,10 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
     if (!statusFromInput(input, null)) {
         throw new CliError(`不認得的狀態。可用值：${describedStatusOptions(null)}`);
     }
+    // 已完成只由客戶在網頁上按「完成」：送出前就擋下（伺服器也會擋）。
+    if (statusFromInput(input, null) === 'completed') {
+        throw new CliError(COMPLETED_BY_CLIENT_ONLY);
+    }
     const api = apiFor(rt, str(args, 'url'));
     const result = await api.post<{ title: string; previous: { status: string; label: string }; current: { status: string; label: string } }>(
         `/projects/${encodePath(slug)}/reports/${encodePath(ref)}/status`,
@@ -336,10 +340,6 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`已更新狀態：${escapeInline(result.title)}`);
     rt.out(twoColumn('原狀態', `${result.previous.status}（${result.previous.label}）`));
     rt.out(twoColumn('新狀態', `${result.current.status}（${result.current.label}）`));
-    // Only a reminder, not a block: an owner may close a report the client already confirmed from inside an AI tool.
-    if (result.current.status === 'completed' && detectAgent(rt.env)) {
-        rt.err(COMPLETED_BY_AGENT_WARNING);
-    }
     return 0;
 }
 

@@ -1,3 +1,4 @@
+import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
 import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * Operations performed by a signed-in team account through the API (CLI) or MCP. Both callers go
@@ -279,6 +280,10 @@ export async function setReportStatus(ctx: TeamContext, slug: string, identifier
     const status = statusFromInput(statusInput, statusLabels);
     if (!status) {
         throw new ServiceError('invalid_status', `不認得的狀態。可用值：${describedStatusOptions(statusLabels)}`, 422);
+    }
+    // 已完成只由客戶在網頁上按「完成」：團隊（含 AI、CLI、MCP、團隊 API）一律擋下；new、needs_input 照常。
+    if (status === 'completed') {
+        throw new ServiceError('completed_by_client_only', COMPLETED_BY_CLIENT_ONLY, 422);
     }
     const report = await resolveReport(ctx.env, project, identifier);
     const takenOver = await guardClaim(ctx, report, options.force === true);

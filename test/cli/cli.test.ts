@@ -703,14 +703,19 @@ describe('report commands', () => {
         expect(fake.errors()).toContain('new（等工程師）');
     });
 
-    it('status reminds an AI not to mark a report completed, but still updates it', async () => {
-        const done = () => jsonResponse({ title: '標題', previous: { status: 'needs_input', label: '等客戶' }, current: { status: 'completed', label: '已完成' } });
-        const byAgent = signedIn(done, { FEEDBACK_DESK_AGENT: 'Codex' });
-        expect(await main(['status', 'demo', '3', 'completed'], byAgent.rt)).toBe(0);
-        expect(byAgent.errors()).toContain('AI 不應直接把單改成已完成');
-        const byPerson = signedIn(done);
-        expect(await main(['status', 'demo', '3', 'completed'], byPerson.rt)).toBe(0);
-        expect(byPerson.errors()).not.toContain('AI 不應直接把單改成已完成');
+    it('status refuses completed (also 已完成) for anyone on the team, before calling the server', async () => {
+        for (const env of [{ FEEDBACK_DESK_AGENT: 'Codex' }, {}] as Array<Record<string, string>>) {
+            const fake = signedIn(() => jsonResponse({}), env);
+            for (const value of ['completed', '已完成']) {
+                expect(await main(['status', 'demo', '3', value], fake.rt)).toBe(1);
+                expect(fake.errors()).toContain('已完成只由客戶按完成：請改成 needs_input（等客戶），由客戶在網頁上按「完成」結單。');
+            }
+            expect(fake.calls).toHaveLength(0);
+        }
+        // 舊版 CLI 送上去時，伺服器的拒絕原因照樣印出。
+        const server = signedIn(() => jsonResponse({ error: 'completed_by_client_only', message: '已完成只由客戶按完成：請改成 needs_input（等客戶），由客戶在網頁上按「完成」結單。' }, 422));
+        expect(await main(['status', 'demo', '3', 'needs_input'], server.rt)).toBe(1);
+        expect(server.errors()).toContain('已完成只由客戶按完成');
     });
 
     it('turns API errors and expired tokens into readable messages', async () => {

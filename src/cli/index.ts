@@ -61,8 +61,8 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖檔]... [--for-client [--notice 通知文字]]
                                    開新單（團隊與客戶帳號都可以）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
-  status <project> <public_id|編號> <new|needs_input|completed|等工程師|等{客戶稱呼}|已完成> [--force]
-                                   舊名稱待處理／待審核也接受
+  status <project> <public_id|編號> <new|needs_input|等工程師|等{客戶稱呼}> [--force]
+                                   舊名稱待處理／待審核也接受；completed（已完成）只由客戶在網頁上按「完成」，會被擋下
   message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
                                    --attach 附件：${MESSAGE_HINT}（mp4）
                                    等工程師（new）的單留言後自動改成等客戶（needs_input，記得更新調整重點）

@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import { createToken } from '../../src/worker/lib/team';
-import { WORK_RULE } from '../../src/shared/work-rule';
+import { COMPLETED_BY_CLIENT_ONLY, WORK_RULE } from '../../src/shared/work-rule';
 import { api, BASE, Browser, mcpCall, PNG_BYTES, rpcResult, seedClientAccount, seedDeveloper, seedProject, seedReport, unique, workerEnv } from './helpers';
 
 type ToolResult = { content: Array<{ type: string; text?: string }>; isError?: boolean };
@@ -194,6 +194,15 @@ describe('several people and AI tools on one report', () => {
         expect(listed.tools.find((t) => t.name === 'set_status')?.description).toContain('new（等工程師）、needs_input（等客戶）、completed（已完成）');
         expect(listedText).not.toContain('（待處理）');
         expect(listedText).not.toContain('改成待審核');
+        expect(listed.tools.find((t) => t.name === 'set_status')?.description).toContain('completed_by_client_only');
+        // MCP 的 set_status 也不能改成已完成；new、needs_input 照常。
+        for (const value of ['completed', '已完成']) {
+            const refused = await tool<{ error: string; message: string }>(token, 'set_status', { project: seeded.project.slug, report: report.public_id, status: value });
+            expect(refused.isError).toBe(true);
+            expect(refused.data).toMatchObject({ error: 'completed_by_client_only', message: COMPLETED_BY_CLIENT_ONLY });
+        }
+        expect((await tool(token, 'set_status', { project: seeded.project.slug, report: report.public_id, status: 'needs_input' })).isError).toBe(false);
+        expect(await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(report.id).first('status')).toBe('needs_input');
         await new Promise((resolve) => setTimeout(resolve, 50));
         expect(await env.DB.prepare('SELECT mcp_client FROM api_tokens WHERE agent IS NULL ORDER BY id DESC LIMIT 1').first()).toEqual({ mcp_client: 'hermes-agent' });
         expect((await tool(token, 'claim_report', { project: seeded.project.slug, report: report.public_id })).isError).toBe(false);

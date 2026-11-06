@@ -23,6 +23,10 @@
         <div class="flex min-h-0 flex-1">
             {{-- 對話清單 --}}
             <div class="flex min-h-0 w-full flex-col border-slate-200 sm:w-72 sm:shrink-0 sm:border-r" data-chat-list-pane>
+                <div class="flex shrink-0 border-b border-slate-200" role="tablist" aria-label="依回覆狀態分頁" data-chat-tabs>
+                    <button type="button" role="tab" aria-selected="true" class="flex-1 border-b-2 border-teal-700 px-3 py-2.5 text-sm font-bold text-teal-800" data-chat-tab="awaiting" title="對方最後發言、你還沒回">未回覆 <span data-chat-tab-count>0</span></button>
+                    <button type="button" role="tab" aria-selected="false" class="flex-1 border-b-2 border-transparent px-3 py-2.5 text-sm font-bold text-slate-500" data-chat-tab="replied" title="你最後發言，等對方回覆">已回覆 <span data-chat-tab-count>0</span></button>
+                </div>
                 <div class="shrink-0 border-b border-slate-100 p-3">
                     <label for="chat-search" class="sr-only">搜尋標題</label>
                     <input id="chat-search" type="search" placeholder="搜尋標題或編號" autocomplete="off" class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-search>

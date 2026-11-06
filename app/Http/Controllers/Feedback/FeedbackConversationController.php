@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Feedback;
 
 use App\Enums\FeedbackAuthorType;
+use App\Enums\FeedbackCreatorType;
+use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackMessage;
 use App\Models\FeedbackProject;
@@ -66,6 +68,7 @@ class FeedbackConversationController extends Controller
         return response()->json([
             'items' => $items->all(),
             'unread_total' => $items->sum('unread'),
+            'awaiting_total' => $items->where('awaiting_reply', true)->count(),
         ]);
     }
 
@@ -113,7 +116,7 @@ class FeedbackConversationController extends Controller
     }
 
     /**
-     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, created_at: string, unread: int, adjustment_updated: bool, has_update: bool, messages_count: int, creator: string, thread_url: string, page_url: string}
+     * @return array{id: string, number: int, title: string, status: string, deleted: bool, preview: string|null, preview_is_mine: bool, latest_at: string|null, latest_label: string|null, created_at: string, unread: int, adjustment_updated: bool, has_update: bool, awaiting_reply: bool, messages_count: int, creator: string, thread_url: string, page_url: string}
      */
     private function listItem(FeedbackProject $project, FeedbackReport $report, int $number, bool $isOwner): array
     {
@@ -139,11 +142,29 @@ class FeedbackConversationController extends Controller
             'unread' => $unread,
             'adjustment_updated' => $adjustmentUpdated,
             'has_update' => $unread > 0 || $adjustmentUpdated,
+            'awaiting_reply' => $this->isAwaitingReply($report, $latestAuthor, $isOwner),
             'messages_count' => (int) $report->feedback_messages_count,
             'creator' => $report->creatorLabel(),
             'thread_url' => route('feedback.conversations.show', [$project, $report]),
             'page_url' => route('feedback.reports.show', [$project, $report]),
         ];
+    }
+
+    /**
+     * 「未回覆」：對方最後發言、自己還沒回。沒有留言時以開單的一方當最後發言者；已完成的單不算。
+     * 只看正式留言，待審留言（草稿）不算回覆。
+     */
+    private function isAwaitingReply(FeedbackReport $report, ?FeedbackAuthorType $latestAuthor, bool $isOwner): bool
+    {
+        if ($report->status === FeedbackReportStatus::Completed) {
+            return false;
+        }
+
+        $clientSpokeLast = $latestAuthor !== null
+            ? $latestAuthor === FeedbackAuthorType::Reporter
+            : in_array($report->creator_type, [FeedbackCreatorType::Client, FeedbackCreatorType::Public], true);
+
+        return $isOwner ? $clientSpokeLast : ! $clientSpokeLast;
     }
 
     /**

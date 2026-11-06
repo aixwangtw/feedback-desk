@@ -2,6 +2,7 @@
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
 import { orderConversations } from './chat-order';
+import { filterByTab, rememberDismissed, shouldAutoOpen, tabCounts } from './chat-tabs';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
 const THREAD_POLL_MS = 5000;
@@ -53,6 +54,33 @@ if (root) {
         lastThreadHtml: '',
         lastListFetch: 0,
         threadRequest: 0,
+        tab: 'awaiting',
+        autoOpenChecked: false,
+    };
+
+    const sessionStore = (() => {
+        try {
+            return window.sessionStorage;
+        } catch {
+            return null;
+        }
+    })();
+
+    const tabButtons = [...root.querySelectorAll('[data-chat-tab]')];
+    const renderTabs = () => {
+        const counts = tabCounts(state.items);
+        tabButtons.forEach((button) => {
+            const active = button.dataset.chatTab === state.tab;
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+            button.classList.toggle('border-teal-700', active);
+            button.classList.toggle('text-teal-800', active);
+            button.classList.toggle('border-transparent', !active);
+            button.classList.toggle('text-slate-500', !active);
+            const count = button.querySelector('[data-chat-tab-count]');
+            if (count) {
+                count.textContent = String(counts[button.dataset.chatTab] ?? 0);
+            }
+        });
     };
 
     const isOpen = () => !panel.hidden;
@@ -189,9 +217,11 @@ if (root) {
 
     const renderList = () => {
         const keyword = search.value.trim().toLowerCase();
+        renderTabs();
+        const tabItems = filterByTab(state.items, state.tab);
         const items = keyword === ''
-            ? state.items
-            : state.items.filter((item) => item.title.toLowerCase().includes(keyword) || String(item.number) === keyword.replace(/^#/, ''));
+            ? tabItems
+            : tabItems.filter((item) => item.title.toLowerCase().includes(keyword) || String(item.number) === keyword.replace(/^#/, ''));
 
         list.replaceChildren(...items.map((item) => {
             const li = el('li');
@@ -245,7 +275,9 @@ if (root) {
             listStatus.hidden = false;
             listStatus.textContent = '載入中…';
         } else if (items.length === 0) {
-            listStatus.textContent = state.items.length === 0 ? '還沒有回饋單。' : '沒有符合的回饋單。';
+            listStatus.textContent = state.items.length === 0
+                ? '還沒有回饋單。'
+                : (keyword === '' ? (state.tab === 'awaiting' ? '沒有等你回覆的單。' : '沒有等對方回覆的單。') : '沒有符合的回饋單。');
         }
     };
 
@@ -267,6 +299,15 @@ if (root) {
                 updateLauncherBadge(data.unread_total);
             }
             syncPage();
+            if (!state.autoOpenChecked) {
+                // 開頁面時有「對方最後發言、自己還沒回」的單就自動展開；這次瀏覽手動收合過就不再自動展開。
+                state.autoOpenChecked = true;
+                if (!isOpen() && shouldAutoOpen(data.awaiting_total ?? 0, sessionStore)) {
+                    state.tab = 'awaiting';
+                    openPanel();
+                    setView('list');
+                }
+            }
             if (isOpen()) {
                 renderList();
             }
@@ -409,11 +450,17 @@ if (root) {
     };
 
     const closePanel = () => {
+        rememberDismissed(sessionStore);
         panel.hidden = true;
         launcher.setAttribute('aria-expanded', 'false');
         document.body.classList.remove('max-sm:overflow-hidden');
         launcher.focus({ preventScroll: true });
     };
+
+    tabButtons.forEach((button) => button.addEventListener('click', () => {
+        state.tab = button.dataset.chatTab;
+        renderList();
+    }));
 
     launcher.addEventListener('click', () => {
         if (isOpen()) {

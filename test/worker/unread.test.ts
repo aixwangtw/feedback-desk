@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { ADJUSTMENT_DEPRECATED } from '../../src/shared/completion';
 import type { Report } from '../../src/worker/lib/models';
 import { api, Browser, mcpCall, reload, rpcResult, seedAttachment, seedDeveloper, seedProject, seedReport, seedToken, type SeededProject } from './helpers';
 
@@ -20,18 +21,13 @@ async function portal(browser: Browser, seeded: SeededProject, query = ''): Prom
     return response.text();
 }
 
-/** Red unread number on the chat button of the report (null without a number, undefined without a button). */
+/** Red unread number of the small dot beside the report title (null without a number, undefined when the report is not on the page). */
 function badgeOf(html: string, report: Pick<Report, 'public_id'>): string | null | undefined {
-    const button = new RegExp(`<button[^>]*data-chat-open="${report.public_id}"[^>]*data-message-count="(\\d+)"[^>]*>([\\s\\S]*?)</button>`).exec(html);
-    if (!button) {
+    const slot = new RegExp(`data-unread-slot="${report.public_id}">(?:<span[^>]*data-unread-dot=""[^>]*>([^<]+)</span>)?</span>`).exec(html);
+    if (!slot) {
         return undefined;
     }
-    return /data-unread-badge=""[^>]*>([^<]+)</.exec(button[2])?.[1] ?? null;
-}
-
-function messageCountOf(html: string, report: Pick<Report, 'public_id'>): number | undefined {
-    const match = new RegExp(`data-chat-open="${report.public_id}"[^>]*data-message-count="(\\d+)"`).exec(html);
-    return match ? Number(match[1]) : undefined;
+    return slot[1] ?? null;
 }
 
 async function clientPosts(client: Browser, seeded: SeededProject, report: Report, body: string): Promise<void> {
@@ -51,12 +47,11 @@ describe('unread client messages on the team side', () => {
         const owner = await new Browser().asOwner(seeded);
         let html = await portal(owner, seeded);
         expect(badgeOf(html, report)).toBe('2');
-        expect(messageCountOf(html, report)).toBe(2);
-        expect(html).toContain('aria-label="開啟「登入頁跑版」的留言對話（共 2 則留言，2 則未讀）"');
+        expect(html).toContain('title="2 則未讀留言"');
         expect(html).toContain('有 <span data-unread-report-count="true">1</span> 張單有未讀留言');
         expect(html).toContain('只看未讀留言');
-        // A report without messages has no chat button on the list.
-        expect(badgeOf(html, other)).toBeUndefined();
+        // A report without messages has an empty slot only (no dot).
+        expect(badgeOf(html, other)).toBeNull();
 
         // Fetching the detail dialog alone does not mark the report read; it carries the thread section
         // (loaded from the conversation JSON, which marks it read) and a message box with images.
@@ -64,7 +59,7 @@ describe('unread client messages on the team side', () => {
         expect(dialog).toContain(`data-thread-url="/p/${seeded.project.slug}/conversations/${report.public_id}"`);
         expect(dialog).toContain(`action="/p/${seeded.project.slug}/reports/${report.public_id}/messages"`);
         expect(dialog).toContain('data-dialog-thread-files');
-        expect(dialog).toContain('查看留言紀錄（完整頁）');
+        expect(dialog).toContain('完整頁');
         expect(badgeOf(await portal(owner, seeded), report)).toBe('2');
 
         const before = await reload('reports', report);
@@ -77,7 +72,6 @@ describe('unread client messages on the team side', () => {
 
         html = await portal(owner, seeded);
         expect(badgeOf(html, report)).toBeNull();
-        expect(messageCountOf(html, report)).toBe(2);
         expect(html).toContain('目前沒有未讀留言');
         expect(html).not.toContain('只看未讀留言');
         expect(other.owner_last_read_at).toBeNull();
@@ -96,7 +90,6 @@ describe('unread client messages on the team side', () => {
         await insertMessage(report, 'agent', new Date(Date.now() + 1000).toISOString());
         const html = await portal(me, seeded);
         expect(badgeOf(html, report)).toBeNull();
-        expect(messageCountOf(html, report)).toBe(2);
 
         // A team member writing a message has seen the report, so earlier client messages are read too.
         const client = await new Browser().asClient(seeded);
@@ -149,7 +142,7 @@ describe('unread client messages on the team side', () => {
 
         // The old "sort by latest message" links now open the default order (unread first).
         html = await portal(owner, seeded, '?sort=latest_message_at&direction=desc');
-        const order = ['後來的留言', '較早留言', '安靜的單', '完全沒留言'].map((title) => html.indexOf(`>${title}</button>`));
+        const order = ['後來的留言', '較早留言', '安靜的單', '完全沒留言'].map((title) => html.indexOf(`>${title}</a>`));
         expect(order.every((position) => position > 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
         expect(none.id).toBeGreaterThan(0);
@@ -163,14 +156,14 @@ describe('new replies on the client side', () => {
         const { report } = await seedReport(seeded.project, { title: '匯出失敗' });
         expect(report.client_last_read_at).not.toBeNull();
         expect(report.owner_last_read_at).toBeNull();
-        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
+        expect(badgeOf(await portal(client, seeded), report)).toBeNull();
 
         await tick();
         const owner = await new Browser().asOwner(seeded);
         expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '請再試一次' })).status).toBe(302);
         let html = await portal(client, seeded);
         expect(badgeOf(html, report)).toBe('1');
-        expect(html).toMatch(/data-unread-badge="" data-new-reply-badge="">1</);
+        expect(html).toMatch(/data-unread-dot="" title="1 則未讀留言" aria-label="1 則未讀留言">1</);
         expect(html).not.toContain('有新回覆');
 
         // The board shows it too.
@@ -188,21 +181,26 @@ describe('new replies on the client side', () => {
         const client = await new Browser().asClient(seeded);
         const owner = await new Browser().asOwner(seeded);
         await tick();
-        expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已改好按鈕顏色' })).status).toBe(302);
+        // The web can no longer write the adjustment (410); the API (CLI / MCP) still can, with a warning.
+        expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已改好按鈕顏色' })).status).toBe(410);
+        const { developer: writer } = await seedDeveloper();
+        const writerToken = await seedToken(writer);
+        const written = await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/adjustment`, writerToken, { note: '已改好按鈕顏色' });
+        expect(written.status).toBe(200);
+        expect(((await written.json()) as { warning: string }).warning).toBe(ADJUSTMENT_DEPRECATED);
         const adjusted = await reload('reports', report);
         expect(adjusted.adjustment_updated_at).not.toBeNull();
-        expect(adjusted.owner_last_read_at).not.toBeNull();
         // An adjustment change counts as one unread item, even without messages.
         expect(badgeOf(await portal(client, seeded), report)).toBe('1');
 
         await tick();
         await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`);
-        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
+        expect(badgeOf(await portal(client, seeded), report)).toBeNull();
 
         await tick();
-        await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已改好按鈕顏色' });
+        await api('POST', `/projects/${seeded.project.slug}/reports/${report.public_id}/adjustment`, writerToken, { note: '已改好按鈕顏色' });
         expect((await reload('reports', report)).adjustment_updated_at).toBe(adjusted.adjustment_updated_at);
-        expect(badgeOf(await portal(client, seeded), report)).toBeUndefined();
+        expect(badgeOf(await portal(client, seeded), report)).toBeNull();
 
         // Through the API (CLI / MCP) too.
         const { developer } = await seedDeveloper();
@@ -224,44 +222,40 @@ describe('new replies on the client side', () => {
         }
         await clientPosts(client, seeded, reports[0], '老師的留言');
         const owner = await new Browser().asOwner(seeded);
-        expect(await portal(owner, seeded)).toContain('"unread":1,');
+        expect(await portal(owner, seeded)).toContain('"unread":1}');
 
         for (const query of ['', '?unread=1', '?view=board', '?sort=latest_message_at']) {
             const html = await portal(client, seeded, query);
             expect(html).not.toContain('未讀留言');
             expect(html).not.toContain('owner_last_read_at');
-            expect(html).not.toContain('data-unread-badge');
+            expect(html).not.toContain('data-unread-dot');
             expect(html).not.toContain('data-unread-summary');
-            // The client sees how many messages there are, but not the team's unread state.
+            // The client never gets the team's unread state (its own side's count is 0 here: the team wrote nothing).
             expect(html).not.toContain('"unread":1');
-            expect(html).toContain('"messagesCount":1');
             expect(html).toContain('單 21');
         }
         const page = await (await client.get(`/p/${seeded.project.slug}/reports/${reports[0].public_id}`)).text();
-        expect(page).not.toContain('data-unread-badge');
+        expect(page).not.toContain('data-unread-dot');
     });
 
     it('invites the client to write to the team on the report page and in the preview', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);
         const owner = await new Browser().asOwner(seeded);
-        await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已調整' });
         const client = await new Browser().asClient(seeded);
 
         const clientPage = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
         expect(clientPage).toContain('留言給開發團隊');
         expect(clientPage).toContain('有問題或補充可以直接在這裡留言，我們會看到並回覆');
-        expect(clientPage).toContain('看完有問題，可直接在下方留言');
         expect(clientPage).toMatch(/<textarea id="body"/);
         expect(clientPage).not.toMatch(/<details[^>]*>\s*<summary[^>]*>[^<]*留言/);
         expect(clientPage).toContain('在對話面板開啟');
         expect(clientPage).toContain('data-chat-root');
 
         const ownerPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
-        expect(ownerPage).toContain('<h2 class="text-base font-semibold text-slate-950">留言</h2>');
+        expect(ownerPage).toContain('<h2 class="text-base font-semibold text-slate-950">活動</h2>');
         expect(ownerPage).not.toContain('留言給開發團隊');
         expect(ownerPage).not.toContain('我們會看到並回覆');
-        expect(ownerPage).not.toContain('看完有問題，可直接在下方留言');
 
         const clientDialog = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
         expect(clientDialog).toContain('有問題或補充，可以在下方直接留言給開發團隊。');

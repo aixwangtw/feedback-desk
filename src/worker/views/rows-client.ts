@@ -4,8 +4,7 @@
  */
 import type { ReportStatus, StatusLabels } from '../../shared/status';
 import type { FeedbackConfig } from '../env';
-import type { Attachment, Report } from '../lib/models';
-import type { WaitingSide } from '../lib/reports';
+import type { Report } from '../lib/models';
 import type { PortalRow } from './portal';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 
@@ -14,42 +13,30 @@ export const SERVER_ROW_LIMIT = 20;
 
 export const PORTAL_ROWS_ELEMENT_ID = 'portal-rows-data';
 
-type CompactAttachment = Pick<Attachment, 'id' | 'original_name' | 'mime_type'>;
-
 export interface PortalRowsPayload {
     view: 'list' | 'board';
     slug: string;
     isOwner: boolean;
     backPath: string;
-    showCategory: boolean;
-    categories: string[];
     now: number;
     labels: { client: string; owner: string };
     statusLabels: StatusLabels;
     utcOffsetMinutes: number;
     timezoneName: string;
     rows: Array<{
-        report: Pick<Report, 'public_id' | 'title' | 'category' | 'status' | 'adjustment_note' | 'client_deleted_at' | 'latest_activity_at' | 'created_at'>;
+        report: Pick<Report, 'public_id' | 'title' | 'status' | 'client_deleted_at' | 'latest_activity_at'>;
         number: number;
         creatorLabel: string;
-        attachments: CompactAttachment[];
-        adjustmentAttachments: CompactAttachment[];
         unread: number;
-        messagesCount: number;
-        drafts: number;
-        waiting?: WaitingSide;
     }>;
 }
 
 export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: PortalRow[]): PortalRowsPayload {
-    const compact = (items: Attachment[]): CompactAttachment[] => items.map((item) => ({ id: item.id, original_name: item.original_name, mime_type: item.mime_type }));
     return {
         view,
         slug: ctx.slug,
         isOwner: ctx.isOwner,
         backPath: ctx.backPath,
-        showCategory: ctx.showCategory === true,
-        categories: ctx.categories ?? [],
         now: ctx.v.now,
         labels: { client: ctx.v.cfg.labels.client, owner: ctx.v.cfg.labels.owner },
         statusLabels: ctx.v.cfg.statusLabels,
@@ -59,23 +46,14 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             report: {
                 public_id: row.report.public_id,
                 title: row.report.title,
-                category: row.report.category,
                 status: row.report.status,
-                adjustment_note: row.report.adjustment_note,
                 client_deleted_at: row.report.client_deleted_at,
                 latest_activity_at: row.report.latest_activity_at,
-                created_at: row.report.created_at,
             },
             number: row.number,
             creatorLabel: row.creatorLabel,
-            attachments: compact(row.attachments),
-            adjustmentAttachments: compact(row.adjustmentAttachments),
             // Already computed for this viewer side (the team's unread state never reaches the client).
             unread: row.unread,
-            messagesCount: row.messagesCount,
-            // Team side only; always 0 for the client.
-            drafts: ctx.isOwner ? row.drafts ?? 0 : 0,
-            waiting: row.waiting,
         })),
     };
 }
@@ -87,7 +65,7 @@ export function payloadScript(payload: PortalRowsPayload): string {
 
 function contextFrom(payload: PortalRowsPayload): RowContext {
     const cfg = { labels: payload.labels, statusLabels: payload.statusLabels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
-    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory, categories: payload.categories ?? [] };
+    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath };
 }
 
 function toRows(payload: PortalRowsPayload): PortalRow[] {

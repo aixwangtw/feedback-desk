@@ -81,7 +81,7 @@ describe('清單頁籤與等誰標示', () => {
         expect(rowsOf(html, [a, b]).sort()).toEqual(['乙客戶追問', '甲等工程師'].sort());
     });
 
-    it('both sides show the status name on each report; completed reports have none', async () => {
+    it('both sides show the status name in the status column of each report (no separate waiting tag)', async () => {
         const { seeded, a, b, c, d, e } = await fixture();
         const owner = await new Browser().asOwner(seeded);
         const client = await new Browser().asClient(seeded);
@@ -90,17 +90,24 @@ describe('清單頁籤與等誰標示', () => {
             const start = Math.max(html.indexOf(`data-report-row="${target.public_id}"`), html.indexOf(`data-report-id="${target.public_id}"`));
             const rest = html.slice(start);
             const row = rest.slice(0, rest.search(/<\/tr>|<\/article>/));
-            return /data-waiting="(developer|client)">([^<]+)</.exec(row)?.[2] ?? null;
+            return /data-status-text="[a-z_]+">([^<]+)</.exec(row)?.[1] ?? null;
         };
-        for (const html of pages) {
+        // The board shows the status by column (data-status on the card), not as text on each card.
+        const board = pages[2];
+        for (const [target, status] of [[a, 'new'], [b, 'needs_input'], [c, 'needs_input'], [d, 'needs_input'], [e, 'completed']] as const) {
+            expect(board).toMatch(new RegExp(`data-report-id="${target.public_id}" data-status="${status}"`));
+        }
+        for (const html of pages.slice(0, 2)) {
             expect(labelOf(html, a)).toBe(labels.new);
             expect(labelOf(html, b)).toBe(labels.needs_input);
             expect(labelOf(html, c)).toBe(labels.needs_input);
             expect(labelOf(html, d)).toBe(labels.needs_input);
         }
-        expect(pages[0]).not.toContain(`data-waiting="completed"`);
-        const completedRow = pages[0].slice(pages[0].indexOf(`data-report-row="${e.public_id}"`));
-        expect(completedRow.slice(0, completedRow.indexOf('</tr>'))).not.toContain('data-waiting');
+        expect(labelOf(pages[0], e)).toBe(labels.completed);
+        for (const html of pages) {
+            expect(html).not.toContain('data-waiting');
+            expect(html).not.toContain('data-report-flags');
+        }
     });
 
     it('keeps the tab in the URL: view switch links and the search form carry it', async () => {
@@ -132,14 +139,22 @@ describe('清單頁籤與等誰標示', () => {
 });
 
 describe('網頁上不能手動改狀態，只有客戶能按「完成」', () => {
-    it('the client has a 完成 button (with confirm) on list rows and board cards and can complete a report', async () => {
+    it('the 完成 button (with confirm) is in the detail dialog, not on list rows or board cards; the client can complete a report, the team gets a request-for-confirmation button instead', async () => {
         const { seeded, c, e } = await fixture();
         const client = await new Browser().asClient(seeded);
         for (const query of ['?tab=all', '?tab=all&view=board']) {
             const html = await (await client.get(`/p/${seeded.project.slug}${query}`)).text();
-            expect(html).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+"><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*data-complete-report`));
-            expect(html).not.toContain(`reports/${e.public_id}/status" data-confirm`);
+            expect(html).not.toContain('data-complete-report');
+            expect(html).not.toContain(`reports/${c.public_id}/status`);
         }
+        const dialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${c.public_id}/dialogs`)).text();
+        expect(dialogs).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+" data-completion-approve-form[^>]*><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*data-complete-report`));
+        expect(await (await client.get(`/p/${seeded.project.slug}/reports/${e.public_id}/dialogs`)).text()).not.toContain('data-complete-report');
+        expect(dialogs).not.toContain('data-request-completion');
+        const owner = await new Browser().asOwner(seeded);
+        const ownerDialogs = await (await owner.get(`/p/${seeded.project.slug}/reports/${c.public_id}/dialogs`)).text();
+        expect(ownerDialogs).toContain(`data-dialog-open="request-completion-${c.public_id}"`);
+        expect(ownerDialogs).not.toContain('data-complete-report');
         expect((await client.post(`/p/${seeded.project.slug}/reports/${c.public_id}/status`, { status: 'completed' })).status).toBe(302);
         expect((await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(c.id).first<{ status: string }>())?.status).toBe('completed');
     });

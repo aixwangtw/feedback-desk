@@ -3,11 +3,14 @@ import type { Attachment, Message, Project, Report } from '../lib/models';
 import type { DraftView } from '../lib/drafts';
 import type { Notifications } from '../lib/notifications';
 import { COMPLETE_CONFIRM, isStatus, statusLabel, type StatusLabels } from '../../shared/status';
+import { COMPLETION_APPROVE_LABEL, defaultCompletionBody } from '../../shared/completion';
+import { buildTimeline, latestCompletionRequestId, type TimelineStatusEvent } from '../../shared/timeline';
+import type { AlbumItem } from '../lib/album';
 import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
-import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
+import { MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, cx, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
@@ -67,6 +70,7 @@ export const AdjustmentBlock: FC<{
 
 export interface ActivityProps {
     v: ViewContext;
+    slug: string;
     report: Report;
     messages: Message[];
     messageAttachments: Map<number, Attachment[]>;
@@ -75,10 +79,20 @@ export interface ActivityProps {
     viewerIsOwner: boolean;
     /** Smaller thumbnails, for the chat panel. */
     compact?: boolean;
+    /** 狀態變更（時間軸裡置中的一行）；沒給就只有留言。 */
+    statusEvents?: TimelineStatusEvent[];
+    /** 看的人能不能按確認留言上的「通過」：只有客戶端（能結案的一方）、單還沒完成。 */
+    canApprove?: boolean;
 }
 
 function authorLabel(v: ViewContext, type: Message['author_type']): string {
     return type === 'owner' ? v.cfg.labels.owner : type === 'agent' ? 'Vibe coding' : v.cfg.labels.client;
+}
+
+/** 留言作者顯示名稱（留言泡泡與相簿來源共用）；陌生人寫的公開單不讓看的人知道是哪個 AI 工具回的。 */
+export function messageAuthorLabel(v: ViewContext, report: Pick<Report, 'creator_type'>, message: Message, viewerIsOwner: boolean): string {
+    const hideAgents = report.creator_type === 'public' && !viewerIsOwner;
+    return withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent, isDeveloperSideAuthor(message));
 }
 
 const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
@@ -87,30 +101,53 @@ const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
     reporter: ['bg-amber-50 ring-amber-200', 'text-amber-800'],
 };
 
-/** Message thread as chat bubbles; shared by the report page and the chat panel. */
-export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact }) => {
-    // Strangers who wrote a public report only see the team label, not which AI tool replied.
-    const hideAgents = report.creator_type === 'public' && !viewerIsOwner;
+/**
+ * 活動時間軸：留言泡泡與狀態變更依時間排在一起，單頁、詳情視窗、右下角面板共用。自己這一方的留言靠右；
+ * 狀態變更是置中的一行，團隊端另顯示是誰改的，客戶端只顯示改成什麼狀態。
+ * 「請確認完成」的留言：客戶端（canApprove）在最新一則上看到「通過」按鈕，團隊端看不到也按不了。
+ */
+export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact, statusEvents, canApprove }) => {
+    const entries = buildTimeline(messages, statusEvents ?? []);
+    const approveId = canApprove ? latestCompletionRequestId(messages) : null;
     return (
-    <ol class="grid gap-4" data-chat-messages>
-        {messages.length === 0 ? (
+    <ol class="grid grid-cols-[minmax(0,1fr)] gap-4" data-chat-messages>
+        {entries.length === 0 ? (
             <li class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-chat-empty>還沒有留言，新的處理進度會顯示在這裡。</li>
         ) : (
-            messages.map((message) => {
+            entries.map((entry) => {
+                if (entry.type === 'status') {
+                    const to = isStatus(entry.to) ? statusLabel(entry.to, v.cfg.statusLabels) : entry.to;
+                    const who = viewerIsOwner ? `${withAgent(entry.actor, entry.agent, entry.developerSide)} ` : '';
+                    return (
+                        <li class="flex justify-center" data-chat-event="status" data-status-to={entry.to}>
+                            <p class="max-w-full rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-600">{who}將狀態改為「<span class="font-semibold text-slate-800">{to}</span>」 <Time v={v} at={entry.at} relative class="text-slate-400" /></p>
+                        </li>
+                    );
+                }
+                const message = entry.message;
                 const isMine = viewerIsOwner === (message.author_type !== 'reporter');
                 const [bubbleClass, nameClass] = BUBBLE_CLASSES[message.author_type] ?? BUBBLE_CLASSES.reporter;
                 const attachments = messageAttachments.get(message.id) ?? [];
+                const isRequest = message.is_completion_request === 1;
                 return (
                     <li class={cx('flex', isMine ? 'justify-end' : 'justify-start')} data-chat-message data-author={message.author_type} data-side={isMine ? 'mine' : 'theirs'}>
                         <div class={cx('flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', isMine ? 'items-end' : 'items-start')}>
                             <div class={cx('flex flex-wrap items-baseline gap-x-2 px-1 text-xs', isMine ? 'flex-row-reverse' : null)}>
                                 <span class={`font-semibold ${nameClass}`} data-chat-author>
-                                    {withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent, isDeveloperSideAuthor(message))}
+                                    {messageAuthorLabel(v, report, message, viewerIsOwner)}
                                 </span>
                                 <Time v={v} at={message.created_at} relative class="text-slate-500" />
                             </div>
                             <div class={cx('mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', bubbleClass, isMine ? 'rounded-tr-md' : 'rounded-tl-md')}>
+                                {isRequest ? <p class="mb-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800" data-completion-request-badge>請確認完成</p> : null}
                                 <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{message.body}</p>
+                                {isRequest && approveId === message.id ? (
+                                    <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-2" data-completion-approve-form>
+                                        <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
+                                        <input type="hidden" name="status" value="completed" />
+                                        <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:opacity-60" data-completion-approve={report.public_id}>{COMPLETION_APPROVE_LABEL}</button>
+                                    </form>
+                                ) : null}
                                 {attachments.length > 0 ? (
                                     <div class="mt-2 flex flex-wrap gap-2">
                                         {attachments.map((attachment) =>
@@ -140,29 +177,72 @@ export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttach
     );
 };
 
-/** What the chat panel shows for one report: the adjustment (collapsed unless new) and the thread. */
-export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; adjustmentWasNew: boolean }> = (props) => {
-    const { report, adjustmentAttachments, adjustmentWasNew } = props;
+/**
+ * 相簿：這張單所有附件集中顯示（客戶原始附件＋每則留言的圖片與影片；草稿附件只有團隊看得到，見 lib/album.ts）。
+ * 單頁、詳情視窗、右下角面板共用；縮圖直接用原檔、lazy 載入，點圖放大、點影片在燈箱播放，標示來自哪則留言與時間。
+ * 預設收合，標題顯示張數；定時刷新時 data-keep-open 讓展開狀態保留。沒有附件就不顯示。
+ */
+export const Album: FC<{ v: ViewContext; items: AlbumItem[] }> = ({ v, items }) =>
+    items.length === 0 ? null : (
+        <details class="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm" data-chat-album data-keep-open="album">
+            <summary class="cursor-pointer font-semibold text-slate-800">相簿 <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600" data-album-count>{items.length}</span></summary>
+            <ul class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5" data-album-grid>
+                {items.map((item) => (
+                    <li class="min-w-0" data-album-item data-album-kind={item.kind}>
+                        <a href={item.url} target="_blank" rel="noreferrer" class="block aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-play data-lightbox-alt={item.name} title={item.isVideo ? '播放影片' : '放大預覽'}>
+                            <AttachmentMedia src={item.url} name={item.name} mime={item.isVideo ? 'video/mp4' : 'image/jpeg'} class="size-full object-cover" />
+                        </a>
+                        <p class="mt-1 truncate text-[11px] leading-4 text-slate-600" title={item.source} data-album-source>
+                            {item.kind === 'draft' ? <span class="font-semibold text-amber-800">{item.source}（只有{v.cfg.labels.owner}看得到）</span> : item.source}
+                        </p>
+                        <Time v={v} at={item.at} relative class="block text-[11px] leading-4 text-slate-400" />
+                    </li>
+                ))}
+            </ul>
+        </details>
+    );
+
+/** 對話內容：相簿＋活動時間軸。單頁（activity 端點）、詳情視窗、右下角面板（對話端點）共用。 */
+export const Thread: FC<ActivityProps & { album: AlbumItem[] }> = ({ album, ...activity }) => (
+    <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <Album v={activity.v} items={album} />
+        <Activity {...activity} />
+    </div>
+);
+
+/**
+ * 過去的處理說明：舊「調整重點」，網頁已不能編輯，有內容才顯示，唯讀、預設收合。
+ * panel：右下角面板用（data-chat-adjustment，詳情視窗載入時會拿掉這份，因為視窗自己已經顯示）。
+ */
+export const PastNotes: FC<{ report: Report; adjustmentAttachments: Attachment[]; attachmentUrl: (attachment: Attachment) => string; panel?: boolean }> = ({ report, adjustmentAttachments, attachmentUrl, panel }) => {
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || adjustmentAttachments.length > 0;
+    if (!hasAdjustment) {
+        return null;
+    }
+    return (
+        <details class={cx('rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm', panel ? 'mb-4' : null)} data-past-notes data-chat-adjustment={panel ? '' : undefined} data-keep-open={panel ? 'past-notes' : `past-notes-${report.public_id}`}>
+            <summary class="cursor-pointer font-semibold text-slate-700">過去的處理說明</summary>
+            <div class="mt-2">
+                <AdjustmentBlock report={report} adjustmentAttachments={adjustmentAttachments} attachmentUrl={attachmentUrl} compact showHeading={false} />
+            </div>
+        </details>
+    );
+};
+
+/** What the chat panel shows for one report: the past notes (collapsed, only when there are any), the album and the timeline. */
+export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; album: AlbumItem[] }> = (props) => {
+    const { report, adjustmentAttachments } = props;
     return (
         <>
-            {hasAdjustment ? (
-                <details class="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 px-3.5 py-2.5 text-sm" open={adjustmentWasNew} data-chat-adjustment>
-                    <summary class="cursor-pointer font-semibold text-teal-900">
-                        調整重點
-                        {adjustmentWasNew ? <span class="ml-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">有更新</span> : null}
-                    </summary>
-                    <div class="mt-2">
-                        <AdjustmentBlock report={report} adjustmentAttachments={adjustmentAttachments} attachmentUrl={props.attachmentUrl} compact showHeading={false} />
-                    </div>
-                </details>
-            ) : null}
-            <Activity {...props} compact />
+            <PastNotes report={report} adjustmentAttachments={adjustmentAttachments} attachmentUrl={props.attachmentUrl} panel />
+            <Thread {...props} compact />
         </>
     );
 };
 
-export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | 'compact'> {
+export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | 'compact' | 'slug'> {
+    /** 相簿（客戶端不含待審留言的附件）。 */
+    album: AlbumItem[];
     project: Project;
     sequenceNumber: number | null;
     isPublicReporter: boolean;
@@ -172,8 +252,6 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     adjustmentAttachments: Attachment[];
     success?: string;
     privateReportUrl?: string;
-    adjustmentErrors?: string[];
-    adjustmentOld?: string;
     messageErrors?: string[];
     messageOld?: string;
     /** ETag of the activity fragment, so the first poll can already get 304. */
@@ -326,7 +404,7 @@ export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; wor
             )}
             {work.claim && !work.claim.yours ? (
                 <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900" data-claim-warning>
-                    已有人認領。改狀態或調整重點前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
+                    已有人認領。改狀態前先看下方交接紀錄；要接手請按「接手」，會留下紀錄。
                 </p>
             ) : null}
             {canClaim ? (
@@ -389,12 +467,100 @@ export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; wor
     );
 };
 
+/**
+ * Jira 式右側窄欄的動態部分：狀態、「完成」鈕、建立者、時間（詳情視窗與單頁共用；詳情視窗靠對話端點的 side_html 隨狀態更新）。
+ * 完成鈕：客戶端按了確認後直接把單改成已完成；開發團隊端按了只會跳出確認留言視窗（RequestCompletionDialog），
+ * 單維持等客戶，不會直接結案。編輯、刪除等操作在 DetailActions，不隨狀態更新。
+ */
+export const DetailSide: FC<{ v: ViewContext; slug: string; report: Report; isOwner: boolean; canManage: boolean; creatorLabel: string | null }> = ({ v, slug, report, isOwner, canManage, creatorLabel }) => {
+    const labels = v.cfg.labels;
+    const id = report.public_id;
+    return (
+        <div class="grid gap-4" data-detail-side>
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">狀態</p>
+                <div class="mt-1.5" data-report-status-badge={id}>
+                    <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
+                </div>
+            </div>
+            {canManage && report.status !== 'completed' ? (
+                <div data-detail-complete>
+                    {isOwner ? (
+                        <>
+                            <button type="button" class="inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-dialog-open={`request-completion-${id}`} data-request-completion={id} title={`發一則確認留言，請${labels.client}確認；不會直接結案`}>完成</button>
+                            <p class="mt-1 text-[11px] leading-4 text-slate-500">會發確認留言請{labels.client}按「{COMPLETION_APPROVE_LABEL}」，不會直接結案。</p>
+                        </>
+                    ) : (
+                        <form method="post" action={paths.reportStatus(slug, id)} data-confirm={COMPLETE_CONFIRM} data-completion-approve-form>
+                            <input type="hidden" name="_back" value={paths.report(slug, id)} />
+                            <input type="hidden" name="status" value="completed" />
+                            <button type="submit" class="inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report>完成</button>
+                        </form>
+                    )}
+                </div>
+            ) : null}
+            <dl class="grid gap-3 text-xs">
+                {creatorLabel ? <div><dt class="text-slate-500">建立者</dt><dd class="mt-0.5 font-medium text-slate-800" data-report-creator>{creatorLabel}</dd></div> : null}
+                <div><dt class="text-slate-500">建立時間</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.created_at} /></dd></div>
+                <div><dt class="text-slate-500">最後更新</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.latest_activity_at} relative /></dd></div>
+                {isOwner && report.client_deleted_at ? (
+                    <div data-client-deleted><dt class="text-slate-500">{labels.client}已刪除</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.client_deleted_at} /></dd></div>
+                ) : null}
+            </dl>
+        </div>
+    );
+};
+
+const ACTION_BUTTON = 'inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+
+/** 詳情視窗右側窄欄下方的操作：編輯、還原、刪除、完整頁、在對話面板開啟。 */
+export const DetailActions: FC<{ slug: string; report: Report; isOwner: boolean; backPath: string }> = ({ slug, report, isOwner, backPath }) => {
+    const id = report.public_id;
+    return (
+        <div class="flex flex-wrap gap-2 border-t border-slate-100 pt-3" data-detail-actions>
+            <button type="button" class={ACTION_BUTTON} data-dialog-open={`edit-report-${id}`}>編輯</button>
+            {isOwner && report.client_deleted_at ? (
+                <form method="post" action={paths.reportRestore(slug, id)}>
+                    <input type="hidden" name="_back" value={backPath} />
+                    <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
+                </form>
+            ) : null}
+            <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open={isOwner ? `delete-report-${id}` : `client-delete-report-${id}`} data-delete-report={isOwner ? '' : undefined} data-client-delete-report={isOwner ? undefined : ''}>刪除</button>
+            <a href={paths.report(slug, id)} class={ACTION_BUTTON}>完整頁</a>
+            <button type="button" class={ACTION_BUTTON} data-chat-open={id}>在對話面板開啟</button>
+        </div>
+    );
+};
+
+/**
+ * 開發團隊按「完成」後的確認視窗：可改字的確認留言（預設文字見 shared/completion.ts）。
+ * 送出只會發一則附「通過」按鈕的留言，單維持等客戶，不會結案。詳情視窗與單頁共用；client/completion.js 送出。
+ */
+export const RequestCompletionDialog: FC<{ v: ViewContext; slug: string; report: Report }> = ({ v, slug, report }) => {
+    const labels = v.cfg.labels;
+    const id = report.public_id;
+    return (
+        <dialog id={`request-completion-${id}`} class="m-auto w-[calc(100vw-2rem)] max-w-lg rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`request-completion-title-${id}`} data-request-completion-dialog>
+            <form method="post" action={paths.reportRequestCompletion(slug, id)} class="grid gap-4 p-5 sm:p-6" data-request-completion-form>
+                <input type="hidden" name="_back" value={paths.report(slug, id)} />
+                <h2 id={`request-completion-title-${id}`} class="text-lg font-bold text-slate-950">請{labels.client}確認完成</h2>
+                <p class="text-sm leading-6 text-slate-600">會發出下面這則留言，留言上有「{COMPLETION_APPROVE_LABEL}」按鈕。這張單維持「{v.cfg.statusLabels.needs_input}」，要{labels.client}按「{COMPLETION_APPROVE_LABEL}」才會變成已完成。可以先改字。</p>
+                <label for={`request-completion-body-${id}`} class="sr-only">確認留言內容</label>
+                <textarea id={`request-completion-body-${id}`} name="body" rows={4} required maxlength={MAX_MESSAGE} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-request-completion-body>{defaultCompletionBody(labels.client)}</textarea>
+                <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-request-completion-error hidden></p>
+                <div class="flex justify-end gap-3">
+                    <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close>取消</button>
+                    <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 disabled:opacity-60" data-request-completion-send>送出確認留言</button>
+                </div>
+            </form>
+        </dialog>
+    );
+};
+
 export const ReportPage: FC<ReportPageProps> = (props) => {
     const { v, project, report, isOwner, isPublicReporter, attachmentUrl } = props;
     const labels = v.cfg.labels;
     const slug = project.slug;
-    const hasAdjustment = (report.adjustment_note ?? '') !== '' || props.adjustmentAttachments.length > 0;
-    const adjustmentErrors = props.adjustmentErrors ?? [];
     const messageErrors = props.messageErrors ?? [];
     const readOnly = isPublicReporter && project.public_reporting_enabled !== 1;
     const maxMessageBytes = isPublicReporter ? PUBLIC_MAX_IMAGE_BYTES : MAX_IMAGE_BYTES;
@@ -423,38 +589,25 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                 </section>
             ) : null}
 
-            <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                <div class="grid gap-6">
+            <div class="grid grid-cols-[minmax(0,1fr)] items-start gap-6 overflow-x-hidden lg:grid-cols-[minmax(0,1fr)_18rem]">
+                <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6">
                     <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                        <div class="flex flex-wrap items-start justify-between gap-4">
-                            <div class="min-w-0">
-                                <h1 class="text-2xl font-bold tracking-tight text-slate-950">
-                                    {props.sequenceNumber !== null ? (
-                                        <span class="mr-1 text-slate-400">編號 <span data-report-number>{props.sequenceNumber}</span>｜</span>
-                                    ) : null}
-                                    {report.title}
-                                </h1>
-                                {(props.categories ?? []).length > 0 && props.canManage && !isPublicReporter ? (
-                                    <div class="mt-2">
-                                        <CategoryAutosave slug={slug} report={report} categories={props.categories ?? []} backPath={paths.report(slug, report.public_id)} idPrefix="page-category" />
-                                    </div>
-                                ) : report.category ? (
-                                    <p class="mt-1 text-xs text-slate-500" data-report-category>
-                                        分類：<span class="font-semibold text-teal-700">{report.category}</span>
-                                    </p>
+                        <div class="min-w-0">
+                            <h1 class="text-2xl font-bold tracking-tight text-slate-950">
+                                {props.sequenceNumber !== null ? (
+                                    <span class="mr-1 text-slate-400">編號 <span data-report-number>{props.sequenceNumber}</span>｜</span>
                                 ) : null}
-                                {isOwner && report.client_deleted_at ? (
-                                    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
-                                        <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{labels.client}已刪除</span>
-                                        <Time v={v} at={report.client_deleted_at} />
-                                        <form method="post" action={paths.reportRestore(slug, report.public_id)}>
-<input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
-                                            <button type="submit" class="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
-                                        </form>
-                                    </div>
-                                ) : null}
-                            </div>
-                            <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
+                                {report.title}
+                            </h1>
+                            {(props.categories ?? []).length > 0 && props.canManage && !isPublicReporter ? (
+                                <div class="mt-2">
+                                    <CategoryAutosave slug={slug} report={report} categories={props.categories ?? []} backPath={paths.report(slug, report.public_id)} idPrefix="page-category" />
+                                </div>
+                            ) : report.category ? (
+                                <p class="mt-1 text-xs text-slate-500" data-report-category>
+                                    分類：<span class="font-semibold text-teal-700">{report.category}</span>
+                                </p>
+                            ) : null}
                         </div>
 
                         <div class="mt-5" data-report-description><RichText text={report.description} /></div>
@@ -469,64 +622,17 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                 ))}
                             </div>
                         ) : null}
+
+                        <div class="mt-5 empty:hidden" id="adjustment">
+                            <PastNotes report={report} adjustmentAttachments={props.adjustmentAttachments} attachmentUrl={attachmentUrl} />
+                        </div>
                     </section>
 
-                    {isOwner || hasAdjustment ? (
-                        <section id="adjustment" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-                            <AdjustmentBlock report={report} adjustmentAttachments={props.adjustmentAttachments} attachmentUrl={attachmentUrl} />
-                            {!isOwner && !readOnly ? <p class="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600" data-adjustment-message-hint>看完有問題，可直接在下方留言</p> : null}
-
-                            {isOwner ? (
-                                <details class="mt-5 border-t border-slate-100 pt-4" open={adjustmentErrors.length > 0} data-adjustment-editor>
-                                    <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整重點（僅{labels.owner}）</summary>
-                                    <form method="post" action={paths.reportAdjustment(slug, report.public_id)} class="mt-4 grid gap-4" data-upload-form>
-                                        <ErrorList errors={adjustmentErrors} />
-                                        <div>
-                                            <label for="adjustment_note" class="mb-2 block text-xs font-semibold text-slate-600">說明文字（再次調整時請接在原內容後面補寫）</label>
-                                            <textarea id="adjustment_note" name="adjustment_note" maxlength={MAX_ADJUSTMENT_NOTE} rows={6} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{adjustmentErrors.length > 0 ? props.adjustmentOld ?? '' : report.adjustment_note ?? ''}</textarea>
-                                        </div>
-
-                                        {props.adjustmentAttachments.length > 0 ? (
-                                            <fieldset>
-                                                <legend class="mb-2 text-xs font-semibold text-slate-600">目前調整圖片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
-                                                <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
-                                                    {props.adjustmentAttachments.map((attachment) => (
-                                                        <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                                            <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover" />
-                                                            <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
-                                                                <input type="checkbox" name="remove_adjustment_attachments[]" value={String(attachment.id)} class="rounded border-slate-300 text-rose-600 focus:ring-rose-600" />
-                                                                刪除
-                                                            </span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </fieldset>
-                                        ) : null}
-
-                                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                            <label for="adjustment-images" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                                加入調整圖片
-                                                <input id="adjustment-images" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="adjustment-preview" data-upload-url={`${paths.uploads(slug)}?purpose=adjustment&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max="5" data-upload-max-bytes={String(MAX_IMAGE_BYTES)} />
-                                            </label>
-                                            <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整重點</button>
-                                        </div>
-                                        <div id="adjustment-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
-                                    </form>
-                                </details>
-                            ) : null}
-                        </section>
-                    ) : null}
-                    {props.creatorLabel && !isPublicReporter ? (
-                        <p class="-mt-3 px-1 text-xs text-slate-500" data-report-creator>
-                            建立者：{props.creatorLabel}
-                        </p>
-                    ) : null}
-
-                    <section id="conversation" class="rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
+                    <section id="conversation" class="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
                         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
                             <div class="min-w-0">
                                 {isOwner || readOnly ? (
-                                    <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                                    <h2 class="text-base font-semibold text-slate-950">活動</h2>
                                 ) : (
                                     <>
                                         <h2 class="text-lg font-bold text-slate-950">留言給{labels.owner}</h2>
@@ -534,16 +640,13 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     </>
                                 )}
                             </div>
-                            <div class="flex items-center gap-2">
-                                {props.canManage ? (
-                                    <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open={report.public_id}>在對話面板開啟</button>
-                                ) : null}
-                                <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
-                            </div>
+                            {props.canManage ? (
+                                <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open={report.public_id}>在對話面板開啟</button>
+                            ) : null}
                         </div>
 
                         <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
-                            <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} />
+                            <Thread v={v} slug={slug} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} statusEvents={props.statusEvents} canApprove={props.canApprove} album={props.album} />
                         </div>
 
                         {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} anchor /> : null}
@@ -578,35 +681,20 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                     </section>
                 </div>
 
-                <aside class="grid gap-4 lg:sticky lg:top-6">
-                    {isOwner && props.work ? <WorkPanel v={v} slug={slug} publicId={report.public_id} work={props.work} canClaim={props.canClaim === true} /> : null}
+                <aside class="grid min-w-0 gap-4 lg:sticky lg:top-6">
                     {props.canManage ? (
-                        // 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」（同清單操作欄那顆）。
-                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel>
-                            <h2 class="text-sm font-semibold text-slate-950">狀態</h2>
-                            <div class="mt-3">
-                                <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
-                            </div>
-                            <p class="mt-3 text-xs leading-5 text-slate-500">{labels.client}留言會變「{v.cfg.statusLabels.new}」，{labels.owner}回覆會變「{v.cfg.statusLabels.needs_input}」。</p>
-                            {!isOwner && report.status !== 'completed' ? (
-                                <form method="post" action={paths.reportStatus(slug, report.public_id)} data-confirm={COMPLETE_CONFIRM} class="mt-3">
-                                    <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
-                                    <input type="hidden" name="status" value="completed" />
-                                    <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report>完成</button>
-                                </form>
-                            ) : null}
+                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel data-detail-side-box>
+                            <DetailSide v={v} slug={slug} report={report} isOwner={isOwner} canManage={props.canManage} creatorLabel={props.creatorLabel && !isPublicReporter ? props.creatorLabel : null} />
                         </section>
-                    ) : null}
-
-                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <h2 class="text-sm font-semibold text-slate-950">回報資訊</h2>
-                        <dl class="mt-4 grid gap-4 text-xs">
-                            <div><dt class="text-slate-500">建立時間</dt><dd class="mt-1 font-medium text-slate-800"><Time v={v} at={report.created_at} /></dd></div>
-                            <div><dt class="text-slate-500">最後更新</dt><dd class="mt-1 font-medium text-slate-800"><Time v={v} at={report.latest_activity_at} relative /></dd></div>
-                        </dl>
-                    </section>
+                    ) : (
+                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-detail-side-box>
+                            <DetailSide v={v} slug={slug} report={report} isOwner={false} canManage={false} creatorLabel={null} />
+                        </section>
+                    )}
+                    {isOwner && props.work ? <WorkPanel v={v} slug={slug} publicId={report.public_id} work={props.work} canClaim={props.canClaim === true} /> : null}
                 </aside>
             </div>
+            {isOwner && props.canManage ? <RequestCompletionDialog v={v} slug={slug} report={report} /> : null}
         </Layout>
     );
 };

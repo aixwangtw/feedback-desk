@@ -1,10 +1,14 @@
-// 清單／看板的單張詳細視窗：開啟時直接載入這張單的留言串（伺服器 JSX 已跳脫的 HTML，與對話面板同一個端點），
-// 可在視窗內留言、附圖。載入即算已讀，並通知對話面板同步紅色未讀數字、上方未讀提示與右下角數字。
+// 清單／看板的單張詳情視窗（右側滑出）：開啟時直接載入這張單的相簿＋活動時間軸（伺服器 JSX 已跳脫的 HTML，與對話面板同一個端點），
+// 可在視窗內留言、附圖。載入即算已讀，並通知對話面板同步紅色未讀數字、上方未讀提示與右下角數字；
+// 右側窄欄（狀態、完成鈕、時間）與清單上這張單的狀態文字跟著對話端點更新。
 // 附圖跟其他表單一樣：每張圖各用一個 PUT 串流上傳，留言只帶回傳的 upload id（Workers 免費方案每請求 CPU 10 ms）。
 
 import { fileProblem } from '../src/shared/attachment-rules';
 import { bindAttachmentComposer } from './attachment-composer.js';
-import { renderMessageDrafts } from './message-drafts.js';
+import { draftsSignature, renderMessageDrafts } from './message-drafts.js';
+import { clearReportUnread } from './report-read.js';
+import { replaceKeepingOpen } from './thread-details.js';
+import { statusDotClass } from '../src/shared/status';
 
 const POLL_MS = 5000;
 const DEFAULT_MAX_FILES = 5;
@@ -62,9 +66,34 @@ const setupThread = (section) => {
     };
 
     // 同頁的紅色數字先在本地拿掉；對話面板收到事件後重算上方提示與右下角數字。
+    const sideBox = dialog.querySelector('[data-detail-side-box]');
+    let lastSide = '';
+
+    // 右側窄欄（狀態、完成鈕、時間）：留言可能讓狀態改變，跟著伺服器的最新結果更新；清單、看板上這張單的狀態文字也一起換。
+    const applySide = (data) => {
+        if (sideBox && typeof data.side_html === 'string') {
+            // 相對時間（「3 分鐘前」）每次不同，先拿掉再比。
+            const signature = draftsSignature(data.side_html);
+            if (signature !== lastSide) {
+                lastSide = signature;
+                sideBox.innerHTML = data.side_html;
+            }
+        }
+        if (typeof data.status_value === 'string') {
+            document.querySelectorAll(`[data-report-row="${CSS.escape(reportId)}"] [data-status-text], [data-kanban-card][data-report-id="${CSS.escape(reportId)}"] [data-status-text]`).forEach((text) => {
+                text.textContent = data.status;
+                text.dataset.statusText = data.status_value;
+                const dot = text.parentElement?.querySelector('[data-status-dot]');
+                if (dot) {
+                    dot.className = `size-2.5 shrink-0 rounded-full ${statusDotClass(data.status_value)}`;
+                }
+            });
+        }
+    };
+
+    // 同頁的紅色數字先在本地拿掉；對話面板收到事件後重算上方提示與右下角數字。
     const markRead = () => {
-        document.querySelectorAll(`[data-chat-open="${CSS.escape(reportId)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
-        document.querySelectorAll(`[data-unread-flag="${CSS.escape(reportId)}"]`).forEach((flag) => flag.remove());
+        clearReportUnread(reportId);
         document.dispatchEvent(new CustomEvent('feedback:report-read', { detail: { id: reportId } }));
     };
 
@@ -84,13 +113,15 @@ const setupThread = (section) => {
                 template.innerHTML = data.html;
                 // 調整重點已在視窗上方顯示，這裡只放留言串。
                 template.content.querySelectorAll('[data-chat-adjustment]').forEach((node) => node.remove());
-                const nearEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
-                body.replaceChildren(template.content);
+                // 使用者展開的相簿、過去的處理說明換新後維持展開。
+                replaceKeepingOpen(body, () => body.replaceChildren(template.content));
                 state.lastHtml = data.html;
-                if (scrollToEnd || nearEnd) {
-                    body.scrollTop = body.scrollHeight;
+                if (scrollToEnd) {
+                    // 送出留言後，把輸入框帶回畫面內，看得到剛送出的那則。
+                    form.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             }
+            applySide(data);
             if (draftsBox && typeof data.drafts_html === 'string') {
                 renderMessageDrafts(draftsBox, data.drafts_html, { onChanged: () => load({ scrollToEnd: true }) });
             }
@@ -200,7 +231,7 @@ const setupThread = (section) => {
     return {
         // 每次開啟都重新載入（也就重新標為已讀），開著時每 5 秒刷新；分頁在背景時不刷新。
         open() {
-            load({ scrollToEnd: true });
+            load();
             stop();
             state.timer = window.setInterval(() => {
                 if (!document.hidden && dialog.open) {

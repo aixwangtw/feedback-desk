@@ -8,13 +8,12 @@ import {
     orderConversations,
     shortTime,
     unreadById,
+    unreadDotLabel,
     unreadSummary,
-    withUnreadInLabel,
-    withUnreadInTitle,
     type ConversationSortable,
 } from '../../src/shared/conversation';
 import type { Report } from '../../src/worker/lib/models';
-import { Browser, reload, seedAttachment, seedDeveloper, seedProject, seedReport, type SeededProject } from './helpers';
+import { Browser, reload, seedAdjustment, seedAttachment, seedDeveloper, seedProject, seedReport, type SeededProject } from './helpers';
 
 const JSON_HEADERS = { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -163,7 +162,7 @@ describe('chat panel caching', () => {
         const changes: Array<[string, () => Promise<unknown>]> = [
             // 網頁上只有客戶能改狀態（按「完成」）。
             ['status', () => client.post(`/p/${slug}/reports/${report.public_id}/status`, { status: 'completed' })],
-            ['adjustment', () => owner.post(`/p/${slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '改好了' })],
+            ['adjustment', () => seedAdjustment(report, '改好了', new Date(Date.now() + 5).toISOString())],
             ['client delete', () => client.post(`/p/${slug}/reports/${report.public_id}/client-delete`)],
             ['restore', () => owner.post(`/p/${slug}/reports/${report.public_id}/restore`)],
             ['new report', () => seedReport(seeded.project)],
@@ -220,7 +219,7 @@ describe('chat panel caching', () => {
         const owner = await new Browser().asOwner(seeded);
         expect((await list(owner, seeded)).items.map((item) => item.title)).toEqual(['後建的', '先建的']);
         const html = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
-        expect(html.indexOf('>後建的</button>')).toBeLessThan(html.indexOf('>先建的</button>'));
+        expect(html.indexOf('>後建的</a>')).toBeLessThan(html.indexOf('>先建的</a>'));
     });
 });
 
@@ -263,7 +262,7 @@ describe('chat panel conversation', () => {
         const owner = await new Browser().asOwner(seeded);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '按鈕跑掉了' })).status).toBe(302);
         await tick();
-        expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已調整按鈕位置' })).status).toBe(302);
+        await seedAdjustment(report, '已調整按鈕位置');
         const messageId = await insertMessage(report, 'owner', new Date(Date.now() + 10).toISOString(), '附圖給你看');
         const attachmentId = await seedAttachment(report, { messageId, name: 'fixed.png' });
 
@@ -272,19 +271,17 @@ describe('chat panel conversation', () => {
         expect(html).toMatch(/data-author="owner" data-side="mine"/);
         expect(html).toContain('data-lightbox-trigger');
         expect(html).toContain(`/p/${seeded.project.slug}/reports/${report.public_id}/attachments/${attachmentId}`);
+        // The old adjustment shows read-only as 過去的處理說明, collapsed; the 「有更新」 tag is gone.
         expect(html).toContain('已調整按鈕位置');
+        expect(html).toContain('過去的處理說明');
         expect(html).not.toContain('有更新');
 
         const clientFirst = await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS);
         html = ((await clientFirst.json()) as ThreadData).html;
         expect(html).toMatch(/data-author="reporter" data-side="mine"/);
         expect(html).toMatch(/data-author="owner" data-side="theirs"/);
-        expect(html).toContain('有更新');
-        expect(html).toMatch(/<details[^>]*open[^>]*data-chat-adjustment/);
-        // Opened once: no longer new, and the cached answer (with "有更新") is not reused.
-        const again = await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { ...JSON_HEADERS, 'if-none-match': clientFirst.headers.get('etag') as string });
-        expect(again.status).toBe(200);
-        expect(((await again.json()) as ThreadData).html).not.toContain('有更新');
+        expect(html).not.toContain('有更新');
+        expect(html).toMatch(/<details(?![^>]*\sopen)[^>]*data-chat-adjustment/);
     });
 
     it('takes replies as JSON, with images uploaded one PUT each', async () => {
@@ -300,7 +297,7 @@ describe('chat panel conversation', () => {
         const response = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '已處理，附圖給你看', 'upload_ids[]': [uploadId] }, JSON_HEADERS);
         expect(response.status).toBe(201);
         // 等工程師的單團隊留言後自動改成等客戶，回應附上提醒。
-        expect(await response.json()).toMatchObject({ message: '訊息已送出。狀態已改為「等客戶」，記得更新調整重點。', status: 'needs_input' });
+        expect(await response.json()).toMatchObject({ message: '訊息已送出。狀態已改為「等客戶」。', status: 'needs_input' });
         const message = await env.DB.prepare('SELECT * FROM messages WHERE report_id = ? ORDER BY id DESC LIMIT 1').bind(report.id).first<{ id: number; author_type: string; author_name: string }>();
         expect(message).toMatchObject({ author_type: 'owner', author_name: '王小明' });
         const attachment = await env.DB.prepare('SELECT * FROM attachments WHERE message_id = ?').bind(message?.id).first<{ original_name: string }>();
@@ -401,8 +398,9 @@ describe('chat panel access', () => {
         expect(page).toContain('data-chat-root');
         expect(page).toContain('data-viewer="owner"');
         expect(page).toContain(`data-list-url="/p/${seeded.project.slug}/conversations"`);
-        expect(page).toContain(`data-chat-open="${report.public_id}"`);
-        expect(await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text()).toContain(`data-chat-open="${report.public_id}"`);
+        // List rows and board cards no longer carry a chat button; the unread count is a plain dot beside the title.
+        expect(page).not.toContain('data-chat-open=');
+        expect(await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text()).not.toContain('data-chat-open=');
         const reportPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
         expect(reportPage).toContain('data-chat-root');
         expect(reportPage).toContain('在對話面板開啟');
@@ -411,8 +409,7 @@ describe('chat panel access', () => {
         const client = await new Browser().asClient(seeded);
         const clientPage = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(clientPage).toContain('data-viewer="client"');
-        expect(clientPage).toMatch(new RegExp(`data-chat-open="${report.public_id}"[^>]*aria-label="[^"]*共 2 則留言，1 則未讀`));
-        expect(clientPage).toMatch(/data-unread-badge="" data-new-reply-badge="">1</);
+        expect(clientPage).toMatch(/data-unread-dot="" title="1 則未讀留言" aria-label="1 則未讀留言">1</);
     });
 
     it('shows the thread as chat bubbles on the report page', async () => {
@@ -450,7 +447,7 @@ describe('portal default order', () => {
         const expected = ['丙未讀', '乙已讀', '丁沒留言新', '甲沒留言舊'];
         for (const query of ['', '?view=board']) {
             const html = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
-            const positions = expected.map((title) => html.indexOf(`>${title}</button>`));
+            const positions = expected.map((title) => html.indexOf(`>${title}</a>`));
             expect(positions.every((position) => position > 0)).toBe(true);
             expect([...positions].sort((a, b) => a - b)).toEqual(positions);
             expect(html).toContain('<option value="conversation" selected="">預設（新留言優先）</option>');
@@ -479,7 +476,7 @@ describe('portal default order', () => {
         await env.DB.prepare('UPDATE reports SET status = ? WHERE id = ?').bind('completed', done.id).run();
         const titlesOf = async (browser: Browser, query = ''): Promise<string[]> => {
             const html = await (await browser.get(`/p/${seeded.project.slug}${query}`)).text();
-            return ['甲待處理舊', '乙待審核舊', '丙待處理新', '丁待審核新', '戊已完成'].sort((a, b) => html.indexOf(`>${a}</button>`) - html.indexOf(`>${b}</button>`));
+            return ['甲待處理舊', '乙待審核舊', '丙待處理新', '丁待審核新', '戊已完成'].sort((a, b) => html.indexOf(`>${a}</a>`) - html.indexOf(`>${b}</a>`));
         };
         const owner = await new Browser().asOwner(seeded);
         expect(await titlesOf(owner, '?tab=all')).toEqual(['丙待處理新', '甲待處理舊', '丁待審核新', '乙待審核舊', '戊已完成']);
@@ -500,7 +497,7 @@ describe('portal default order', () => {
         const client = await new Browser().asClient(seeded);
         const html = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         // Both unread: 乙 has no messages, so it sorts by its creation time, older than 甲's reply.
-        const positions = ['甲有新回覆', '乙調整更新', '丙沒留言'].map((title) => html.indexOf(`>${title}</button>`));
+        const positions = ['甲有新回覆', '乙調整更新', '丙沒留言'].map((title) => html.indexOf(`>${title}</a>`));
         expect([...positions].sort((a, b) => a - b)).toEqual(positions);
         expect((await list(client, seeded)).items.map((item) => item.title)).toEqual(['甲有新回覆', '乙調整更新', '丙沒留言']);
     });
@@ -532,10 +529,7 @@ describe('shared conversation rules', () => {
         expect(unreadSummary(0)).toEqual({ count: 0, tone: 'calm', filter: null });
         expect(unreadSummary(2)).toEqual({ count: 2, tone: 'alert', filter: 'unread-only' });
         expect(unreadSummary(0, { unreadOnly: true }).filter).toBe('show-all');
-        expect(withUnreadInLabel('開啟「a」的留言對話（共 3 則留言，2 則未讀）', 0)).toBe('開啟「a」的留言對話（共 3 則留言）');
-        expect(withUnreadInLabel('開啟「a」的留言對話（共 3 則留言）', 4)).toBe('開啟「a」的留言對話（共 3 則留言，4 則未讀）');
-        expect(withUnreadInTitle('留言 3 則，未讀 2', 0)).toBe('留言 3 則');
-        expect(withUnreadInTitle('留言 3 則', 1)).toBe('留言 3 則，未讀 1');
+        expect(unreadDotLabel(3)).toBe('3 則未讀留言');
         expect(messagePreview('  短短\n\n一句  ')).toBe('短短 一句');
         expect(messagePreview('a'.repeat(61))).toBe(`${'a'.repeat(60)}...`);
         expect(messagePreview('中'.repeat(30))).toBe('中'.repeat(30));

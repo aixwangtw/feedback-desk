@@ -1,4 +1,6 @@
+import { ADJUSTMENT_DEPRECATED, completionSentNotice } from '../../shared/completion';
 import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
+import { requestCompletion } from './completion';
 import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * Operations performed by a signed-in team account through the API (CLI) or MCP. Both callers go
@@ -25,7 +27,7 @@ import {
 } from './db';
 import { CLIENT_VISIBLE_SQL, isVisibleToClient, type Attachment, type ClientAccount, type Developer, type Project, type Report } from './models';
 import {
-    adjustmentReminder,
+    statusChangeNotice,
     addMessage,
     changeStatus,
     createReport,
@@ -607,6 +609,35 @@ export async function writeAdjustment(
         images_total: count?.total ?? 0,
         url: `${absolute(ctx, paths.report(project.slug, report.public_id))}#adjustment`,
         took_over_from: takenOver,
+        // 調整重點已停用：照常寫入，但提醒改用留言。
+        warning: ADJUSTMENT_DEPRECATED,
+    };
+}
+
+/**
+ * 請客戶確認完成（CLI、MCP、團隊 API、巡檢 API 共用）：只發一則附「通過」按鈕的確認留言，單維持等客戶，不能直接結案。
+ * body 省略就用預設文字；已完成的單回 422 already_completed。
+ */
+export async function requestCompletionFor(ctx: TeamContext, slug: string, identifier: string, input: { body?: string | null; force?: boolean }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier, 'public_id');
+    const takenOver = await guardClaim(ctx, report, input.force === true);
+    const result = await requestCompletion(
+        ctx.env,
+        report,
+        { body: input.body, authorName: messageAuthorName(ctx.env, report, true, ctx.developer.name), author: teamAuthor(ctx) },
+        ctx.now,
+    );
+    const labels = config(ctx.env);
+    return {
+        public_id: report.public_id,
+        title: report.title,
+        message_id: result.id,
+        status: result.status,
+        status_label: statusLabel(result.status, labels.statusLabels),
+        notice: completionSentNotice(labels.statusLabels, labels.labels.client),
+        url: absolute(ctx, paths.report(project.slug, report.public_id)),
+        took_over_from: takenOver,
     };
 }
 
@@ -637,7 +668,7 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         images_added: uploads.length,
         status: result.status,
         status_changed: result.statusChanged,
-        ...(result.statusChanged ? { notice: adjustmentReminder(ctx.env) } : {}),
+        ...(result.statusChanged ? { notice: statusChangeNotice(ctx.env) } : {}),
     };
 }
 

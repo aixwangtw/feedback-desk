@@ -3,11 +3,11 @@ import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared
 import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
-import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
+import { attachmentsForReport, statusEventsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport } from '../lib/db';
 import { CLIENT_VISIBLE_SQL, isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
-    adjustmentReminder,
+    statusChangeNotice,
     addMessage,
     adjustmentNewForClientSql,
     parseStoredFiles,
@@ -18,7 +18,6 @@ import {
     changeStatus,
     chatCounts,
     clientLabel,
-    clientReadAt,
     creatorClientNameSql,
     viewerReadAtColumnSql,
     type ClientViewer,
@@ -31,7 +30,6 @@ import {
     hasUnreadMessagesSql,
     latestMessageSql,
     markRead,
-    MAX_ADJUSTMENT_NOTE,
     MAX_DESCRIPTION,
     MAX_MESSAGE,
     MAX_REPORTER_NAME,
@@ -41,7 +39,6 @@ import {
     sequenceNumber,
     setClientDeleted,
     statusCounts,
-    updateAdjustment,
     updateReport,
     viewerUnreadSql,
 } from '../lib/reports';
@@ -60,8 +57,11 @@ import { formatAbsolute, nowIso } from '../../shared/time';
 import { messagePreview, shortTime } from '../../shared/conversation';
 import { isAwaitingReply } from '../../shared/chat-tabs';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
-import { PortalPage, ReportDialogs, editCategoryOptions, type PortalFormState, type PortalRow } from '../views/portal';
-import { Activity, ConversationFragment, DraftsSection, ReportPage } from '../views/report';
+import { PortalPage, ReportDialogs, editCategoryOptions, type DialogRow, type PortalFormState, type PortalRow } from '../views/portal';
+import { ConversationFragment, DetailSide, DraftsSection, messageAuthorLabel, ReportPage, Thread } from '../views/report';
+import { albumItems } from '../lib/album';
+import { ADJUSTMENT_WEB_DISABLED, completionSentNotice } from '../../shared/completion';
+import { requestCompletion } from '../lib/completion';
 import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
@@ -69,7 +69,7 @@ import { projectCategories } from '../../shared/categories';
 import { verifyTurnstile } from '../lib/turnstile';
 import { isDeveloperSideCreator, withAgent } from '../lib/agents';
 import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
-import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type MessageDraft } from '../lib/drafts';
+import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type DraftView, type MessageDraft } from '../lib/drafts';
 import { clientNotifications, teamNotifications, type Notifications } from '../lib/notifications';
 
 export const web = new Hono<AppEnv>();
@@ -642,10 +642,10 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             SELECT *, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS seq, ${waitingSideSql('reports')} AS waiting${isOwner ? '' : `, ${viewerReadAtColumnSql('reports', viewer)}`} FROM reports WHERE project_id = ? ${clientOnly}
         )
         SELECT * FROM (
-            SELECT id, project_id, waiting, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, adjustment_note, status, client_deleted_at,
+            SELECT id, project_id, waiting, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, status, client_deleted_at,
                 latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
                 ${viewerUnreadSql('numbered', isOwner, viewer, true)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count,
-                ${creatorClientNameSql('numbered')} AS creator_client_name${isOwner ? ', (SELECT COUNT(*) FROM message_drafts md WHERE md.report_id = numbered.id) AS drafts_count' : ''}
+                ${creatorClientNameSql('numbered')} AS creator_client_name
             FROM numbered ${where}
         ) listed
         ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
@@ -665,7 +665,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         tabCounts[row.waiting] += row.aggregate;
         tabCounts.all += row.aggregate;
     }
-    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_count: number; messages_count: number; creator_client_name: string | null; drafts_count?: number; waiting: WaitingSide }>;
+    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_count: number; messages_count: number; creator_client_name: string | null; waiting: WaitingSide }>;
     let filteredTotal = reports[0]?.filtered_total ?? 0;
     if (reports.length === 0 && page > 1) {
         const row = await db
@@ -681,32 +681,16 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         }
     }
 
-    const attachments = new Map<number, Attachment[]>();
-    if (reports.length > 0) {
-        const { results } = await db
-            .prepare(`SELECT * FROM attachments WHERE message_id IS NULL AND report_id IN (${placeholders(reports.length)}) ORDER BY id`)
-            .bind(...reports.map((report) => report.id))
-            .all<Attachment>();
-        for (const attachment of results) {
-            const list = attachments.get(attachment.report_id) ?? [];
-            list.push(attachment);
-            attachments.set(attachment.report_id, list);
-        }
-    }
-    const rows: PortalRow[] = reports.map((report) => {
-        const own = attachments.get(report.id) ?? [];
-        return {
-            report,
-            number: report.seq,
-            creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
-            attachments: own.filter((attachment) => attachment.kind === 'feedback'),
-            adjustmentAttachments: own.filter((attachment) => attachment.kind === 'adjustment'),
-            unread: report.unread_count,
-            messagesCount: report.messages_count,
-            drafts: isOwner ? report.drafts_count ?? 0 : 0,
-            waiting: report.waiting,
-        };
-    });
+    // 清單只有編號、標題、狀態、建立者、最後更新：不載入附件與待審留言數。
+    const rows: PortalRow[] = reports.map((report) => ({
+        report,
+        number: report.seq,
+        creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
+        unread: report.unread_count,
+    }));
+    // 編輯失敗重新顯示：被編輯的那張單要帶著錯誤重開對話框，所以只為它載入附件。
+    const editingReport = form?.bag === 'editReport' ? reports.find((report) => report.public_id === form.editing?.publicId) : undefined;
+    const editingRow = editingReport ? await dialogRow(c, project, editingReport, isOwner) : undefined;
     const flash = form ? {} : await access.flash();
     const allProjects = isOwner ? await listProjects(c.env.DB) : undefined;
     const bell = await bellFor(c, project);
@@ -741,6 +725,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             passwordLink={await access.hasPasswordAccount(project)}
             guest={await access.isGuest(project)}
             form={form}
+            editingRow={editingRow}
             bell={bell}
         />,
         status,
@@ -958,6 +943,56 @@ export function activityEtag(report: Pick<Report, 'latest_activity_at' | 'update
     return `W/"${side}|${report.latest_activity_at}|${report.updated_at}|${report.status}|${relativeTimeBucket(report.latest_activity_at, nowMs)}"`;
 }
 
+/**
+ * One report's thread (messages, status changes, album, drafts) as the viewer sees it. Drafts are only
+ * read for the team: the client side never queries them, so neither its HTML nor its JSON can carry them.
+ * `knownDrafts` lets a caller that already read them (for its ETag) skip the second query.
+ */
+async function loadThread(c: AppContext, project: Project, report: Report, isOwner: boolean, knownDrafts?: DraftView[]) {
+    const db = c.env.DB;
+    const access = c.get('access');
+    const v = viewContext(c);
+    const [attachments, messages, statusEvents, drafts, canManage] = await Promise.all([
+        attachmentsForReport(db, report.id),
+        messagesForReport(db, report.id),
+        statusEventsForReport(db, report.id),
+        isOwner ? (knownDrafts ? Promise.resolve(knownDrafts) : draftsForReport(db, report.id)) : Promise.resolve([] as DraftView[]),
+        access.canManage(project),
+    ]);
+    const messageAttachments = new Map<number, Attachment[]>();
+    for (const attachment of attachments) {
+        if (attachment.message_id !== null) {
+            const list = messageAttachments.get(attachment.message_id) ?? [];
+            list.push(attachment);
+            messageAttachments.set(attachment.message_id, list);
+        }
+    }
+    const album = albumItems({
+        slug: project.slug,
+        publicId: report.public_id,
+        attachments,
+        messages,
+        authorLabel: (message) => messageAuthorLabel(v, report, message, isOwner),
+        reportCreatedAt: report.created_at,
+        drafts: isOwner ? drafts : null,
+    });
+    return {
+        attachments,
+        messages,
+        messageAttachments,
+        statusEvents,
+        drafts,
+        album,
+        // 「通過」只給客戶端（能結案的一方），且單還沒完成。
+        canApprove: !isOwner && canManage && report.status !== 'completed',
+    };
+}
+
+/** ETag side for the single-report thread: the team's side also carries the drafts version (drafts show in the album). */
+async function threadSide(c: AppContext, report: Report, isOwner: boolean, viewer: ClientViewer): Promise<string> {
+    return isOwner ? `${viewerKey(true, viewer)}|${await draftsVersion(c.env.DB, report.id)}` : viewerKey(false, viewer);
+}
+
 async function reportByPublicIdOr404(c: AppContext, project: Project, publicId: string): Promise<Report> {
     const report = publicId === '' ? null : await findReportInProject(c.env.DB, project.id, publicId);
     if (!report) {
@@ -972,28 +1007,20 @@ async function renderReport(
     c: AppContext,
     project: Project,
     report: Report,
-    extra: { adjustmentErrors?: string[]; adjustmentOld?: string; messageErrors?: string[]; messageOld?: string; draftErrors?: { id: number; errors: string[]; old: string } } = {},
+    extra: { messageErrors?: string[]; messageOld?: string; draftErrors?: { id: number; errors: string[]; old: string } } = {},
     status: 200 | 422 = 200,
 ): Promise<Response> {
     const access = c.get('access');
     const isOwner = await access.isOwner(project);
-    const [attachments, messages] = await Promise.all([attachmentsForReport(c.env.DB, report.id), messagesForReport(c.env.DB, report.id)]);
-    const messageAttachments = new Map<number, Attachment[]>();
-    for (const attachment of attachments) {
-        if (attachment.message_id !== null) {
-            const list = messageAttachments.get(attachment.message_id) ?? [];
-            list.push(attachment);
-            messageAttachments.set(attachment.message_id, list);
-        }
-    }
+    const viewer = await access.clientViewer(project);
+    // 待審留言只給開發團隊；客戶端連查都不查（loadThread 只在團隊端讀草稿）。
+    const thread = await loadThread(c, project, report, isOwner);
     const isPublic = isPublicReport(report);
     const sequence = isOwner || !isPublic ? await sequenceNumber(c.env.DB, report, !isOwner) : null;
-    const hasErrors = (extra.adjustmentErrors?.length ?? 0) > 0 || (extra.messageErrors?.length ?? 0) > 0 || extra.draftErrors !== undefined;
+    const hasErrors = (extra.messageErrors?.length ?? 0) > 0 || extra.draftErrors !== undefined;
     const flash = hasErrors ? {} : await access.flash();
     const developer = isOwner ? await access.currentDeveloper(project) : null;
     const work = isOwner ? await workState({ env: c.env, developer, agent: null }, report) : undefined;
-    // 待審留言只給開發團隊；客戶端連查都不查。
-    const drafts = isOwner ? await draftsForReport(c.env.DB, report.id) : [];
     const canManage = await access.canManage(project);
     return c.html(
         <ReportPage
@@ -1004,16 +1031,19 @@ async function renderReport(
             isPublicReporter={isPublic && !isOwner}
             canManage={canManage}
             isOwner={isOwner}
-            drafts={drafts}
+            drafts={thread.drafts}
             bell={canManage ? await bellFor(c, project) : null}
-            attachments={attachments.filter((attachment) => attachment.kind === 'feedback' && attachment.message_id === null)}
-            adjustmentAttachments={attachments.filter((attachment) => attachment.kind === 'adjustment')}
-            messages={messages}
-            messageAttachments={messageAttachments}
+            attachments={thread.attachments.filter((attachment) => attachment.kind === 'feedback' && attachment.message_id === null)}
+            adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
+            messages={thread.messages}
+            messageAttachments={thread.messageAttachments}
+            statusEvents={thread.statusEvents}
+            album={thread.album}
+            canApprove={thread.canApprove}
             attachmentUrl={attachmentUrlFor(project, report)}
             success={flash.success}
             privateReportUrl={flash.private_report_url}
-            activityEtag={activityEtag(report, viewerKey(isOwner, await access.clientViewer(project)), c.get('now'))}
+            activityEtag={activityEtag(report, await threadSide(c, report, isOwner, viewer), c.get('now'))}
             creatorLabel={await reportCreatorLabel(c, project, report)}
             categories={projectCategories(project)}
             work={work}
@@ -1061,26 +1091,34 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
         abort(404);
     }
     // Every change shown here (messages, status) moves latest_activity_at or updated_at, so the pair
-    // identifies the content; an unchanged report answers 304 without loading messages.
+    // identifies the content (the team's side adds the drafts version: drafts show in the album);
+    // an unchanged report answers 304 without loading messages.
     const isOwner = await access.isOwner(project);
     const viewer = await access.clientViewer(project);
-    const etag = activityEtag(report, viewerKey(isOwner, viewer), c.get('now'));
+    const etag = activityEtag(report, await threadSide(c, report, isOwner, viewer), c.get('now'));
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
     if (c.req.header('if-none-match') === etag) {
         return c.body(null, 304, cacheHeaders);
     }
-    const [attachments, messages] = await Promise.all([attachmentsForReport(c.env.DB, report.id), messagesForReport(c.env.DB, report.id)]);
-    const messageAttachments = new Map<number, Attachment[]>();
-    for (const attachment of attachments) {
-        if (attachment.message_id !== null) {
-            messageAttachments.set(attachment.message_id, [...(messageAttachments.get(attachment.message_id) ?? []), attachment]);
-        }
-    }
+    const thread = await loadThread(c, project, report, isOwner);
     // A 304 means nothing new since the last fetch, which already marked the report read.
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
     c.header('ETag', etag);
     c.header('Cache-Control', 'private, no-cache');
-    return c.html(<Activity v={viewContext(c)} report={report} messages={messages} messageAttachments={messageAttachments} attachmentUrl={attachmentUrlFor(project, report)} viewerIsOwner={isOwner} />);
+    return c.html(
+        <Thread
+            v={viewContext(c)}
+            slug={project.slug}
+            report={report}
+            messages={thread.messages}
+            messageAttachments={thread.messageAttachments}
+            attachmentUrl={attachmentUrlFor(project, report)}
+            viewerIsOwner={isOwner}
+            statusEvents={thread.statusEvents}
+            canApprove={thread.canApprove}
+            album={thread.album}
+        />,
+    );
 });
 
 // ---------------------------------------------------------------- chat panel
@@ -1214,42 +1252,39 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     const isOwner = await access.isOwner(project);
     const viewer = await access.clientViewer(project);
     const db = c.env.DB;
-    const readAt = isOwner ? null : await clientReadAt(db, report, viewer);
-    const adjustmentWasNew = !isOwner && report.adjustment_updated_at !== null && (readAt === null || report.adjustment_updated_at > readAt);
     // 待審留言只給開發團隊：草稿不動到單的時間，所以團隊端的 ETag 另外帶草稿的版本（一個小查詢）。
     const draftVersion = isOwner ? await draftsVersion(db, report.id) : '';
     // The list number is left out on purpose (it needs a count over the project); it only shifts when
     // reports are added or removed, and the next full answer picks it up.
-    const etag = `W/"thread|${activityEtag(report, viewerKey(isOwner, viewer), c.get('now')).slice(3, -1)}|${adjustmentWasNew ? 1 : 0}${isOwner ? `|${draftVersion}` : ''}"`;
+    const etag = `W/"thread|${activityEtag(report, viewerKey(isOwner, viewer), c.get('now')).slice(3, -1)}${isOwner ? `|${draftVersion}` : ''}"`;
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
     if (c.req.header('if-none-match') === etag) {
         return c.body(null, 304, cacheHeaders);
     }
     const isPublicReporter = isPublicReport(report) && !isOwner;
-    const [attachments, messages, number, drafts] = await Promise.all([
-        attachmentsForReport(db, report.id),
-        messagesForReport(db, report.id),
+    const v = viewContext(c);
+    const [thread, number, creator] = await Promise.all([
+        loadThread(c, project, report, isOwner, isOwner && draftVersion === '' ? [] : undefined),
         sequenceNumber(db, report, !isOwner),
-        isOwner && draftVersion !== '' ? draftsForReport(db, report.id) : Promise.resolve([]),
+        reportCreatorLabel(c, project, report),
     ]);
-    const messageAttachments = new Map<number, Attachment[]>();
-    for (const attachment of attachments) {
-        if (attachment.message_id !== null) {
-            messageAttachments.set(attachment.message_id, [...(messageAttachments.get(attachment.message_id) ?? []), attachment]);
-        }
-    }
     const html = await (
         <ConversationFragment
-            v={viewContext(c)}
+            v={v}
+            slug={project.slug}
             report={report}
-            messages={messages}
-            messageAttachments={messageAttachments}
-            adjustmentAttachments={attachments.filter((attachment) => attachment.kind === 'adjustment')}
-            adjustmentWasNew={adjustmentWasNew}
+            messages={thread.messages}
+            messageAttachments={thread.messageAttachments}
+            adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
+            statusEvents={thread.statusEvents}
+            canApprove={thread.canApprove}
+            album={thread.album}
             attachmentUrl={attachmentUrlFor(project, report)}
             viewerIsOwner={isOwner}
         />
     ).toString();
+    // 詳情視窗右側窄欄（狀態、完成鈕、時間）：留言可能讓狀態改變，跟著對話一起更新。
+    const sideHtml = await (<DetailSide v={v} slug={project.slug} report={report} isOwner={isOwner} canManage creatorLabel={isPublicReporter ? null : creator} />).toString();
     // 客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
     if (isOwner || c.req.query('peek') !== '1') {
         await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
@@ -1257,11 +1292,13 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     return c.json(
         {
             // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
-            ...(isOwner ? { drafts_html: drafts.length === 0 ? '' : await (<DraftsSection v={viewContext(c)} slug={project.slug} publicId={report.public_id} drafts={drafts} />).toString() } : {}),
+            ...(isOwner ? { drafts_html: thread.drafts.length === 0 ? '' : await (<DraftsSection v={v} slug={project.slug} publicId={report.public_id} drafts={thread.drafts} />).toString() } : {}),
             id: report.public_id,
             number,
             title: report.title,
             status: statusLabel(report.status, config(c.env).statusLabels),
+            status_value: report.status,
+            side_html: sideHtml,
             deleted: report.client_deleted_at !== null,
             page_url: paths.report(project.slug, report.public_id),
             post_url: paths.reportMessages(project.slug, report.public_id),
@@ -1289,22 +1326,8 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
         abort(404);
     }
     const isOwner = await access.isOwner(project);
-    const [attachments, number, label, counts] = await Promise.all([
-        c.env.DB.prepare('SELECT * FROM attachments WHERE report_id = ? AND message_id IS NULL ORDER BY id').bind(report.id).all<Attachment>(),
-        sequenceNumber(c.env.DB, report, !isOwner),
-        reportCreatorLabel(c, project, report),
-        chatCounts(c.env.DB, report, isOwner, await access.clientViewer(project)),
-    ]);
     const back = c.req.query('back') ?? '';
-    const row: PortalRow = {
-        report,
-        number,
-        creatorLabel: label,
-        attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
-        adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
-        unread: counts.unread,
-        messagesCount: counts.messagesCount,
-    };
+    const row = await dialogRow(c, project, report, isOwner);
     return c.html(
         <ReportDialogs
             v={viewContext(c)}
@@ -1317,6 +1340,24 @@ web.get('/p/:slug/reports/:publicId/dialogs', async (c) => {
         />,
     );
 });
+
+/** The data one report's dialogs need: its list number, creator, unread count and attachments. */
+async function dialogRow(c: AppContext, project: Project, report: Report, isOwner: boolean): Promise<DialogRow> {
+    const [attachments, number, label, counts] = await Promise.all([
+        c.env.DB.prepare('SELECT * FROM attachments WHERE report_id = ? AND message_id IS NULL ORDER BY id').bind(report.id).all<Attachment>(),
+        sequenceNumber(c.env.DB, report, !isOwner),
+        reportCreatorLabel(c, project, report),
+        chatCounts(c.env.DB, report, isOwner, await c.get('access').clientViewer(project)),
+    ]);
+    return {
+        report,
+        number,
+        creatorLabel: label,
+        attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
+        adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
+        unread: counts.unread,
+    };
+}
 
 web.get('/p/:slug/reports/:publicId/attachments/:attachmentId', async (c) => {
     const project = await projectOr404(c);
@@ -1571,6 +1612,57 @@ web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/status', async (c) => {
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });
 
+/**
+ * 開發團隊的「完成」：只發一則確認留言（附「通過」按鈕）請客戶確認，單維持等客戶，不會被結案。
+ * 客戶端一律 403；已完成的單 422 already_completed。客戶按「通過」走上面的狀態端點。
+ */
+web.post('/p/:slug/reports/:publicId/request-completion', async (c) => {
+    await throttle(c, 'completion', 30);
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    if (!(await access.reportVisible(project, report))) {
+        abort(404);
+    }
+    const clientName = config(c.env).labels.client;
+    if (!(await access.isOwner(project))) {
+        const message = `只有${config(c.env).labels.owner}能請${clientName}確認完成。`;
+        if (wantsJson(c)) {
+            return c.json({ message, error: 'team_only' }, 403);
+        }
+        abort(403, message);
+    }
+    const form = await readForm(c);
+    const developer = await access.currentDeveloper(project);
+    const back = backUrl(c, form, paths.report(project.slug, report.public_id));
+    try {
+        const result = await requestCompletion(
+            c.env,
+            report,
+            { body: form.get('body') ?? '', authorName: messageAuthorName(c.env, report, true, developer?.name ?? null), author: await access.author(project) },
+            c.get('now'),
+        );
+        const notice = completionSentNotice(config(c.env).statusLabels, clientName);
+        if (wantsJson(c)) {
+            return c.json({ message: notice, status: result.status, message_id: result.id }, 201);
+        }
+        access.setFlash({ success: notice });
+    } catch (error) {
+        if (error instanceof ServiceError) {
+            if (wantsJson(c)) {
+                return c.json({ message: error.message, error: error.code, errors: { body: [error.message] } }, error.status);
+            }
+            access.setFlash({ success: error.message });
+        } else {
+            throw error;
+        }
+    }
+    return c.redirect(back, 302);
+});
+
 web.post('/p/:slug/reports/:publicId/messages', async (c) => {
     await throttle(c, 'messages', 30);
     const project = await projectOr404(c);
@@ -1652,7 +1744,7 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
     );
     // Writing a message means the writer has seen the report, including messages before it.
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), account);
-    const notice = `訊息已送出。${isOwner && result.statusChanged ? adjustmentReminder(c.env) : ''}`;
+    const notice = `訊息已送出。${isOwner && result.statusChanged ? statusChangeNotice(c.env) : ''}`;
     if (wantsJson(c)) {
         return c.json({ message: notice, status: result.status }, 201);
     }
@@ -1696,7 +1788,7 @@ web.post('/p/:slug/reports/:publicId/drafts/:draftId/send', async (c) => {
     let status: ReportStatus;
     try {
         const result = await sendDraft(c.env, report, draft, { author: await access.author(project), developerName: developer?.name ?? null }, c.get('now'), editedBody);
-        notice = `${result.replaced ? '已修改原留言。' : '留言已送出。'}${result.statusChanged ? adjustmentReminder(c.env) : ''}`;
+        notice = `${result.replaced ? '已修改原留言。' : '留言已送出。'}${result.statusChanged ? statusChangeNotice(c.env) : ''}`;
         status = result.status;
     } catch (error) {
         if (error instanceof ServiceError) {
@@ -1822,40 +1914,16 @@ web.post('/p/:slug/reports/:publicId/handoff', async (c) => {
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });
 
+/**
+ * 調整重點已停用：網頁不能再寫入，一律回 410（權限檢查照舊：非開發團隊照舊被擋）。舊內容照舊在詳情裡唯讀顯示（過去的處理說明）。
+ * 巡檢 API、CLI、MCP 的寫入入口暫時保留（照常寫入並附警告），見 shared/completion.ts 的 ADJUSTMENT_DEPRECATED。
+ */
 web.post('/p/:slug/reports/:publicId/adjustment', async (c) => {
     await throttle(c, 'adjustment', 30);
     const project = await projectOr404(c);
-    const report = await reportOr404(c, project);
-    const access = c.get('access');
-    if (!(await access.isOwner(project))) {
+    await reportOr404(c, project);
+    if (!(await c.get('access').isOwner(project))) {
         return deny(c, project);
     }
-    const form = await readForm(c);
-    const note = form.get('adjustment_note') ?? '';
-    const ids = uploadIds(form, 'upload_ids[]');
-    const remove = form.getAll('remove_adjustment_attachments[]').map((value) => Number(value));
-    const errors: string[] = [];
-    if (charLength(note.trim()) > MAX_ADJUSTMENT_NOTE) {
-        errors.push(`調整重點 不能超過 ${MAX_ADJUSTMENT_NOTE} 個字元。`);
-    }
-    if (ids.length > 5) {
-        errors.push('調整圖片 最多只能有 5 項。');
-    }
-    let uploads: Awaited<ReturnType<typeof findClaimableUploads>> = [];
-    if (errors.length === 0) {
-        if (remove.some((id) => !Number.isInteger(id)) || !(await countRemovable(c.env.DB, report.id, remove, 'adjustment')).valid) {
-            errors.push('選擇的 要刪除的調整圖片 無效。');
-        }
-        uploads = await findClaimableUploads(c.env.DB, ids, { projectId: project.id, purpose: 'adjustment', reportId: report.id });
-        if (uploads === null) {
-            errors.push(STALE_UPLOAD_MESSAGE);
-        }
-    }
-    if (errors.length > 0 || uploads === null) {
-        return renderReport(c, project, report, { adjustmentErrors: errors, adjustmentOld: note }, 422);
-    }
-    await updateAdjustment(c.env, report, { note, append: false, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
-    await markRead(c.env, report, 'owner', c.get('now'));
-    access.setFlash({ success: '已更新調整重點。' });
-    return c.redirect(`${paths.report(project.slug, report.public_id)}#adjustment`, 302);
+    return c.json({ message: ADJUSTMENT_WEB_DISABLED, error: 'adjustment_disabled' }, 410);
 });

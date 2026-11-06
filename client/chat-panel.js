@@ -2,12 +2,14 @@
 // 單一對話的 HTML 由伺服器 JSX 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 // 附圖跟其他表單一樣：每張圖各用一個 PUT 串流上傳，留言只帶回傳的 upload id（Workers 免費方案每請求 CPU 10 ms）。
 
-import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from '../src/shared/conversation';
-import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
+import { badgeText, countUnreadReports, orderConversations, unreadById, unreadDotLabel, unreadSummary } from '../src/shared/conversation';
+import { UNREAD_DOT_CLASS, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, chatTabCounts, rememberDismissed, sessionStorageOrNull, shouldAutoOpen, visibleItems } from '../src/shared/chat-tabs';
 import { fileProblem, MAX_FILES as DEFAULT_MAX_FILES_RULE } from '../src/shared/attachment-rules';
 import { bindAttachmentComposer } from './attachment-composer.js';
 import { renderMessageDrafts } from './message-drafts.js';
+import { clearReportUnread } from './report-read.js';
+import { replaceKeepingOpen } from './thread-details.js';
 
 const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
 const TAB_IDLE = ['border-transparent', 'text-slate-500', 'hover:text-slate-900'];
@@ -23,7 +25,6 @@ const SUMMARY_TONES = {
     alert: UNREAD_SUMMARY_TONES.alert.split(' '),
     calm: UNREAD_SUMMARY_TONES.calm.split(' '),
 };
-const ITEM_BADGE_CLASS = CHAT_UNREAD_BADGE;
 
 const root = document.querySelector('[data-chat-root]');
 
@@ -126,36 +127,27 @@ if (root) {
 
     const isOwnerViewer = root.dataset.viewer === 'owner';
 
-    // 同頁清單／看板上各單留言按鈕的紅色數字。
-    const syncPageBadges = (unread) => {
-        // 只動留言按鈕（有 data-message-count），回饋單頁的「在對話面板開啟」不加數字。
-        document.querySelectorAll('[data-chat-open][data-message-count]').forEach((button) => {
-            const count = unread.get(button.dataset.chatOpen);
+    // 標題右邊的未讀小圓點數字（清單、看板，純指示不能點）：依面板的未讀資料補上、更新或拿掉。
+    const syncUnreadDots = (unread) => {
+        document.querySelectorAll('[data-unread-slot]').forEach((slot) => {
+            const count = unread.get(slot.dataset.unreadSlot);
             if (count === undefined) {
                 return;
             }
-            let badge = button.querySelector('[data-unread-badge]');
+            let dot = slot.querySelector('[data-unread-dot]');
             if (count <= 0) {
-                badge?.remove();
-            } else {
-                if (!badge) {
-                    badge = el('span', ITEM_BADGE_CLASS);
-                    badge.dataset.unreadBadge = '';
-                    if (!isOwnerViewer) {
-                        badge.dataset.newReplyBadge = '';
-                    }
-                    button.append(badge);
-                }
-                badge.textContent = badgeText(count);
+                dot?.remove();
+
+                return;
             }
-            const label = button.getAttribute('aria-label');
-            if (label !== null) {
-                button.setAttribute('aria-label', withUnreadInLabel(label, count));
+            if (!dot) {
+                dot = el('span', UNREAD_DOT_CLASS);
+                dot.dataset.unreadDot = '';
+                slot.append(dot);
             }
-            const title = button.getAttribute('title');
-            if (title !== null) {
-                button.setAttribute('title', withUnreadInTitle(title, count));
-            }
+            dot.textContent = badgeText(count);
+            dot.title = unreadDotLabel(count);
+            dot.setAttribute('aria-label', unreadDotLabel(count));
         });
     };
 
@@ -194,7 +186,7 @@ if (root) {
         if (!state.loaded) {
             return;
         }
-        syncPageBadges(unreadById(state.items));
+        syncUnreadDots(unreadById(state.items));
         if (isOwnerViewer) {
             syncUnreadSummary(countUnreadReports(state.items));
         }
@@ -248,9 +240,6 @@ if (root) {
                 ? '還沒有留言'
                 : `${item.preview_is_mine ? '你：' : ''}${item.preview}`;
             bottom.append(el('span', `min-w-0 flex-1 truncate text-xs ${item.preview === null ? 'italic text-slate-400' : (item.has_update ? 'text-slate-800' : 'text-slate-500')}`, previewText));
-            if (item.adjustment_updated) {
-                bottom.append(el('span', 'shrink-0 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white', '調整重點更新'));
-            }
             if (item.unread > 0) {
                 const badge = el('span', 'shrink-0 min-w-5 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[11px] font-bold leading-4 text-white', item.unread > 99 ? '99+' : item.unread);
                 badge.setAttribute('aria-label', `${item.unread} 則未讀`);
@@ -380,13 +369,10 @@ if (root) {
                     time.textContent = freshTimes[index]?.textContent ?? time.textContent;
                 });
             } else {
-                const previousAdjustment = state.lastThreadHtml === '' ? null : thread.querySelector('[data-chat-adjustment]');
-                thread.innerHTML = data.html;
-                // 刷新時保留使用者展開／收合的調整重點。
-                const adjustment = thread.querySelector('[data-chat-adjustment]');
-                if (previousAdjustment && adjustment) {
-                    adjustment.open = previousAdjustment.open;
-                }
+                // 刷新時保留使用者展開的相簿與過去的處理說明。
+                replaceKeepingOpen(thread, () => {
+                    thread.innerHTML = data.html;
+                });
             }
             state.lastThreadHtml = data.html;
             if (stickToBottom) {
@@ -397,8 +383,7 @@ if (root) {
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
         // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
         if (!state.peek) {
-            document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
-            document.querySelectorAll(`[data-unread-flag="${CSS.escape(data.id)}"]`).forEach((flag) => flag.remove());
+            clearReportUnread(data.id);
         }
 
         const item = state.items.find((candidate) => candidate.id === data.id);

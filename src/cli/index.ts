@@ -1,5 +1,5 @@
 import { MESSAGE_HINT } from '../shared/attachment-rules';
-import { adjust, claim, create, draft, handoff, message, release, report, reports, status } from './commands/reports';
+import { adjust, claim, create, draft, handoff, message, release, report, reports, requestCompletion, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, patrolToken, token } from './commands/auth';
 import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
@@ -61,11 +61,15 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖檔]... [--for-client [--notice 通知文字]]
                                    開新單（團隊與客戶帳號都可以）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
+                                   【已停用，改用 message 留言】照常寫入但會附警告；網頁上只當成「過去的處理說明」唯讀顯示
+  request-completion <project> <public_id> [--text 文字] [--force]
+                                   請客戶確認完成：只發一則附「通過」按鈕的確認留言，單維持等客戶，不會直接結案；
+                                   沒給 --text 就用預設文字（不讀標準輸入）；已完成的單會被拒絕
   status <project> <public_id|編號> <new|needs_input|等工程師|等{客戶稱呼}> [--force]
-                                   舊名稱待處理／待審核也接受；completed（已完成）只由客戶在網頁上按「完成」，會被擋下
+                                   舊名稱待處理／待審核也接受；completed（已完成）只由客戶在網頁上按「完成」或確認留言上的「通過」，會被擋下
   message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
                                    --attach 附件：${MESSAGE_HINT}（mp4）
-                                   等工程師（new）的單留言後自動改成等客戶（needs_input，記得更新調整重點）
+                                   等工程師（new）的單留言後自動改成等客戶（needs_input）
   draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖片／影片]...
                                    --attach 規則同 message
                                    待審留言：客戶看不到，團隊在單頁按「送出」才發出；
@@ -102,6 +106,7 @@ const COMMANDS: Record<string, Command> = {
     reports,
     report,
     adjust,
+    'request-completion': requestCompletion,
     status,
     message,
     draft,

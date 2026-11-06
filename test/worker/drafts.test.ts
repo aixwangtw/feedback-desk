@@ -103,7 +103,7 @@ describe('待審留言（草稿）', () => {
         expect(await clientUnread(report)).toBe(0);
     });
 
-    it('shows the team the draft with send, edit and discard buttons, and marks it on the list and the board', async () => {
+    it('shows the team the draft with send, edit and discard buttons (and no draft tag on the list or board)', async () => {
         const { seeded, report, token } = await setup();
         await createDraftAs(token, seeded, report, { body: DRAFT_TEXT });
         const draft = await soleDraft(report);
@@ -115,10 +115,12 @@ describe('待審留言（草稿）', () => {
         for (const label of ['送出', '捨棄', '編輯', 'border-dashed']) {
             expect(page).toContain(label);
         }
+        // The list and the board carry no draft tag any more (it shows in the detail, the page and the panel only).
         for (const query of ['', '?view=board', '?sort=created_at']) {
-            const portal = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
-            expect(portal).toContain('待審留言 1');
-            expect(portal).toContain(`data-draft-badge="${report.public_id}"`);
+            // The header bell still lists drafts; look at the list itself.
+            const portal = (await (await owner.get(`/p/${seeded.project.slug}${query}`)).text()).replace(/<details[^>]*data-notification-bell[\s\S]*?<\/details>/, '');
+            expect(portal).not.toContain('待審留言');
+            expect(portal).not.toContain('data-draft-badge');
         }
     });
 

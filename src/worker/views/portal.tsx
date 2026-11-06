@@ -2,15 +2,14 @@ import type { FC } from 'hono/jsx';
 import { STATUSES, statusDotClass, statusLabel, WAITING_STATUS, type ReportStatus, type StatusLabels } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
-import type { PortalTab, WaitingSide } from '../lib/reports';
+import type { PortalTab } from '../lib/reports';
 import { paths } from '../routes/paths';
-import { AttachmentMedia, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
-import { AdjustmentBlock, CategoryAutosave, editCategoryOptions } from './report';
+import { AttachmentMedia, cx, ErrorList, Layout, Pagination, Thumb, type ViewContext } from './components';
+import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastNotes, RequestCompletionDialog } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
-import { Thumb } from './rows-reference';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
 import { MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
@@ -20,19 +19,17 @@ export interface PortalRow {
     report: Report;
     number: number;
     creatorLabel: string;
-    attachments: Attachment[];
-    adjustmentAttachments: Attachment[];
     /**
      * Unread items for the viewer side: client messages for the team; team messages plus 1 for a
-     * changed adjustment for the client. The red number on the chat button.
+     * changed adjustment for the client. The number of the small red dot beside the title.
      */
     unread: number;
-    /** All messages on the report. */
-    messagesCount: number;
-    /** Team side only: 待審留言（草稿）數。 */
-    drafts?: number;
-    /** 在等誰（直接對應狀態）：等工程師、等客戶；已完成不標。 */
-    waiting?: WaitingSide;
+}
+
+/** 詳情視窗要的資料：清單列再加上這張單的附件（清單本身不載入附件）。 */
+export interface DialogRow extends PortalRow {
+    attachments: Attachment[];
+    adjustmentAttachments: Attachment[];
 }
 
 export interface PortalFormState {
@@ -78,6 +75,8 @@ export interface PortalProps {
     guest?: boolean;
     projects?: Array<{ name: string; slug: string }>;
     form?: PortalFormState;
+    /** 編輯失敗重新顯示時，被編輯那張單的詳情資料（附件），對話框才能帶著錯誤重開。 */
+    editingRow?: DialogRow;
     /** 頁首通知鈴鐺。 */
     bell?: Notifications | null;
 }
@@ -173,7 +172,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const categories = projectCategories(project);
     const showCategory = categories.length > 0;
-    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory, categories };
+    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
     const clientRender = rows.length > SERVER_ROW_LIMIT;
     const sortHeader = (column: string, label: string, thClass: string) => (
@@ -190,13 +189,12 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
                     <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-                    <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{labels.client}留言就變「{statusLabels.new}」，{labels.owner}回覆就變「{statusLabels.needs_input}」；{labels.client}確認沒問題後按操作欄的「完成」。{viewMode === 'board' ? '各欄' : '點欄名即可排序；'}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{labels.client}留言就變「{statusLabels.new}」，{labels.owner}回覆就變「{statusLabels.needs_input}」；{labels.client}確認沒問題後在單的詳情按「完成」（或確認留言上的「通過」）。點一下列或卡片可開詳情。{viewMode === 'board' ? '各欄' : '點欄名即可排序；'}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
                     <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>{statusLabels.new}</span><span>{labels.client}開了單或又留言，等{labels.owner}處理、回覆。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{statusLabels.needs_input}</span><span>{labels.owner}已回覆或改好並寫了調整重點，請{labels.client}確認。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{statusLabels.needs_input}</span><span>{labels.owner}已回覆或改好，請{labels.client}確認。</span></li>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>{statusLabels.completed}</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
                     </ul>
-                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整圖（「N 張調整圖」）。' : '標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整附圖。'}</p>
                 </div>
                 <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
             </div>
@@ -304,24 +302,19 @@ export const PortalPage: FC<PortalProps> = (props) => {
 
                 {viewMode === 'list' ? (
                     <div class="sm:overflow-x-auto" data-list-view>
-                        <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[64rem]" data-report-table>
+                        <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[40rem]" data-report-table>
                             <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                                 <tr>
                                     <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
-                                    {sortHeader('title', '標題', 'whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5')}
+                                    {sortHeader('title', '標題', 'whitespace-nowrap px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
-                                    {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
-                                    <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
-                                    <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
                                     <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
-                                    {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
-                                    {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-28 px-4 py-3.5 text-center')}
-                                    <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
+                                    {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-32 px-4 py-3.5 text-center')}
                                 </tr>
                             </thead>
                             <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                                 {rows.length === 0 ? (
-                                    <tr class="block sm:table-row"><td colspan={showCategory ? 10 : 9} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                                    <tr class="block sm:table-row"><td colspan={5} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                                 ) : (
                                     clientRender ? null : raw(rows.map((row) => listRowHtml(rowContext, row)).join(''))
                                 )}
@@ -364,11 +357,9 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 page small enough to render within the Workers CPU budget. After a failed edit, that
                 report's dialogs are rendered here directly so the edit dialog can reopen with errors. */}
             <div id="report-dialogs" data-report-dialogs>
-                {rows
-                    .filter((row) => form?.bag === 'editReport' && form.editing?.publicId === row.report.public_id)
-                    .map((row) => (
-                        <ReportDialogs v={v} row={row} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} categories={categories} form={form} />
-                    ))}
+                {props.editingRow ? (
+                    <ReportDialogs v={v} row={props.editingRow} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} categories={categories} form={form} />
+                ) : null}
             </div>
 
             <NewIssuesDialog slug={slug} form={form} issueRows={issueRows} categories={categories} guest={props.guest === true} turnstileSiteKey={props.guest && v.cfg.publicReporting.turnstileSiteKey !== '' && v.cfg.publicReporting.turnstileSecretKey !== '' ? v.cfg.publicReporting.turnstileSiteKey : ''} />
@@ -376,86 +367,97 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 };
 
-type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
+type RowProps = { v: ViewContext; row: DialogRow; slug: string; isOwner: boolean; backPath: string; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
+/**
+ * 單張詳情（Jira 版面）：電腦版從右側滑出、手機版整頁。左邊：標題、說明、附件、過去的處理說明（舊調整重點，唯讀）、
+ * 活動（相簿＋時間軸）、待審留言（只有團隊）、可拖曳附件的輸入框；右邊窄欄：狀態、完成鈕、建立者、時間，隨對話端點的 side_html 更新。
+ * 手機時右窄欄排在標題下方、說明上方。留言、草稿、相簿與單頁、右下角面板是同一套（見 report.tsx）。
+ */
 export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalFormState }> = ({ v, row, slug, isOwner, backPath, attachmentUrl, categories, form }) => {
     const report = row.report;
-    const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
     const editing = form?.bag === 'editReport' && form.editing?.publicId === report.public_id ? form.editing : null;
     const editErrors = editing ? form?.errors ?? [] : [];
     return (
         <>
-            <dialog id={`detail-report-${report.public_id}`} class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`detail-report-title-${report.public_id}`} data-report-detail>
-                <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status, v.cfg.statusLabels)}</p>
-                            <h2 id={`detail-report-title-${report.public_id}`} class="mt-1 break-words text-lg font-bold text-slate-950">{report.title}</h2>
+            <dialog id={`detail-report-${report.public_id}`} class="detail-panel m-0 ml-auto h-dvh max-h-none w-full max-w-none bg-white p-0 text-slate-950 shadow-2xl backdrop:bg-slate-950/50 sm:w-[min(68rem,calc(100vw-1.5rem))] sm:rounded-l-2xl" aria-labelledby={`detail-report-title-${report.public_id}`} data-report-detail>
+                <div class="flex h-dvh min-w-0 flex-col">
+                    <header class="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+                        <p class="min-w-0 flex-1 truncate text-xs font-bold text-slate-500">編號 <span data-report-number>{row.number}</span></p>
+                        <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
+                    </header>
+
+                    <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-x-8 gap-y-5 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_16rem]" data-detail-scroll>
+                        <div class="min-w-0 lg:col-start-1 lg:row-start-1">
+                            <h2 id={`detail-report-title-${report.public_id}`} class="break-words text-xl font-bold leading-snug text-slate-950">{report.title}</h2>
                             {categories.length > 0 ? (
                                 <div class="mt-2">
                                     <CategoryAutosave slug={slug} report={report} categories={categories} backPath={backPath} idPrefix="detail-category" />
                                 </div>
                             ) : null}
                         </div>
-                        <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
-                    </div>
-                    <div data-report-description><RichText text={report.description} compact /></div>
-                    {row.attachments.length > 0 ? (
-                        <div class="flex flex-wrap gap-2">
-                            {row.attachments.map((attachment) => (
-                                <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} size="size-20" />
-                            ))}
-                        </div>
-                    ) : null}
-                    {hasAdjustment ? (
-                        <div class="rounded-xl border border-teal-100 bg-teal-50/40 p-4">
-                            <AdjustmentBlock report={report} adjustmentAttachments={row.adjustmentAttachments} attachmentUrl={(attachment) => attachmentUrl(report, attachment)} compact />
-                        </div>
-                    ) : null}
-                    {row.creatorLabel ? <p class="text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p> : null}
-                    <p class="text-xs text-slate-500">建立：<Time v={v} at={report.created_at} />　最後更新：<Time v={v} at={report.latest_activity_at} /></p>
-                    {/* The thread comes from the same JSON the chat panel uses (server-escaped HTML); loading it marks the report read. */}
-                    <section
-                        class="grid gap-3 border-t border-slate-100 pt-4"
-                        aria-label="留言"
-                        data-dialog-thread
-                        data-thread-url={paths.conversation(slug, report.public_id)}
-                        data-report-id={report.public_id}
-                    >
-                        <h3 class="text-sm font-bold text-slate-900">留言</h3>
-                        {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以在下方直接留言給{v.cfg.labels.owner}。</p>}
-                        <div class="max-h-[50dvh] overflow-y-auto rounded-xl bg-slate-50/70 px-3 py-3" aria-live="polite" data-dialog-thread-body>
-                            <p class="py-4 text-center text-sm text-slate-500">留言載入中…</p>
-                        </div>
-                        {isOwner ? <div class="empty:hidden" data-dialog-thread-drafts></div> : null}
-                        <form action={paths.reportMessages(slug, report.public_id)} method="post" class="grid gap-2" data-dialog-thread-form novalidate>
-                            <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
-                            <div id={`dialog-preview-${report.public_id}`} class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
-                            <label for={`dialog-body-${report.public_id}`} class="sr-only">留言內容</label>
-                            <textarea
-                                id={`dialog-body-${report.public_id}`}
-                                name="body"
-                                rows={2}
-                                maxlength={10000}
-                                placeholder="輸入留言…（Ctrl＋Enter 送出）"
-                                class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"
-                                data-dialog-thread-input
-                            ></textarea>
-                            <div class="flex items-center justify-between gap-2">
-                                <label for={`dialog-screenshots-${report.public_id}`} class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                    {MESSAGE_UPLOAD_LABEL}
-                                    <input id={`dialog-screenshots-${report.public_id}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-attachment-composer data-preview-target={`dialog-preview-${report.public_id}`} data-dialog-thread-files />
-                                </label>
-                                <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500" title={MESSAGE_HINT}>{MESSAGE_HINT}</span>
-                                <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>
+
+                        <aside class="min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start" aria-label="單的資訊">
+                            <div data-detail-side-box>
+                                <DetailSide v={v} slug={slug} report={report} isOwner={isOwner} canManage creatorLabel={row.creatorLabel || null} />
                             </div>
-                        </form>
-                    </section>
-                    <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                        <a href={paths.report(slug, report.public_id)} class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">查看留言紀錄（完整頁）</a>
+                            <div class="mt-4">
+                                <DetailActions slug={slug} report={report} isOwner={isOwner} backPath={backPath} />
+                            </div>
+                        </aside>
+
+                        <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5 lg:col-start-1 lg:row-start-2">
+                            <div data-report-description><RichText text={report.description} compact /></div>
+                            {row.attachments.length > 0 ? (
+                                <div class="flex flex-wrap gap-2" data-detail-attachments>
+                                    {row.attachments.map((attachment) => (
+                                        <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} size="size-20" />
+                                    ))}
+                                </div>
+                            ) : null}
+                            <PastNotes report={report} adjustmentAttachments={row.adjustmentAttachments} attachmentUrl={(attachment) => attachmentUrl(report, attachment)} />
+                            {/* The thread comes from the same JSON the chat panel uses (server-escaped HTML); loading it marks the report read. */}
+                            <section
+                                class="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-slate-100 pt-4"
+                                aria-label="活動"
+                                data-dialog-thread
+                                data-thread-url={paths.conversation(slug, report.public_id)}
+                                data-report-id={report.public_id}
+                            >
+                                <h3 class="text-sm font-bold text-slate-900">活動</h3>
+                                {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以在下方直接留言給{v.cfg.labels.owner}。</p>}
+                                <div aria-live="polite" data-dialog-thread-body>
+                                    <p class="py-4 text-center text-sm text-slate-500">留言載入中…</p>
+                                </div>
+                                {isOwner ? <div class="overflow-hidden rounded-xl empty:hidden" data-dialog-thread-drafts></div> : null}
+                                <form action={paths.reportMessages(slug, report.public_id)} method="post" class="grid grid-cols-[minmax(0,1fr)] gap-2" data-dialog-thread-form novalidate>
+                                    <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
+                                    <div id={`dialog-preview-${report.public_id}`} class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
+                                    <label for={`dialog-body-${report.public_id}`} class="sr-only">留言內容</label>
+                                    <textarea
+                                        id={`dialog-body-${report.public_id}`}
+                                        name="body"
+                                        rows={3}
+                                        maxlength={10000}
+                                        placeholder="輸入留言…（Ctrl＋Enter 送出，可直接把圖片或影片拖進來）"
+                                        class="block max-h-60 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"
+                                        data-dialog-thread-input
+                                    ></textarea>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label for={`dialog-screenshots-${report.public_id}`} class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                                            {MESSAGE_UPLOAD_LABEL}
+                                            <input id={`dialog-screenshots-${report.public_id}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-attachment-composer data-preview-target={`dialog-preview-${report.public_id}`} data-dialog-thread-files />
+                                        </label>
+                                        <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500" title={MESSAGE_HINT}>{MESSAGE_HINT}</span>
+                                        <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>
+                                    </div>
+                                </form>
+                            </section>
+                        </div>
                     </div>
                 </div>
             </dialog>
+            {isOwner ? <RequestCompletionDialog v={v} slug={slug} report={report} /> : null}
 
             <dialog id={`edit-report-${report.public_id}`} class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`edit-report-title-${report.public_id}`} data-open-on-load={editErrors.length > 0 ? '' : undefined}>
                 <form method="post" action={paths.reportUpdate(slug, report.public_id)} class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-5 overflow-y-auto p-5 sm:p-7" data-upload-form>

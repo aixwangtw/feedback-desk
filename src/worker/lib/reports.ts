@@ -1,6 +1,7 @@
 import type { ReportStatus } from '../../shared/status';
 import { STATUSES } from '../../shared/status';
 import { nowIso } from '../../shared/time';
+import { statusChangeNotice as sharedStatusChangeNotice } from '../../shared/completion';
 import type { Env } from '../env';
 import { config } from '../env';
 import type { Author, Creator } from './access';
@@ -173,13 +174,13 @@ export async function setClientDeleted(env: Env, report: Report, deleted: boolea
 }
 
 /** 團隊留言把單切成等客戶（needs_input）後，給人看的提醒（網頁、指令、MCP、排程 API 共用；名稱照站台設定）。 */
-export function adjustmentReminder(env: Env): string {
-    return `狀態已改為「${config(env).statusLabels.needs_input}」，記得更新調整重點。`;
+export function statusChangeNotice(env: Env): string {
+    return sharedStatusChangeNotice(config(env).statusLabels);
 }
 
 /**
  * 留言自動切狀態：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；團隊在等工程師的單留言 →
- * 等客戶（記得更新調整重點）。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
+ * 等客戶。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
  */
 export function statusAfterMessage(current: ReportStatus, byTeam: boolean): ReportStatus | null {
     if (byTeam && current === 'new') {
@@ -237,16 +238,16 @@ export function storedFileStatements(db: D1Database, reportId: number, messageId
 export async function addMessage(
     env: Env,
     report: Report,
-    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[]; author?: Author; storedFiles?: StoredFile[]; applyStatusRule?: boolean; extraStatements?: D1PreparedStatement[] },
+    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[]; author?: Author; storedFiles?: StoredFile[]; applyStatusRule?: boolean; extraStatements?: D1PreparedStatement[]; isCompletionRequest?: boolean },
     now = Date.now(),
 ): Promise<{ id: number; status: ReportStatus; statusChanged: boolean }> {
     const db = env.DB;
     const at = nowIso(now);
     const message = await db
         .prepare(
-            'INSERT INTO messages (report_id, author_type, author_name, author_client_account_id, author_developer_id, author_agent, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            'INSERT INTO messages (report_id, author_type, author_name, author_client_account_id, author_developer_id, author_agent, body, is_completion_request, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
         )
-        .bind(report.id, data.author_type, data.author_name, data.author?.clientAccountId ?? null, data.author?.developerId ?? null, data.author?.agent ?? null, data.body, at, at)
+        .bind(report.id, data.author_type, data.author_name, data.author?.clientAccountId ?? null, data.author?.developerId ?? null, data.author?.agent ?? null, data.body, data.isCompletionRequest ? 1 : 0, at, at)
         .first<{ id: number }>();
     if (!message) {
         throw new Error('message insert returned no id');

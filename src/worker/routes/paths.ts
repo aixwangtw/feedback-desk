@@ -28,6 +28,7 @@ export const paths = {
     reportActivity: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/activity`,
     reportMessages: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/messages`,
     reportAdjustment: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/adjustment`,
+    reportRequestCompletion: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/request-completion`,
     reportClaim: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/claim`,
     reportHandoff: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}/handoff`,
     draftSend: (slug: string, publicId: string, draftId: number) => `/p/${enc(slug)}/reports/${enc(publicId)}/drafts/${draftId}/send`,

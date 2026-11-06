@@ -112,7 +112,7 @@ describe('client accounts on the CLI and MCP', () => {
         const other = await seedProject();
         expect((await tool(token, 'list_reports', { project: other.project.slug })).isError).toBe(true);
         const owner = await new Browser().asOwner(seeded);
-        expect(await (await owner.get(`/p/${seeded.project.slug}/reports/${created.data.public_id}`)).text()).toContain('建立者：林小美（Codex）');
+        expect(await (await owner.get(`/p/${seeded.project.slug}/reports/${created.data.public_id}`)).text()).toContain('data-report-creator="true">林小美（Codex）</dd>');
     });
 });
 

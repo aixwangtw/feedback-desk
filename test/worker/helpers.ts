@@ -126,6 +126,11 @@ export async function seedAttachment(report: Report, options: { kind?: 'feedback
     return row?.id ?? 0;
 }
 
+/** Writes the (deprecated) adjustment note directly: the web page can no longer write it, but old notes still show as 過去的處理說明 and count as news for the client. */
+export async function seedAdjustment(report: Report, note: string, at = new Date().toISOString()): Promise<void> {
+    await env.DB.prepare('UPDATE reports SET adjustment_note = ?, adjustment_updated_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(note, at, at, at, report.id).run();
+}
+
 export async function reload<T extends { id: number }>(table: 'reports' | 'projects', row: T): Promise<T> {
     return (await env.DB.prepare(`SELECT * FROM ${table} WHERE id = ?`).bind(row.id).first<T>()) as T;
 }

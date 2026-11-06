@@ -244,15 +244,14 @@ describe('附件縮圖支援影片', () => {
         return { seeded, report, url: `/p/${seeded.project.slug}/reports/${report.public_id}/attachments/${row!.id}` };
     }
 
-    it('list, board, detail dialog and report page show the first frame with a play mark instead of an <img>', async () => {
+    it('detail dialog, report page and the album show the first frame with a play mark instead of an <img>; list and board carry no thumbnails', async () => {
         const { seeded, report, url } = await withReportVideo();
         const owner = await new Browser().asOwner(seeded);
         const thumb = `<video muted="" playsinline="" preload="metadata" src="${url}#t=0.1"`;
         const pages = {
-            list: await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text(),
-            board: await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text(),
             dialogs: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text(),
             page: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text(),
+            album: ((await (await owner.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { accept: 'application/json' })).json()) as { html: string }).html,
         };
         for (const [name, html] of Object.entries(pages)) {
             expect(html, name).toContain(thumb);
@@ -260,10 +259,14 @@ describe('附件縮圖支援影片', () => {
             expect(html, name).toContain('影片：開單錄影.mp4');
             expect(html, name).not.toContain(`<img src="${url}"`);
         }
-        expect(pages.list).toContain('>附件</th>');
-        expect(pages.list).not.toContain('>圖片</th>');
-        expect(pages.list).toContain('影片點了會開新分頁播放');
-        expect(pages.board).toContain('影片點了會開新分頁播放');
+        // The album plays videos in the lightbox (data-lightbox-play); other thumbnails open a new tab.
+        expect(pages.album).toContain('data-lightbox-play');
+        expect(pages.album).toContain('title="播放影片"');
+        for (const query of ['?tab=all', '?tab=all&view=board']) {
+            const html = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
+            expect(html).not.toContain('data-attachment-video');
+            expect(html).not.toContain('>附件</th>');
+        }
     });
 });
 

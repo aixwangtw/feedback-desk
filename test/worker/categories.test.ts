@@ -151,14 +151,18 @@ describe('per-project report categories', () => {
         expect(await (await owner.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text()).not.toContain('data-category-autosave');
     });
 
-    it('list rows and board cards switch the category with the same dropdown; none without categories', async () => {
+    it('the category dropdown lives in the detail dialog only (not in list rows or board cards); the list keeps the category filter', async () => {
         const { seeded, slug, owner, client } = await setup();
         const { report } = await seedReport(seeded.project);
         expect(await (await owner.get(`/p/${slug}?tab=all`)).text()).not.toContain('data-category-autosave');
         await owner.post(`/p/${slug}/settings/categories`, { categories: '程式問題,排版' });
         const list = await (await client.get(`/p/${slug}?tab=all`)).text();
-        expect(list).toContain(`id="row-category-${report.public_id}"`);
+        expect(list).not.toContain('data-category-autosave');
+        expect(list).not.toContain(`id="row-category-${report.public_id}"`);
+        expect(list).toContain('data-category-filter');
         const board = await (await client.get(`/p/${slug}?tab=all&view=board`)).text();
-        expect(board).toContain(`id="card-category-${report.public_id}"`);
+        expect(board).not.toContain(`id="card-category-${report.public_id}"`);
+        const dialogs = await (await client.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialogs).toContain(`id="detail-category-${report.public_id}"`);
     });
 });

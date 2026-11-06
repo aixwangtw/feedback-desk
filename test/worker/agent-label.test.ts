@@ -63,7 +63,7 @@ describe('agent label on the developer side', () => {
         const browser = new Browser();
         await browser.loginAs(slug, alex.developer.username, alex.password);
         const page = await (await browser.get(`/p/${slug}/reports/${created.public_id}`)).text();
-        expect(page).toContain('建立者：王小明');
+        expect(page).toContain('data-report-creator="true">王小明</dd>');
         expect(page).not.toContain('王小明（Claude Code）');
     });
 
@@ -92,7 +92,7 @@ describe('agent label on the developer side', () => {
         const browser = new Browser();
         await browser.loginAs(slug, bea.developer.username, bea.password);
         const page = await (await browser.get(`/p/${slug}/reports/${created.public_id}`)).text();
-        expect(page).toContain('建立者：林小美（Codex）');
+        expect(page).toContain('data-report-creator="true">林小美（Codex）</dd>');
         expect(page).not.toContain('陳美華（Claude Code）');
     });
 });

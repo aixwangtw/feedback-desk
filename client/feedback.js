@@ -3,6 +3,9 @@ import { bindPageAttachmentComposers } from './attachment-composer.js';
 import { bindPageMessageDrafts } from './message-drafts.js';
 import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
+import { reopenPendingReport } from './completion.js';
+import './row-link.js';
+import { replaceKeepingOpen } from './thread-details.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
 // Long portal pages send their rows as JSON; build them before anything below binds to the rows.
@@ -306,6 +309,8 @@ if (imageLightbox) {
     const scaleOutput = imageLightbox.querySelector('[data-lightbox-scale]');
     const openOriginal = imageLightbox.querySelector('[data-lightbox-original]');
     const stage = imageLightbox.querySelector('[data-lightbox-stage]');
+    const video = imageLightbox.querySelector('[data-lightbox-video]');
+    const zoomGroup = imageLightbox.querySelector('[data-lightbox-zoom-group]');
     let activeTrigger = null;
     let scale = 1;
 
@@ -327,18 +332,28 @@ if (imageLightbox) {
         if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
             return;
         }
-        // 影片縮圖不進圖片燈箱：照連結（target=_blank）在新分頁播放。
-        if (trigger.querySelector('[data-attachment-video]')) {
+        // 影片縮圖不進圖片燈箱：照連結（target=_blank）在新分頁播放；只有相簿（data-lightbox-play）在燈箱裡直接播放。
+        const isVideo = Boolean(trigger.querySelector('[data-attachment-video]'));
+        if (isVideo && !('lightboxPlay' in trigger.dataset)) {
             return;
         }
 
         event.preventDefault();
         activeTrigger = trigger;
         scale = 1;
-        image.src = trigger.href;
+        image.hidden = isVideo;
+        video.hidden = !isVideo;
+        zoomGroup.hidden = isVideo;
+        if (isVideo) {
+            video.src = trigger.href;
+            video.play?.().catch(() => {});
+        } else {
+            image.src = trigger.href;
+        }
         image.alt = trigger.dataset.lightboxAlt || '截圖預覽';
-        title.textContent = image.alt;
+        title.textContent = trigger.dataset.lightboxAlt || (isVideo ? '影片' : '截圖預覽');
         openOriginal.href = trigger.href;
+        openOriginal.textContent = isVideo ? '開啟原檔' : '開啟原圖';
         applyScale();
         imageLightbox.showModal();
         document.body.classList.add('overflow-hidden');
@@ -360,6 +375,9 @@ if (imageLightbox) {
     imageLightbox.addEventListener('close', () => {
         document.body.classList.remove('overflow-hidden');
         image.removeAttribute('src');
+        video.pause?.();
+        video.removeAttribute('src');
+        video.load?.();
         activeTrigger?.focus();
         activeTrigger = null;
     });
@@ -407,7 +425,11 @@ if (activity) {
                 delay = Math.min(maxDelay, delay * 2);
             } else if (response.ok) {
                 // A full answer means something changed: show it and check again soon.
-                activity.innerHTML = await response.text();
+                const html = await response.text();
+                // 使用者展開的相簿、過去的處理說明換新後維持展開。
+                replaceKeepingOpen(activity, () => {
+                    activity.innerHTML = html;
+                });
                 etag = response.headers.get('ETag');
                 delay = minDelay;
             } else {
@@ -453,6 +475,13 @@ const loadReportDialogs = async (opener) => {
 document.addEventListener('click', async (event) => {
     const opener = event.target.closest('[data-dialog-open]');
     if (opener) {
+        // 連結（清單的編號、標題）按住修飾鍵或用滑鼠中鍵時照瀏覽器預設開新分頁；一般點擊開視窗。
+        if (opener.tagName === 'A') {
+            if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+                return;
+            }
+            event.preventDefault();
+        }
         let dialog = document.getElementById(opener.dataset.dialogOpen);
         if (!dialog) {
             opener.setAttribute('aria-busy', 'true');
@@ -465,7 +494,9 @@ document.addEventListener('click', async (event) => {
             }
             dialog = document.getElementById(opener.dataset.dialogOpen);
         }
-        dialog?.showModal();
+        if (dialog && !dialog.open) {
+            dialog.showModal();
+        }
         openDialogThread(dialog);
 
         return;
@@ -542,3 +573,6 @@ document.addEventListener('change', async (event) => {
         select.disabled = false;
     }
 });
+
+// 完成／確認完成後整頁重新載入，要把剛才開著的那張單的詳情再開起來（要等上面的點擊處理都綁好）。
+reopenPendingReport();

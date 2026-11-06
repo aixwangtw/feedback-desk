@@ -67,7 +67,7 @@ export async function attachmentsForReport(db: D1Database, reportId: number): Pr
 export async function messagesForReport(db: D1Database, reportId: number): Promise<Message[]> {
     const { results } = await db
         .prepare(
-            `SELECT m.id, m.report_id, m.author_type, m.author_client_account_id, m.author_developer_id, m.author_agent, m.body, m.created_at, m.updated_at,
+            `SELECT m.id, m.report_id, m.author_type, m.author_client_account_id, m.author_developer_id, m.author_agent, m.body, m.is_completion_request, m.created_at, m.updated_at,
                 CASE WHEN r.creator_type = 'public' THEN m.author_name ELSE COALESCE(ca.name, d.name, m.author_name) END AS author_name
              FROM messages m
              JOIN reports r ON r.id = m.report_id
@@ -78,6 +78,27 @@ export async function messagesForReport(db: D1Database, reportId: number): Promi
         .bind(reportId)
         .all<Message>();
     return results;
+}
+
+/**
+ * 狀態變更紀錄（活動時間軸用）：report_events 裡 kind = 'status' 的列，detail 是「new>needs_input」。
+ * 沒記到動作者的狀態變更不會有紀錄，也就不會出現在時間軸。
+ */
+export async function statusEventsForReport(db: D1Database, reportId: number): Promise<StatusEventRow[]> {
+    const { results } = await db
+        .prepare("SELECT id, detail, actor_name, agent, developer_id, created_at FROM report_events WHERE report_id = ? AND kind = 'status' ORDER BY id")
+        .bind(reportId)
+        .all<StatusEventRow>();
+    return results;
+}
+
+export interface StatusEventRow {
+    id: number;
+    detail: string | null;
+    actor_name: string;
+    agent: string | null;
+    developer_id: number | null;
+    created_at: string;
 }
 
 /** Builds "?, ?, ?" for an IN clause. */

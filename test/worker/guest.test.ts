@@ -82,7 +82,7 @@ describe('guest client entry', () => {
         expect((await new Browser().get(`/p/${slug}?tab=all`)).status).toBe(302);
     });
 
-    it('shows a category column and filters by category, including uncategorized', async () => {
+    it('filters by category, including uncategorized (the list has no category column any more)', async () => {
         const { seeded, slug, browser, vars } = await guestSetup();
         const visitor = browser();
         await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '排版單', 'issues[0][description]': 'd', 'issues[0][category]': '經典排版' });
@@ -92,7 +92,7 @@ describe('guest client entry', () => {
 
         const all = await html('');
         expect(all).toContain('data-category-filter');
-        expect(all).toContain('data-report-category');
+        expect(all).not.toContain('data-report-category');
         expect(all).toContain('排版單');
         expect(all).toContain('舊單');
 
@@ -155,27 +155,31 @@ describe('guest client entry', () => {
         expect((await reportsOf(seeded.project.id))[0].category).toBe('舊分類');
     });
 
-    it('shows the creator after the adjustment note in the detail dialog and page', async () => {
+    it('shows the old adjustment note read-only after the description, and the creator in the side column, in the detail dialog and page', async () => {
         const { seeded, slug, browser } = await guestSetup();
         const { report } = await seedReport(seeded.project);
         await env.DB.prepare('UPDATE reports SET description = ?, adjustment_note = ? WHERE id = ?').bind('說明內文XYZ', '調整內文ABC', report.id).run();
         const visitor = browser();
         for (const html of [await (await visitor.get(`/p/${slug}/reports/${report.public_id}/dialogs`)).text(), await (await visitor.get(`/p/${slug}/reports/${report.public_id}`)).text()]) {
+            expect(html).toContain('過去的處理說明');
             expect(html.indexOf('調整內文ABC')).toBeGreaterThan(html.indexOf('說明內文XYZ'));
-            expect(html.indexOf('建立者：')).toBeGreaterThan(html.indexOf('調整內文ABC'));
+            expect(html).toContain('data-report-creator="true"');
+            expect(html).not.toContain('編輯調整重點');
         }
     });
 
-    it('orders list columns as title, status, category, attachments, adjustment, creator, dates, actions', async () => {
+    it('lists only number, title, status, creator and last update', async () => {
         const { seeded, slug, browser } = await guestSetup();
         await seedReport(seeded.project);
         const html = await (await browser().get(`/p/${slug}?tab=all`)).text();
         const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-        const order = ['標題', '狀態', '分類', '附件', '調整重點', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
+        const order = ['編號', '標題', '狀態', '建立者', '最後更新'].map((label) => head.indexOf(label));
         expect(order.every((index) => index >= 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
+        for (const gone of ['分類', '附件', '調整重點', '建立日期', '操作']) {
+            expect(head, gone).not.toContain(gone);
+        }
         const row = html.slice(html.indexOf('data-report-row='));
-        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('調整重點：'));
-        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('data-report-category'));
+        expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('data-status-text'));
     });
 });

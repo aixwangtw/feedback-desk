@@ -1,3 +1,4 @@
+import { COMPLETED_BY_CLIENT_ONLY } from '../../src/shared/work-rule';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -559,9 +560,9 @@ describe('draft (待審留言)', () => {
     });
 
     it('message prints the reminder when the server moved the report to needs_input', async () => {
-        const fake = signedIn(({ url }) => (url.endsWith('/messages') ? jsonResponse({ title: '單', author: '王小明', images_added: 0, status: 'needs_input', notice: '狀態已改為「等客戶」，記得更新調整重點。' }) : jsonResponse({}, 404)));
+        const fake = signedIn(({ url }) => (url.endsWith('/messages') ? jsonResponse({ title: '單', author: '王小明', images_added: 0, status: 'needs_input', notice: '狀態已改為「等客戶」。' }) : jsonResponse({}, 404)));
         expect(await main(['message', 'demo', 'uuid-1', '--body', '已修正'], fake.rt)).toBe(0);
-        expect(fake.text()).toContain('記得更新調整重點');
+        expect(fake.text()).toContain('狀態已改為「等客戶」。');
     });
 
     it('is listed in the help', async () => {
@@ -680,6 +681,8 @@ describe('report commands', () => {
         expect(fake.calls[0].url).toBe('https://desk.example.com/api/v1/projects/demo/reports/uuid-1/uploads?by=public_id&purpose=adjustment');
         expect(fake.calls[1].body).toEqual({ note: '已調整', append: true, upload_ids: ['upload-1'] });
         expect(fake.text()).toContain('已追加');
+        // 調整重點已停用：照常寫入，但輸出附警告。
+        expect(fake.text()).toContain('調整重點已停用，請改用留言說明改了什麼');
 
         expect(await main(['adjust', 'demo', '12', '--note', 'x'], fake.rt)).toBe(1);
         expect(fake.errors()).toContain('--by-id');
@@ -690,6 +693,28 @@ describe('report commands', () => {
         expect(await main(['adjust', 'demo', 'uuid-1', '--append'], fake.rt)).toBe(1);
         const calls = fake.calls.length;
         expect(calls).toBe(2);
+    });
+
+    it('request-completion sends only a confirmation message: --text or the server default, never reads stdin, refuses bare numbers, and appears in the help', async () => {
+        const fake = signedIn(({ url }) => {
+            expect(url).toBe('https://desk.example.com/api/v1/projects/demo/reports/uuid-1/request-completion');
+            return jsonResponse({ public_id: 'uuid-1', title: '標題', message_id: 7, status: 'needs_input', status_label: '等客戶', notice: '已請客戶確認完成：單維持「等客戶」，要等客戶按「通過」才會變成已完成。', url: 'https://desk.example.com/p/demo/reports/uuid-1' }, 201);
+        });
+        expect(await main(['request-completion', 'demo', 'uuid-1', '--text', '已修好，請看登入頁'], fake.rt)).toBe(0);
+        expect(fake.calls[0].body).toEqual({ body: '已修好，請看登入頁' });
+        expect(fake.text()).toContain('已請確認完成：標題');
+        expect(fake.text()).toContain('needs_input（等客戶）');
+        expect(fake.text()).toContain('要等客戶按「通過」才會變成已完成');
+        // No text: nothing is sent for it (the server uses its default), and the command does not wait for stdin.
+        expect(await main(['request-completion', 'demo', 'uuid-1'], fake.rt)).toBe(0);
+        expect(fake.calls[1].body).toEqual({});
+        expect(await main(['request-completion', 'demo', '12'], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('public_id');
+        expect(fake.calls).toHaveLength(2);
+        const help = fakeRuntime();
+        await main(['help'], help.rt);
+        expect(help.text()).toContain('request-completion');
+        expect(help.text()).toContain('已停用，改用 message 留言');
     });
 
     it('status validates locally and prints before and after; the old names 待處理／待審核 still work', async () => {
@@ -708,7 +733,7 @@ describe('report commands', () => {
             const fake = signedIn(() => jsonResponse({}), env);
             for (const value of ['completed', '已完成']) {
                 expect(await main(['status', 'demo', '3', value], fake.rt)).toBe(1);
-                expect(fake.errors()).toContain('已完成只由客戶按完成：請改成 needs_input（等客戶），由客戶在網頁上按「完成」結單。');
+                expect(fake.errors()).toContain(COMPLETED_BY_CLIENT_ONLY);
             }
             expect(fake.calls).toHaveLength(0);
         }

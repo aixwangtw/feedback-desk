@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { adjustmentReminder } from '../../src/worker/lib/reports';
+import { statusChangeNotice } from '../../src/worker/lib/reports';
 import type { Report } from '../../src/worker/lib/models';
 import { Browser, seedProject, seedReport, workerEnv, type SeededProject } from './helpers';
 
@@ -207,7 +207,7 @@ describe('對話面板的待審留言', () => {
 
         const response = await owner.post(sendUrl(seeded, report, draftId), { body: '  面板裡改過的文字  ' }, JSON_HEADERS);
         expect(response.status).toBe(200);
-        expect(await response.json()).toEqual({ status: 'needs_input', message: `留言已送出。${adjustmentReminder(workerEnv)}` });
+        expect(await response.json()).toEqual({ status: 'needs_input', message: `留言已送出。${statusChangeNotice(workerEnv)}` });
 
         expect(await draftExists(draftId)).toBe(false);
         const sent = await messages(report);

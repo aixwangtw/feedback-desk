@@ -99,6 +99,8 @@ export interface Message {
     /** AI tool that wrote it through MCP or the CLI (migration 0006); null for people on the web. */
     author_agent: string | null;
     body: string;
+    /** 1: 開發團隊發的「請客戶確認完成」留言，客戶在上面按「通過」才結案（migration 0014）。 */
+    is_completion_request: number;
     created_at: string;
     updated_at: string;
 }

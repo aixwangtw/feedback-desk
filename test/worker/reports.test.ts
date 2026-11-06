@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { ADJUSTMENT_WEB_DISABLED } from '../../src/shared/completion';
 import { pruneStaleUploads } from '../../src/worker/lib/uploads';
 import { boardColumnHtml, listHtml } from '../../src/worker/views/rows-client';
-import { Browser, JPEG_BYTES, PNG_BYTES, seedAttachment, seedProject, seedReport, WEBP_BYTES, workerEnv } from './helpers';
+import { Browser, JPEG_BYTES, PNG_BYTES, seedAdjustment, seedAttachment, seedProject, seedReport, WEBP_BYTES, workerEnv } from './helpers';
 
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
 
@@ -221,11 +222,11 @@ describe('reports', () => {
         expect(ownerDialogs).toContain(`id="detail-report-${report.public_id}"`);
         expect(ownerDialogs).toContain(`id="delete-report-${report.public_id}"`);
         expect(ownerDialogs).toContain(`value="/p/${seeded.project.slug}?status=new"`);
-        expect(ownerDialogs).toContain('建立者：客戶');
+        expect(ownerDialogs).toContain('data-report-creator="true">客戶</dd>');
         const client = await new Browser().asClient(seeded);
         const clientDialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=//evil.example`)).text();
         expect(clientDialogs).toContain(`id="client-delete-report-${report.public_id}"`);
-        expect(clientDialogs).toContain('建立者：客戶');
+        expect(clientDialogs).toContain('data-report-creator="true">客戶</dd>');
         expect(clientDialogs).not.toContain('evil.example');
         expect((await new Browser().get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).status).toBe(302);
     });
@@ -257,29 +258,38 @@ describe('reports', () => {
         expect(second).not.toContain('portal-rows-data');
     });
 
-    it('team writes the adjustment; clients see it read-only and cannot change it', async () => {
+    it('the web can no longer write the adjustment (410, permission check unchanged); old notes show read-only as 過去的處理說明', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);
         const client = await new Browser().asClient(seeded);
         const before = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
-        expect(before).not.toContain('id="adjustment"');
+        expect(before).not.toContain('過去的處理說明');
+        // Permission checks stay as they were: a client is still refused (403), only the team reaches the 410.
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: 'x' })).status).toBe(403);
         expect((await client.upload(seeded.project.slug, `purpose=adjustment&report=${report.public_id}`)).status).toBe(403);
+        expect((await new Browser().post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: 'x' })).status).toBe(302);
 
         const owner = await new Browser().asOwner(seeded);
-        const image = await owner.uploadId(seeded.project.slug, `purpose=adjustment&report=${report.public_id}`);
-        const save = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已調整按鈕位置', 'upload_ids[]': image });
-        expect(save.headers.get('location')).toBe(`/p/${seeded.project.slug}/reports/${report.public_id}#adjustment`);
+        const save = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '已調整按鈕位置' });
+        expect(save.status).toBe(410);
+        expect(await save.json()).toEqual({ message: ADJUSTMENT_WEB_DISABLED, error: 'adjustment_disabled' });
+        expect((await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: 'y' }, { accept: 'application/json' })).status).toBe(410);
         const row = await env.DB.prepare('SELECT adjustment_note, status FROM reports WHERE id = ?').bind(report.id).first();
-        expect(row).toEqual({ adjustment_note: '已調整按鈕位置', status: 'new' });
+        expect(row).toEqual({ adjustment_note: null, status: 'new' });
 
-        const after = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
-        expect(after).toContain('已調整按鈕位置');
-        expect(after).toContain('data-adjustment-image');
-        expect(after).not.toContain('data-adjustment-editor');
+        // An old note (written before, or through the API) still shows to both sides, read-only.
+        const imageId = await seedAttachment(report, { kind: 'adjustment', name: 'after.png' });
+        await seedAdjustment(report, '已調整按鈕位置');
+        for (const browser of [client, owner]) {
+            const after = await (await browser.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
+            expect(after).toContain('過去的處理說明');
+            expect(after).toContain('已調整按鈕位置');
+            expect(after).toContain('data-adjustment-image');
+            expect(after).not.toContain('data-adjustment-editor');
+            expect(after).not.toContain('編輯調整重點');
+        }
         // An adjustment upload cannot be used as an ordinary screenshot.
-        const adjustmentAttachment = await env.DB.prepare("SELECT id FROM attachments WHERE report_id = ? AND kind = 'adjustment'").bind(report.id).first<{ id: number }>();
-        const misuse = await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/update`, { title: 't', description: 'd', 'remove_attachments[]': String(adjustmentAttachment!.id) });
+        const misuse = await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/update`, { title: 't', description: 'd', 'remove_attachments[]': String(imageId) });
         expect(misuse.status).toBe(422);
     });
 

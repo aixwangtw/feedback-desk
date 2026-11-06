@@ -315,6 +315,14 @@ api.post('/projects/:slug/reports/:ref/adjustment', async (c) => {
     const input = await body<{ note?: string | null; append?: boolean; upload_ids?: string[]; force?: boolean }>(c);
     return c.json(await team.writeAdjustment(ctx(c), c.req.param('slug'), c.req.param('ref'), { ...input, force: input.force === true, by_id: c.req.query('by') === 'id' }));
 });
+/**
+ * 請客戶確認完成（團隊帳號限定）：只發一則附「通過」按鈕的確認留言，單維持等客戶；不能直接結案。
+ * body 省略就用預設文字；已完成回 422 already_completed。
+ */
+api.post('/projects/:slug/reports/:ref/request-completion', async (c) => {
+    const input = await body<{ body?: string | null; force?: boolean }>(c);
+    return c.json(await team.requestCompletionFor(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: typeof input.body === 'string' ? input.body : null, force: input.force === true }), 201);
+});
 api.post('/projects/:slug/reports/:ref/claim', async (c) => {
     const input = await body<{ force?: boolean }>(c);
     return c.json(await team.claimReport(ctx(c), c.req.param('slug'), c.req.param('ref'), { force: input.force === true }));

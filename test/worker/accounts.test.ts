@@ -153,7 +153,7 @@ describe('client accounts', () => {
         expect(benPortal).toContain('林小美');
         expect((await conversations(benBrowser, seeded)).items.find((item) => item.id === report.public_id)?.creator).toBe('林小美');
         const page = await (await benBrowser.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
-        expect(page).toContain('建立者：林小美');
+        expect(page).toContain('data-report-creator="true">林小美</dd>');
         expect(page).toContain('張大文');
         const owner = await new Browser().asOwner(seeded);
         const ownerPortal = await (await owner.get(`/p/${seeded.project.slug}?tab=all&creator=client:${amy.account.id}`)).text();
@@ -164,7 +164,7 @@ describe('client accounts', () => {
 
         // A renamed account shows its new name on what it wrote before.
         expect((await amyBrowser.post(`/p/${seeded.project.slug}/account/name`, { name: '林美美' })).status).toBe(303);
-        expect(await (await benBrowser.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text()).toContain('建立者：林美美');
+        expect(await (await benBrowser.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text()).toContain('data-report-creator="true">林美美</dd>');
         expect((await clientRow(amy.account.id)).username).toBe(amy.account.username);
     });
 

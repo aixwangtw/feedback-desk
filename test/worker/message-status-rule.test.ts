@@ -7,10 +7,10 @@ import { api, BASE, Browser, mcpCall, rpcResult, seedDeveloper, seedProject, see
 
 /**
  * 留言自動切狀態：對應 Laravel 版 FeedbackMessageStatusRuleTest。
- * 等客戶（needs_input）的單客戶留言 → 等工程師（new）；團隊在等工程師的單送出留言 → 等客戶並提醒更新調整重點。
+ * 等客戶（needs_input）的單客戶留言 → 等工程師（new）；團隊在等工程師的單送出留言 → 等客戶。
  * 已完成的單不因留言改狀態；草稿本身不改狀態；開單附的通知留言（--for-client）不套用。
  */
-const REMINDER = '狀態已改為「等客戶」，記得更新調整重點。';
+const REMINDER = '狀態已改為「等客戶」。';
 
 async function reportWith(seeded: SeededProject, status: ReportStatus): Promise<Report> {
     const { report } = await seedReport(seeded.project);

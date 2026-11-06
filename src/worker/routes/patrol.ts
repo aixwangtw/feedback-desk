@@ -12,7 +12,7 @@ import { paths } from './paths';
  * REST API for the scheduled patrol (a cloud routine): `Authorization: Bearer fdp_...` from
  * `feedback-desk patrol-token issue`. It acts as the token's team account and can only list
  * projects, list reports that need attention, read a report, leave a message, write a draft message
- * (待審留言, team-only until a person sends it), write the adjustment note and set needs_input. It cannot complete or delete reports. Writes are logged in patrol_logs.
+ * (待審留言, team-only until a person sends it), ask the client to confirm completion (a confirmation message with a 通過 button), write the adjustment note (deprecated, still accepted with a warning) and set needs_input. It cannot complete or delete reports. Writes are logged in patrol_logs.
  */
 type PatrolEnv = AppEnv & { Variables: AppEnv['Variables'] & { patrolToken: PatrolToken } };
 type PatrolContext = Context<PatrolEnv>;
@@ -196,6 +196,17 @@ patrol.post('/projects/:slug/reports/:ref/drafts', async (c) => {
     );
 });
 
+/**
+ * 請客戶確認完成：只發一則附「通過」按鈕的確認留言，單維持等客戶；不能直接結案。body 省略時用預設文字。
+ * 只在已修好且驗過畫面時使用（巡檢 prompt 規定）。
+ */
+patrol.post('/projects/:slug/reports/:ref/request-completion', async (c) => {
+    const input = await body(c);
+    const text = typeof input.body === 'string' ? input.body : null;
+    return logged(c, 'request_completion', { body_length: charLength(text ?? '') }, () => team.requestCompletionFor(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: text }), 201);
+});
+
+/** 已停用（改用留言）：照常寫入，回應附 warning。 */
 patrol.put('/projects/:slug/reports/:ref/adjustment', async (c) => {
     const input = await body(c);
     const note = typeof input.note === 'string' ? input.note : '';

@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
 import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
 import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
+import { ADJUSTMENT_DEPRECATED } from '../../shared/completion';
 import { encodePath } from '../api';
 import { bool, list, parse, requirePositional, str } from '../args';
 import { escapeInline, escapeTerminal, table, twoColumn } from '../output';
@@ -298,7 +299,7 @@ export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
         const uploaded = await api.upload(`${base}/uploads${by}&purpose=adjustment`, image.bytes, image.name, image.mime);
         uploadIds.push(uploaded.id);
     }
-    const result = await api.post<{ public_id: string; title: string; note: string; images_added: number; images_total: number; url: string }>(`${base}/adjustment${by}`, {
+    const result = await api.post<{ public_id: string; title: string; note: string; images_added: number; images_total: number; url: string; warning?: string }>(`${base}/adjustment${by}`, {
         ...(note !== undefined ? { note } : {}),
         append,
         upload_ids: uploadIds,
@@ -308,10 +309,42 @@ export async function adjust(rt: Runtime, argv: string[]): Promise<number> {
         rt.out(JSON.stringify(result, null, 2));
         return 0;
     }
-    rt.out(`已更新調整重點：${escapeInline(result.title)}`);
+    rt.out(`已更新調整重點（已停用，請改用留言）：${escapeInline(result.title)}`);
     if (note !== undefined) rt.out(twoColumn('文字', append ? '已追加' : '已覆寫'));
     rt.out(twoColumn('新增圖片', String(result.images_added)));
     rt.out(twoColumn('目前圖片總數', String(result.images_total)));
+    // 調整重點已停用：照常寫入，但提醒改用留言。
+    rt.out(escapeInline(result.warning ?? ADJUSTMENT_DEPRECATED));
+    rt.out(result.url);
+    return 0;
+}
+
+/**
+ * 請客戶確認完成：只發一則附「通過」按鈕的確認留言，單維持等客戶，不會直接結案。
+ * 只用 --text 帶文字，沒給就用預設文字；不讀標準輸入，沒有終端機的環境（ssh、排程）不會卡住。
+ */
+export async function requestCompletion(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, { text: { type: 'string' }, force: { type: 'boolean' } });
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report public_id>');
+    if (/^\d+$/.test(ref.trim())) {
+        throw new CliError('純數字不能指定回饋單：請改用網址中的 public_id。');
+    }
+    const text = str(args, 'text');
+    const api = apiFor(rt, str(args, 'url'));
+    const result = await api.post<{ title: string; message_id: number; status: string; status_label: string; notice: string; url: string; took_over_from?: string | null }>(
+        `/projects/${encodePath(slug)}/reports/${encodePath(ref)}/request-completion`,
+        { ...(text !== undefined && text.trim() !== '' ? { body: text } : {}), ...(bool(args, 'force') ? { force: true } : {}) },
+    );
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已請確認完成：${escapeInline(result.title)}`);
+    if (result.took_over_from) rt.out(twoColumn('接手自', escapeInline(result.took_over_from)));
+    rt.out(twoColumn('留言 id', String(result.message_id)));
+    rt.out(twoColumn('目前狀態', `${result.status}（${result.status_label}）`));
+    rt.out(escapeInline(result.notice));
     rt.out(result.url);
     return 0;
 }

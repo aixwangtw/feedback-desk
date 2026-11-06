@@ -28,7 +28,7 @@ function bell(html: string): string {
 }
 
 describe('未讀標記與通知鈴鐺', () => {
-    it('team list and board show a red "N 則未讀" flag, and no extra "待回覆" status', async () => {
+    it('team list and board show the unread count as a small dot beside the title, and no extra "待回覆" status', async () => {
         const seeded = await seedProject();
         const waiting = await report(seeded, '客戶等回覆的單');
         await message(waiting, 'owner', minutesAgo(30), '我們先回一次');
@@ -44,11 +44,12 @@ describe('未讀標記與通知鈴鐺', () => {
         const owner = await new Browser().asOwner(seeded);
         for (const query of ['', '?view=board', '?sort=created_at']) {
             const html = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
-            expect(html).toContain(`data-unread-flag="${waiting.public_id}"`);
-            expect(html).toContain('3 則未讀');
+            // 標題右邊的小圓點數字（純指示）；已回覆的單只有空容器。
+            expect(html).toContain(`data-unread-slot="${waiting.public_id}"><span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white" data-unread-dot="" title="3 則未讀留言"`);
+            expect(html).not.toContain('data-unread-flag');
             // 不新增「待回覆」標示：狀態只有等工程師、等客戶、已完成。
             expect(html).not.toContain('待回覆');
-            expect(html).not.toContain(`data-unread-flag="${answered.public_id}"`);
+            expect(html).toContain(`data-unread-slot="${answered.public_id}"></span>`);
         }
     });
 
@@ -62,10 +63,11 @@ describe('未讀標記與通知鈴鐺', () => {
         const client = await new Browser().asClient(seeded);
         // The report waits on the team (status new), so it is under 「全部」, not the client's default tab.
         const html = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
-        expect(html).toContain(`data-unread-flag="${mine.public_id}"`);
-        expect(html).toContain('2 則未讀');
+        expect(html).toContain(`data-unread-slot="${mine.public_id}"><span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white" data-unread-dot="" title="2 則未讀留言"`);
+        expect(html).not.toContain('data-unread-flag');
         expect(html).not.toContain('待回覆');
-        expect(html).not.toContain('未讀留言');
+        // The team-only summary never shows on the client side.
+        expect(html).not.toContain('有 <span data-unread-report-count');
     });
 
     it('team bell lists only client messages across projects, with drafts listed separately', async () => {

@@ -103,27 +103,9 @@ export function unreadSummary(count: number, options: { unreadOnly?: boolean } =
     return { count, tone: count > 0 ? 'alert' : 'calm', filter };
 }
 
-/** aria-label of a chat button with the unread part replaced by the new count. */
-export function withUnreadInLabel(label: string, count: number): string {
-    const base = label.replace(/，\d+ 則未讀(?=）$)/, '');
-    if (count <= 0) {
-        return base;
-    }
-    return base.endsWith('）') ? `${base.slice(0, -1)}，${count} 則未讀）` : `${base}，${count} 則未讀`;
-}
-
-/** title of a chat button with the unread part replaced by the new count. */
-export function withUnreadInTitle(title: string, count: number): string {
-    const base = title.replace(/，未讀 \d+$/, '');
-    return count > 0 ? `${base}，未讀 ${count}` : base;
-}
-
-/** aria-label and title of a chat button, as the server renders them. */
-export function chatButtonLabels(title: string, total: number, unread: number): { ariaLabel: string; title: string } {
-    return {
-        ariaLabel: `開啟「${title}」的留言對話（${total > 0 ? `共 ${total} 則留言` : '還沒有留言'}${unread > 0 ? `，${unread} 則未讀` : ''}）`,
-        title: `${total > 0 ? `留言 ${total} 則` : '開啟對話'}${unread > 0 ? `，未讀 ${unread}` : ''}`,
-    };
+/** title／aria-label of the unread dot beside a report title. */
+export function unreadDotLabel(count: number): string {
+    return `${count} 則未讀留言`;
 }
 
 /** Display width of one code point, following PHP mb_strwidth: East Asian wide and full-width count 2. */

@@ -1,7 +1,7 @@
 import { raw } from 'hono/html';
 import type { Child, FC } from 'hono/jsx';
 import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
-import { badgeText, chatButtonLabels } from '../../shared/conversation';
+import { badgeText, unreadDotLabel } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
 import type { Notifications } from '../lib/notifications';
@@ -10,7 +10,7 @@ import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
 import { attachmentTitle } from '../../shared/attachment-list';
 import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
-import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_BUTTON_LABELLED, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
+import { CHAT_ICON_PATHS, REPORT_LINK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
 
 /** Values every view needs: configuration and the current time. */
 export interface ViewContext {
@@ -39,24 +39,22 @@ const BADGE_CLASSES: Record<ReportStatus, string> = {
 };
 
 /**
- * "留言" button on list rows, board cards and the detail dialog: shown when the report has messages
- * or unread items (always with a label). The red round number is the unread count for this viewer
- * (team: client messages; client: team messages plus 1 for a changed adjustment). Clicking it opens
- * the report's conversation in the chat panel. rows.ts has the string version of the icon variant.
+ * 標題右邊的未讀小圓點數字（取代以前的留言按鈕與「N 則未讀」標籤）：純指示，不能點。
+ * 沒有未讀時只留空的容器，讀過或面板刷新時由 chat-panel.js 填入或清掉。rows.ts 的 unreadDotHtml 是同一份 HTML 的字串版。
  */
-export const ChatButton: FC<{ publicId: string; title: string; total: number; unread: number; isOwner: boolean; label?: string; class?: string }> = ({ publicId, title, total, unread, isOwner, label, class: extra }) => {
-    if (total <= 0 && unread <= 0 && !label) {
-        return null;
-    }
-    const labels = chatButtonLabels(title, total, unread);
-    return (
-        <button type="button" class={cx(CHAT_BUTTON_BASE, label ? CHAT_BUTTON_LABELLED : CHAT_BUTTON_ICON, extra)} data-chat-open={publicId} data-message-count={String(total)} aria-label={labels.ariaLabel} title={labels.title}>
-            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{raw(CHAT_ICON_PATHS)}</svg>
-            {label ? <span>{label}</span> : null}
-            {unread > 0 ? <span class={CHAT_UNREAD_BADGE} data-unread-badge="" data-new-reply-badge={isOwner ? undefined : ''}>{badgeText(unread)}</span> : null}
-        </button>
-    );
-};
+export const UnreadDot: FC<{ publicId: string; unread: number }> = ({ publicId, unread }) => (
+    <span class="inline-flex shrink-0 items-center" data-unread-slot={publicId}>
+        {unread > 0 ? <span class={UNREAD_DOT_CLASS} data-unread-dot="" title={unreadDotLabel(unread)} aria-label={unreadDotLabel(unread)}>{badgeText(unread)}</span> : null}
+    </span>
+);
+
+/**
+ * 清單、看板上的編號與標題：藍色連結色，hover 底線與手指游標。點了開詳情視窗（沒有 JS 時照連結去單頁）；
+ * 整列、整張卡片的點擊由 client/row-link.js 處理，這裡只管連結本身。rows.ts 的 reportLinkHtml 是同一份 HTML 的字串版。
+ */
+export const ReportLink: FC<{ slug: string; publicId: string; class?: string; children?: Child }> = ({ slug, publicId, class: extra, children }) => (
+    <a href={paths.report(slug, publicId)} class={cx(REPORT_LINK_CLASS, extra)} data-dialog-open={`detail-report-${publicId}`} data-report-detail-open>{children}</a>
+);
 
 /**
  * 附件縮圖的內容：圖片照舊用 <img>；mp4 影片用 <video muted preload="metadata"> 抓第一格畫面（#t=0.1），
@@ -77,6 +75,13 @@ export const AttachmentMedia: FC<{ src: string; name: string; mime: string | nul
     ) : (
         <img src={src} alt={name} class={className} loading="lazy" />
     );
+
+/** 詳情視窗的附件縮圖；影片顯示第一格畫面＋播放三角形，點了在新分頁播放（相簿的 data-lightbox-play 才在燈箱播放）。 */
+export const Thumb: FC<{ href: string; name: string; mime: string | null | undefined; size?: string }> = ({ href, name, mime, size = 'size-20' }) => (
+    <a href={href} target="_blank" rel="noreferrer" class={`block ${size} overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={name} title={attachmentLinkTitle(mime)}>
+        <AttachmentMedia src={href} name={name} mime={mime} class="size-full object-cover" />
+    </a>
+);
 
 /** 附件的一行短標題：檔名去掉副檔名，太長截斷加省略號，滑鼠移上去看完整檔名（留言、待審留言共用）。 */
 export const AttachmentCaption: FC<{ name: string; class?: string }> = ({ name, class: className }) => (
@@ -109,7 +114,7 @@ export const ImageLightbox: FC = () => (
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-slate-950/95 px-3 py-3 sm:px-5">
                 <h2 id="image-lightbox-title" class="min-w-0 flex-1 truncate text-sm font-semibold" data-lightbox-title>截圖預覽</h2>
                 <div class="flex flex-wrap items-center justify-end gap-2">
-                    <div class="flex items-center overflow-hidden rounded-lg border border-white/20" role="group" aria-label="縮放控制">
+                    <div class="flex items-center overflow-hidden rounded-lg border border-white/20" role="group" aria-label="縮放控制" data-lightbox-zoom-group>
                         <button type="button" class="grid size-10 place-items-center text-lg transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-zoom-out aria-label="縮小">−</button>
                         <output class="min-w-14 border-x border-white/20 px-2 text-center text-xs tabular-nums text-slate-200" data-lightbox-scale>100%</output>
                         <button type="button" class="grid size-10 place-items-center text-lg transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-zoom-in aria-label="放大">＋</button>
@@ -121,6 +126,7 @@ export const ImageLightbox: FC = () => (
             </div>
             <div class="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6" data-lightbox-stage>
                 <img src="" alt="" class="max-h-full max-w-full origin-center object-contain transition-transform duration-150" data-lightbox-image />
+                <video controls playsinline class="max-h-full max-w-full bg-black" data-lightbox-video hidden></video>
             </div>
         </div>
     </dialog>

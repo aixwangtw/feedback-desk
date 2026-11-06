@@ -152,6 +152,17 @@ class FeedbackUnreadIndicatorsTest extends TestCase
         $this->assertStringContainsString('目前沒有新留言', $bell);
     }
 
+    public function test_bell_dropdown_stays_above_page_body_scrolls_inside_and_no_csp_blocks_blob_media(): void
+    {
+        $this->actingAsClient();
+        $response = $this->get(route('feedback.portal', $this->project))->assertOk();
+        $html = $response->getContent();
+
+        $this->assertMatchesRegularExpression('/<header class="relative z-30 /', $html);
+        $this->assertStringContainsString('max-h-[min(24rem,60dvh)] overflow-y-auto', $this->bell($html));
+        $this->assertNull($response->headers->get('Content-Security-Policy'), '若新增 CSP，需同時含 media-src blob:');
+    }
+
     private function bell(string $html): string
     {
         $this->assertSame(1, preg_match('/<details[^>]*data-notification-bell.*?<\/details>/s', $html, $match), '頁首沒有通知鈴鐺');

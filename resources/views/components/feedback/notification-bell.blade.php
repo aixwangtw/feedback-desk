@@ -14,7 +14,7 @@
     </summary>
     <div class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5">
         <p class="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">{{ $notifications['is_owner'] ? config('feedback.labels.client').'的新留言' : config('feedback.labels.owner').'的新留言' }}</p>
-        <div class="max-h-96 overflow-y-auto">
+        <div class="max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain">
             @forelse ($notifications['items'] as $item)
                 <a href="{{ $item['url'] }}" class="block border-b border-slate-100 px-4 py-3 transition hover:bg-teal-50" data-bell-item="{{ $item['public_id'] }}">
                     <span class="flex items-center justify-between gap-2 text-[11px] text-slate-500">

@@ -12,6 +12,7 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -74,7 +75,7 @@ class FeedbackConversationController extends Controller
         ]);
     }
 
-    public function show(FeedbackProject $feedbackProject, FeedbackReport $feedbackReport, FeedbackAccess $access): JsonResponse
+    public function show(Request $request, FeedbackProject $feedbackProject, FeedbackReport $feedbackReport, FeedbackAccess $access): JsonResponse
     {
         $this->ensureCanManage($feedbackProject, $access);
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
@@ -85,7 +86,12 @@ class FeedbackConversationController extends Controller
         $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustmentIsNewForClient($viewer);
 
         // 開啟對話（與面板開著時的定時刷新）就算讀過，與回饋單頁的留言刷新一致。
-        $isOwner ? $feedbackReport->markReadByOwner() : $feedbackReport->markReadByClient($viewer);
+        // 例外：客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
+        if ($isOwner) {
+            $feedbackReport->markReadByOwner();
+        } elseif (! $request->boolean('peek')) {
+            $feedbackReport->markReadByClient($viewer);
+        }
 
         $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper', 'adjustmentAttachments']);
 

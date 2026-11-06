@@ -132,6 +132,37 @@ class FeedbackConversationPanelTest extends TestCase
         );
     }
 
+    public function test_client_peek_thread_does_not_mark_read_but_normal_open_does(): void
+    {
+        $report = $this->report('老師有新留言', now()->subDay());
+        $this->message($report, FeedbackAuthorType::Owner, now()->subHour(), '開發者的新留言');
+        $this->actingAsClient();
+
+        $this->getJson(route('feedback.conversations.show', [$this->project, $report]).'?peek=1')->assertOk();
+        $this->assertSame(1, $this->getJson(route('feedback.conversations.index', $this->project))->json('items.0.unread'));
+
+        $this->getJson(route('feedback.conversations.show', [$this->project, $report]))->assertOk();
+        $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('items.0.unread'));
+    }
+
+    public function test_owner_thread_is_marked_read_even_with_peek(): void
+    {
+        $report = $this->report('老師新留言', now()->subDay());
+        $this->message($report, FeedbackAuthorType::Reporter, now()->subHour(), '老師的新留言');
+        $this->actingAsOwner();
+
+        $this->getJson(route('feedback.conversations.show', [$this->project, $report]).'?peek=1')->assertOk();
+
+        $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('items.0.unread'));
+    }
+
+    public function test_panel_placeholder_no_longer_tells_the_user_to_pick_from_the_left(): void
+    {
+        $blade = file_get_contents(resource_path('views/components/feedback/chat-panel.blade.php'));
+
+        $this->assertStringNotContainsString('從左側選一張回饋單查看留言', $blade);
+    }
+
     public function test_client_list_hides_developer_and_deleted_reports_and_counts_team_replies(): void
     {
         $answered = $this->report('開發者回了', now()->subDays(3));

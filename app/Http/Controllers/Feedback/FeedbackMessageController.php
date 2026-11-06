@@ -31,12 +31,14 @@ class FeedbackMessageController extends Controller
             default => FeedbackActor::sharedClient(),
         };
 
+        $previous = $feedbackReport->status;
         $postMessage->handle($feedbackReport, $actor, $validated['body'], $validated['screenshots'] ?? []);
+        $notice = '訊息已送出。'.($actor->isTeam && $feedbackReport->status !== $previous ? PostFeedbackMessageAction::ADJUSTMENT_REMINDER : '');
 
         if ($request->expectsJson()) {
-            return response()->json(['message' => '訊息已送出。'], 201);
+            return response()->json(['message' => $notice, 'status' => $feedbackReport->status->value], 201);
         }
 
-        return back()->with('success', '訊息已送出。');
+        return back()->with('success', $notice);
     }
 }

@@ -646,6 +646,7 @@ class FeedbackMcpTools
             'public_id' => $report->public_id,
             'author' => $message->displayAuthor($report, $actor->isTeam),
             'images_added' => count($images),
+            'status' => $report->status->value,
             'untrusted_content' => ['notice' => self::UNTRUSTED_NOTICE, 'title' => $report->title],
         ];
     }

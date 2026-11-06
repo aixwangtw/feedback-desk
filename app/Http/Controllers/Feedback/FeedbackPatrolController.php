@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Feedback;
 
+use App\Actions\ManageFeedbackMessageDraftAction;
 use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
@@ -11,13 +12,14 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
 use App\Support\FeedbackMcpTools;
+use App\Support\FeedbackServiceException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
  * 排程（雲端例行巡檢）專用 REST API。用 Authorization: Bearer fdp_... 驗證，以 token 綁定的團隊個人帳號身分操作。
- * 只能：列專案、列待處理單、讀單、留言、寫調整重點、改成待審核（needs_input）。不能改成已完成、不能刪除。
+ * 只能：列專案、列待處理單、讀單、留言、寫待審留言（草稿）、寫調整重點、改成待審核（needs_input）。不能改成已完成、不能刪除。
  * 讀單與寫入共用 MCP 工具的邏輯；寫入動作另記在 feedback_patrol_logs。
  */
 class FeedbackPatrolController extends Controller
@@ -151,6 +153,54 @@ class FeedbackPatrolController extends Controller
     {
         return $this->write($request, 'message', $project, $report, $tools, 'add_message', fn (): array => ['body' => (string) $request->input('body', '')],
             fn (): array => ['body_length' => mb_strlen((string) $request->input('body', ''))]);
+    }
+
+    /**
+     * 寫待審留言（草稿）：客戶端看不到，團隊在單頁審過按「送出」才發出。body 必填；replace_message_id 指定要修改的團隊留言。
+     */
+    public function draft(Request $request, string $project, string $report, ManageFeedbackMessageDraftAction $drafts): JsonResponse
+    {
+        $token = $this->authenticate($request);
+        if ($token === null) {
+            return $this->unauthorized();
+        }
+
+        $body = (string) $request->input('body', '');
+        $replace = $request->input('replace_message_id');
+        $feedbackReport = FeedbackReport::query()
+            ->where('public_id', $report)
+            ->whereHas('feedbackProject', fn (Builder $query) => $query->where('slug', $project))
+            ->first();
+
+        try {
+            if ($feedbackReport === null) {
+                throw new FeedbackServiceException('report_not_found', '找不到回饋單。', 404);
+            }
+            if ($replace !== null && ! (is_int($replace) || (is_string($replace) && ctype_digit($replace)))) {
+                throw new FeedbackServiceException('message_not_replaceable', 'replace_message_id 要填留言 id（數字）。');
+            }
+            $draft = $drafts->create($feedbackReport, $this->actor($token), $body, $replace !== null ? (int) $replace : null);
+            $result = ['status' => 201, 'body' => ['draft' => [
+                'id' => $draft->id,
+                'body' => $draft->body,
+                'replaces_message_id' => $draft->replaces_message_id,
+                'report_url' => route('feedback.reports.show', [$feedbackReport->feedbackProject, $feedbackReport]),
+            ]]];
+        } catch (FeedbackServiceException $exception) {
+            $result = ['status' => $exception->status, 'body' => ['error' => $exception->errorCode, 'message' => $exception->getMessage()]];
+        }
+
+        FeedbackPatrolLog::create([
+            'feedback_patrol_token_id' => $token->id,
+            'action' => 'draft',
+            'project_slug' => mb_substr($project, 0, 100),
+            'report_public_id' => mb_substr($report, 0, 64),
+            'succeeded' => $result['status'] < 300,
+            'detail' => ['body_length' => mb_strlen($body), 'replace_message_id' => $replace, ...($result['status'] < 300 ? [] : ['error' => $result['body']['error']])],
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json($result['body'], $result['status']);
     }
 
     public function adjustment(Request $request, string $project, string $report, FeedbackMcpTools $tools): JsonResponse

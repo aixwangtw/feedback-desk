@@ -138,6 +138,10 @@
                     @include('feedback.reports._activity', ['project' => $project, 'report' => $report, 'viewerIsOwner' => $isOwner])
                 </div>
 
+                @if ($isOwner && $drafts->isNotEmpty())
+                    @include('feedback.reports._drafts', ['project' => $project, 'report' => $report, 'drafts' => $drafts])
+                @endif
+
                 @if (! $canPostMessage)
                     <p class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</p>
                 @else

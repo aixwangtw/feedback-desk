@@ -117,6 +117,16 @@ class FeedbackReport extends Model
         return $this->hasMany(FeedbackMessage::class);
     }
 
+    /**
+     * 待審留言（草稿）：只有開發團隊看得到。
+     *
+     * @return HasMany<FeedbackMessageDraft, $this>
+     */
+    public function messageDrafts(): HasMany
+    {
+        return $this->hasMany(FeedbackMessageDraft::class);
+    }
+
     /** @return HasMany<FeedbackAttachment, $this> */
     public function feedbackAttachments(): HasMany
     {
@@ -318,6 +328,7 @@ class FeedbackReport extends Model
         $query->withCount([
             'feedbackMessages',
             'feedbackMessages as unread_messages_count' => fn (Builder $query) => static::constrainToUnreadByOwner($query),
+            'messageDrafts',
         ])->withMax('feedbackMessages as latest_message_at', 'created_at');
     }
 

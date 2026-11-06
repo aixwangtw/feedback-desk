@@ -143,6 +143,10 @@ class FeedbackReportController extends Controller
             'work' => $isOwner ? app(FeedbackReportWork::class)->state($feedbackReport, $developer) : null,
             'canClaim' => $developer !== null,
             'hasAccount' => $access->currentAccount($feedbackProject) !== null,
+            // 待審留言只給開發團隊；客戶端連查都不查。
+            'drafts' => $isOwner
+                ? $feedbackReport->messageDrafts()->with(['authorDeveloper', 'replacesMessage'])->orderBy('id')->get()
+                : collect(),
         ]);
     }
 

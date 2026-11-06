@@ -18,6 +18,7 @@
     $showChatPanel = $canManage;
     $isOwner = $project ? $access->isOwner($project) : $access->hasGlobalOwner();
     $allProjects = $isOwner ? \App\Models\FeedbackProject::orderBy('name')->get() : collect();
+    $notifications = app(\App\Support\FeedbackNotifications::class)->forCurrentViewer($project);
 @endphp
 <body class="min-h-screen bg-slate-50 font-sans text-slate-950 antialiased">
     <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-teal-50 to-transparent"></div>
@@ -81,6 +82,10 @@
                     @if ($allProjects->isNotEmpty())
                         <a href="{{ route('feedback.account', $allProjects->first(), false) }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-account-link>我的帳號</a>
                     @endif
+                @endif
+
+                @if ($notifications !== null)
+                    <x-feedback.notification-bell :$notifications />
                 @endif
 
                 @if ($canManage && ! $access->isGuest($project))

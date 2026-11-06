@@ -129,7 +129,7 @@ class CreateFeedbackReportCommand extends Command
         ], $creator, $actor)['report'];
 
         if ($forClient) {
-            $postMessage->handle($report, $actor, $notice !== '' ? $notice : self::DEFAULT_CLIENT_NOTICE);
+            $postMessage->handle($report, $actor, $notice !== '' ? $notice : self::DEFAULT_CLIENT_NOTICE, applyStatusRule: false);
         }
 
         $this->components->info('已建立：'.OutputFormatter::escape($report->title));

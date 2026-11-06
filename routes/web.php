@@ -9,6 +9,7 @@ use App\Http\Controllers\Feedback\FeedbackConversationController;
 use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMcpController;
 use App\Http\Controllers\Feedback\FeedbackMessageController;
+use App\Http\Controllers\Feedback\FeedbackMessageDraftController;
 use App\Http\Controllers\Feedback\FeedbackOwnerController;
 use App\Http\Controllers\Feedback\FeedbackPatrolController;
 use App\Http\Controllers\Feedback\FeedbackPortalController;
@@ -92,6 +93,19 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
         ->middleware(['throttle:30,1', 'throttle:feedback-public-message', 'throttle:feedback-guest-message'])
         ->name('feedback.messages.store');
+    // 待審留言（草稿）：只有開發團隊能編輯、送出、捨棄。
+    Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/drafts/{feedbackMessageDraft}', [FeedbackMessageDraftController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.drafts.update');
+    Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/drafts/{feedbackMessageDraft}/send', [FeedbackMessageDraftController::class, 'send'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.drafts.send');
+    Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/drafts/{feedbackMessageDraft}', [FeedbackMessageDraftController::class, 'destroy'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.drafts.destroy');
+    Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/drafts/{feedbackMessageDraft}/files/{index}', [FeedbackMessageDraftController::class, 'file'])
+        ->whereNumber('index')
+        ->name('feedback.drafts.file');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/claim', [FeedbackClaimController::class, 'update'])
         ->middleware('throttle:30,1')
         ->name('feedback.reports.claim');
@@ -117,7 +131,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::match(['get', 'delete'], '/mcp', [FeedbackMcpController::class, 'methodNotAllowed'])
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware]);
 
-    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫調整重點、改成待審核。
+    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫待審留言、寫調整重點、改成待審核。
     Route::prefix('/api/patrol')
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware])
         ->middleware('throttle:feedback-patrol')
@@ -127,6 +141,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
             Route::get('/projects/{project}/attention', [FeedbackPatrolController::class, 'attention'])->name('attention');
             Route::get('/projects/{project}/reports/{report}', [FeedbackPatrolController::class, 'show'])->name('show');
             Route::post('/projects/{project}/reports/{report}/messages', [FeedbackPatrolController::class, 'message'])->name('message');
+            Route::post('/projects/{project}/reports/{report}/drafts', [FeedbackPatrolController::class, 'draft'])->name('draft');
             Route::put('/projects/{project}/reports/{report}/adjustment', [FeedbackPatrolController::class, 'adjustment'])->name('adjustment');
             Route::post('/projects/{project}/reports/{report}/needs-input', [FeedbackPatrolController::class, 'needsInput'])->name('needs-input');
         });

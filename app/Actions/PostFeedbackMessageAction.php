@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Enums\FeedbackAuthorType;
+use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackMessage;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
@@ -12,21 +13,30 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * 在回饋單留言（可附圖）；網頁、MCP 共用。記下留言者的帳號與 AI 工具，並把這張單標成留言者那一方讀過。
+ *
+ * 留言自動切狀態（applyStatusRule）：待審核的單客戶留言 → 待處理（要我方回覆）；
+ * 團隊在待處理的單留言 → 待審核（記得更新調整重點）。已完成的單不因留言改狀態。
  */
 class PostFeedbackMessageAction
 {
     public const MAX_BODY_LENGTH = 10000;
 
+    /** 團隊留言把單切成待審核後，給人看的提醒。 */
+    public const ADJUSTMENT_REMINDER = '狀態已改為待審核，記得更新調整重點。';
+
+    public function __construct(private ChangeFeedbackReportStatusAction $changeStatus) {}
+
     /**
      * @param  list<UploadedFile>  $screenshots
+     * @param  list<array{disk: string, path: string, original_name: string, mime_type: string, size: int}>  $storedFiles  已經存好的檔案（待審留言送出時用）
      */
-    public function handle(FeedbackReport $report, FeedbackActor $actor, string $body, array $screenshots = []): FeedbackMessage
+    public function handle(FeedbackReport $report, FeedbackActor $actor, string $body, array $screenshots = [], array $storedFiles = [], bool $applyStatusRule = true): FeedbackMessage
     {
         $disk = config('feedback.disk');
         $storedPaths = [];
 
         try {
-            $message = DB::transaction(function () use ($report, $actor, $body, $screenshots, $disk, &$storedPaths): FeedbackMessage {
+            $message = DB::transaction(function () use ($report, $actor, $body, $screenshots, $storedFiles, $disk, &$storedPaths): FeedbackMessage {
                 $message = $report->feedbackMessages()->create([
                     'author_type' => $actor->isTeam ? FeedbackAuthorType::Owner : FeedbackAuthorType::Reporter,
                     'author_name' => $this->authorName($report, $actor),
@@ -51,6 +61,15 @@ class PostFeedbackMessageAction
                     ]);
                 }
 
+                foreach ($storedFiles as $file) {
+                    $message->feedbackAttachments()->create([
+                        'feedback_report_id' => $report->id,
+                        ...$file,
+                        'uploader_client_account_id' => $actor->clientAccount?->id,
+                        'uploader_developer_id' => $actor->developer?->id,
+                    ]);
+                }
+
                 $report->update(['latest_activity_at' => now()]);
                 $report->recordEvent('message', $actor);
 
@@ -62,10 +81,33 @@ class PostFeedbackMessageAction
             throw $exception;
         }
 
+        if ($applyStatusRule) {
+            $this->applyStatusRule($report, $actor);
+        }
+
         // 自己留言時一定看過這張單，不讓自己的留言或前面的留言留成未讀。
         $actor->isTeam ? $report->markReadByOwner() : $report->markReadByClient($actor->clientAccount);
 
         return $message;
+    }
+
+    /**
+     * 回傳是否有改狀態。
+     */
+    public function applyStatusRule(FeedbackReport $report, FeedbackActor $actor): bool
+    {
+        $next = match (true) {
+            $actor->isTeam && $report->status === FeedbackReportStatus::New => FeedbackReportStatus::NeedsInput,
+            ! $actor->isTeam && $report->status === FeedbackReportStatus::NeedsInput => FeedbackReportStatus::New,
+            default => null,
+        };
+        if ($next === null) {
+            return false;
+        }
+
+        $this->changeStatus->handle($report, $next, $actor);
+
+        return true;
     }
 
     /**

@@ -9,12 +9,13 @@ use App\Models\FeedbackMessageDraft;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackAttachmentRules;
+use App\Support\FeedbackFileStreamer;
 use App\Support\FeedbackServiceException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * 單頁上的待審留言：編輯、送出、捨棄、看附圖。只有開發團隊能操作，客戶端一律 403。
@@ -112,16 +113,14 @@ class FeedbackMessageDraftController extends Controller
         FeedbackMessageDraft $feedbackMessageDraft,
         int $index,
         FeedbackAccess $access,
-    ): StreamedResponse {
+        Request $request,
+        FeedbackFileStreamer $streamer,
+    ): Response {
         $this->authorizeDraft($feedbackProject, $feedbackReport, $feedbackMessageDraft, $access);
         $file = $feedbackMessageDraft->attachmentList()[$index] ?? null;
         abort_if($file === null, 404);
 
-        return Storage::disk($file['disk'])->response($file['path'], $file['original_name'], [
-            'Content-Type' => $file['mime_type'],
-            'Content-Disposition' => 'inline',
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        return $streamer->respond($request, $file['disk'], $file['path'], $file['mime_type'], $file['original_name'], FeedbackAttachmentRules::isVideoMime($file['mime_type']));
     }
 
     private function authorizeDraft(FeedbackProject $project, FeedbackReport $report, FeedbackMessageDraft $draft, FeedbackAccess $access): void

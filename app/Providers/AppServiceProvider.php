@@ -8,11 +8,18 @@ use App\Models\FeedbackReport;
 use App\Services\ClaudeCodeFeedbackCodingAgent;
 use App\Services\CodexFeedbackCodingAgent;
 use App\Support\FeedbackAccess;
+use Google\Auth\Credentials\GCECredentials;
+use Google\Auth\Credentials\ImpersonatedServiceAccountCredentials;
+use Google\Cloud\Storage\StorageClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use League\Flysystem\Filesystem as Flysystem;
+use Spatie\GoogleCloudStorage\GoogleCloudStorageAdapter;
+use Spatie\GoogleCloudStorage\GoogleCloudStorageServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,6 +40,30 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // gcs 磁碟：沿用 spatie 套件的轉接器，只換掉建立 client 的方式（組織政策禁止服務帳戶金鑰，改用模擬）。
+        Storage::extend('gcs-impersonated', function ($app, array $config) {
+            $provider = new GoogleCloudStorageServiceProvider($app);
+            $config = $provider->prepareConfig($config);
+
+            $options = [];
+            if (is_string($config['projectId'] ?? null) && $config['projectId'] !== '') {
+                $options['projectId'] = $config['projectId'];
+            }
+            if (is_string($config['impersonateServiceAccount'] ?? null) && $config['impersonateServiceAccount'] !== '') {
+                $options['credentialsFetcher'] = new ImpersonatedServiceAccountCredentials(
+                    ['https://www.googleapis.com/auth/devstorage.read_write'],
+                    [
+                        'service_account_impersonation_url' => 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'.$config['impersonateServiceAccount'].':generateAccessToken',
+                        'source_credentials' => new GCECredentials,
+                    ],
+                );
+            }
+            $client = new StorageClient($options);
+            $adapter = $provider->createAdapter($client, $config);
+
+            return new GoogleCloudStorageAdapter(new Flysystem($adapter, $config), $adapter, $config, $client);
+        });
+
         // 排程 API：每個 token 每分鐘 60 次，同一 IP 每分鐘 120 次（含錯誤 token）。
         RateLimiter::for('feedback-patrol', fn (Request $request): array => [
             Limit::perMinute(60)->by('patrol-token|'.hash('sha256', (string) $request->bearerToken())),

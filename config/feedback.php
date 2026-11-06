@@ -6,6 +6,7 @@ $ownerLabel = env('FEEDBACK_LABEL_OWNER', '開發團隊');
 return [
     'domain' => env('FEEDBACK_DOMAIN'),
 
+    // 附件存放的磁碟（filesystems.disks 的名稱）：local（預設）或 gcs。每筆附件另記自己的 disk，所以切換不影響舊檔。
     'disk' => env('FEEDBACK_DISK', 'local'),
 
     /*

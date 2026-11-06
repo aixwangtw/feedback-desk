@@ -1,5 +1,7 @@
 <?php
 
+use League\Flysystem\GoogleCloudStorage\UniformBucketLevelAccessVisibility;
+
 return [
 
     /*
@@ -58,6 +60,22 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
             'report' => false,
+        ],
+
+        /*
+         * 回饋系統附件用的 Google Cloud Storage（FEEDBACK_DISK=gcs）。專案的組織政策禁止建立服務帳戶金鑰，
+         * 所以不用金鑰檔：主機的預設身分（Metadata 伺服器）去「模擬」各站自己的服務帳戶
+         * （GOOGLE_CLOUD_IMPERSONATE_SERVICE_ACCOUNT），該帳戶只能讀寫 bucket 內自己的前綴（feedback/ 或 liff/）。
+         * 沒設模擬帳戶時就走預設身分。
+         */
+        'gcs' => [
+            'driver' => 'gcs-impersonated',
+            'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+            'bucket' => env('GOOGLE_CLOUD_STORAGE_BUCKET'),
+            'path_prefix' => env('GOOGLE_CLOUD_STORAGE_PATH_PREFIX', ''),
+            'impersonate_service_account' => env('GOOGLE_CLOUD_IMPERSONATE_SERVICE_ACCOUNT'),
+            'visibility_handler' => UniformBucketLevelAccessVisibility::class,
+            'throw' => true,
         ],
 
     ],

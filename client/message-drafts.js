@@ -43,7 +43,7 @@ const showDraftError = (item, message) => {
     }
 };
 
-const runDraftAction = async (item, button, run, onChanged) => {
+const runDraftAction = async (root, item, run, onChanged) => {
     const buttons = Array.from(item.querySelectorAll('button'));
     buttons.forEach((each) => { each.disabled = true; });
     const box = item.querySelector('[data-draft-error]');
@@ -53,6 +53,8 @@ const runDraftAction = async (item, button, run, onChanged) => {
     try {
         const result = await run();
         if (result.ok) {
+            // 剛操作完的那則（編輯框還開著）也要換成最新內容，下一次載入不能因為編輯框展開而跳過。
+            root.dataset.forceRender = '1';
             onChanged();
 
             return;
@@ -82,7 +84,7 @@ export const bindMessageDrafts = (root, { onChanged }) => {
             return;
         }
         event.preventDefault();
-        runDraftAction(item, event.submitter, () => postDraftForm(form.action, new URLSearchParams(new FormData(form))), onChanged);
+        runDraftAction(root, item, () => postDraftForm(form.action, new URLSearchParams(new FormData(form))), onChanged);
     });
 
     root.addEventListener('click', (event) => {
@@ -94,7 +96,7 @@ export const bindMessageDrafts = (root, { onChanged }) => {
         // 編輯框裡（可能改過）的文字直接送出：帶 body 打 send 端點。
         const form = button.closest('form');
         const data = new URLSearchParams([['body', form.querySelector('[data-draft-edit-body]').value]]);
-        runDraftAction(item, button, () => postDraftForm(item.dataset.draftSendUrl, data), onChanged);
+        runDraftAction(root, item, () => postDraftForm(item.dataset.draftSendUrl, data), onChanged);
     });
 };
 
@@ -107,9 +109,10 @@ export const renderMessageDrafts = (container, html, { onChanged }) => {
     if (container.dataset.signature === signature) {
         return;
     }
-    if (container.querySelector('details[open]')) {
+    if (container.dataset.forceRender !== '1' && container.querySelector('details[open]')) {
         return;
     }
+    delete container.dataset.forceRender;
     container.dataset.signature = signature;
     const template = document.createElement('template');
     template.innerHTML = html ?? '';

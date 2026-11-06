@@ -430,7 +430,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                         {isOwner ? <div class="empty:hidden" data-dialog-thread-drafts></div> : null}
                         <form action={paths.reportMessages(slug, report.public_id)} method="post" class="grid gap-2" data-dialog-thread-form novalidate>
                             <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
-                            <div id={`dialog-preview-${report.public_id}`} class="flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
+                            <div id={`dialog-preview-${report.public_id}`} class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
                             <label for={`dialog-body-${report.public_id}`} class="sr-only">留言內容</label>
                             <textarea
                                 id={`dialog-body-${report.public_id}`}

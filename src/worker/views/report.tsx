@@ -561,7 +561,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                             <p class="mt-2 text-xs text-rose-700">{error}</p>
                                         ))}
                                     </div>
-                                    <div id="message-preview" class="flex flex-wrap gap-3 empty:hidden" aria-live="polite"></div>
+                                    <div id="message-preview" class="flex flex-wrap items-start gap-3 empty:hidden" aria-live="polite"></div>
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div class="flex flex-wrap items-center gap-3">
                                             <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">

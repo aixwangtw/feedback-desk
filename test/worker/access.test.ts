@@ -15,7 +15,7 @@ describe('entry links and login', () => {
         const login = await browser.loginAs(seeded.project.slug, 'teacher', 'client-password-1234567');
         expect(login.status).toBe(302);
         expect(login.headers.get('location')).toBe(`/p/${seeded.project.slug}?status=new`);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(200);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(200);
     });
 
     it('rejects wrong credentials with a Chinese message and keeps the username', async () => {
@@ -68,10 +68,10 @@ describe('entry links and login', () => {
         const browser = new Browser();
         expect((await browser.get(`/p/${seeded.project.slug}/access?token=wrong`)).status).toBe(403);
         await browser.asClient(seeded);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(200);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(200);
         const newToken = randomString(48);
         await env.DB.prepare('UPDATE projects SET client_token_hash = ?, updated_at = ? WHERE id = ?').bind(await sha256Hex(newToken), new Date().toISOString(), seeded.project.id).run();
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
     });
 
     it('invalidates a developer login after the password changes', async () => {
@@ -79,9 +79,9 @@ describe('entry links and login', () => {
         const { developer, password } = await seedDeveloper();
         const browser = new Browser();
         await browser.loginAs(seeded.project.slug, developer.username, password);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(200);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(200);
         await env.DB.prepare("UPDATE developers SET password_hash = 'pbkdf2_sha256$10000$AAAA$BBBB' WHERE id = ?").bind(developer.id).run();
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
     });
 
     it('rejects a tampered cookie', async () => {
@@ -89,7 +89,7 @@ describe('entry links and login', () => {
         const browser = await new Browser().asOwner(seeded);
         const value = browser.cookies.get('fd_auth') as string;
         browser.cookies.set('fd_auth', value.slice(0, -4) + (value.endsWith('AAAA') ? 'BBBB' : 'AAAA'));
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
     });
 
     it('logs out and clears the remembered login', async () => {
@@ -97,7 +97,7 @@ describe('entry links and login', () => {
         const browser = await new Browser().asOwner(seeded);
         const logout = await browser.post(`/p/${seeded.project.slug}/logout`);
         expect(logout.headers.get('location')).toBe(`/p/${seeded.project.slug}/login`);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
     });
 
     it('owner page sends clients to the owner login form, JSON requests get 403', async () => {
@@ -134,7 +134,7 @@ describe('isolation', () => {
         const { report } = await seedReport(other.project);
         const attachmentId = await seedAttachment(report);
         const browser = await new Browser().asOwner(mine);
-        expect((await browser.get(`/p/${other.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${other.project.slug}?tab=all`)).status).toBe(302);
         expect((await browser.get(`/p/${other.project.slug}/reports/${report.public_id}`)).status).toBe(302);
         expect((await browser.get(`/p/${other.project.slug}/reports/${report.public_id}/attachments/${attachmentId}`)).status).toBe(302);
         expect((await browser.post(`/p/${other.project.slug}/reports/${report.public_id}/status`, { status: 'completed' })).status).toBe(302);
@@ -149,7 +149,7 @@ describe('isolation', () => {
         const { report } = await seedReport(seeded.project, { creator: 'developer', developerId: developer.id, title: '團隊內部單' });
         const attachmentId = await seedAttachment(report);
         const client = await new Browser().asClient(seeded);
-        expect(await (await client.get(`/p/${seeded.project.slug}`)).text()).not.toContain('團隊內部單');
+        expect(await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text()).not.toContain('團隊內部單');
         for (const path of [
             `/p/${seeded.project.slug}/reports/${report.public_id}`,
             `/p/${seeded.project.slug}/reports/${report.public_id}/activity`,
@@ -162,7 +162,7 @@ describe('isolation', () => {
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: 'hi' })).status).toBe(404);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/update`, { title: 'x', description: 'y' })).status).toBe(404);
         const owner = await new Browser().asOwner(seeded);
-        expect(await (await owner.get(`/p/${seeded.project.slug}`)).text()).toContain('團隊內部單');
+        expect(await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text()).toContain('團隊內部單');
     });
 
     it('renumbers the client list over client reports only and keeps counts apart', async () => {
@@ -172,11 +172,11 @@ describe('isolation', () => {
         await seedReport(seeded.project, { title: '團隊單', creator: 'owner_shared', at: now - 2000 });
         await seedReport(seeded.project, { title: '客戶二', at: now - 1000 });
         const client = await new Browser().asClient(seeded);
-        const html = await (await client.get(`/p/${seeded.project.slug}`)).text();
+        const html = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(html).toContain('共 2 題');
         expect(html).not.toContain('團隊單');
         const owner = await new Browser().asOwner(seeded);
-        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(ownerHtml).toContain('共 3 題');
         expect(ownerHtml).toContain('開發團隊（共用）');
     });
@@ -186,19 +186,19 @@ describe('isolation', () => {
         const { report } = await seedReport(seeded.project, { title: '要刪的單' });
         const client = await new Browser().asClient(seeded);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/client-delete`)).status).toBe(302);
-        expect(await (await client.get(`/p/${seeded.project.slug}`)).text()).not.toContain(`data-report-row="${report.public_id}"`);
+        expect(await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text()).not.toContain(`data-report-row="${report.public_id}"`);
         expect((await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).status).toBe(404);
         // The client cannot restore or delete permanently.
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/restore`)).status).toBe(403);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/delete`)).status).toBe(403);
 
         const owner = await new Browser().asOwner(seeded);
-        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}?deleted=only`)).text();
+        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}?tab=all&deleted=only`)).text();
         expect(ownerHtml).toContain('要刪的單');
         expect(ownerHtml).toContain('客戶已刪除');
         const restore = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/restore`, { _back: `/p/${seeded.project.slug}?deleted=only` });
         expect(restore.headers.get('location')).toBe(`/p/${seeded.project.slug}?deleted=only`);
-        expect(await (await client.get(`/p/${seeded.project.slug}`)).text()).toContain(`data-report-row="${report.public_id}"`);
+        expect(await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text()).toContain(`data-report-row="${report.public_id}"`);
     });
 
     it('owner deletion removes the report, its rows and its files', async () => {
@@ -222,7 +222,7 @@ describe('isolation', () => {
         expect(open.headers.get('location')).toBe(`/p/${seeded.project.slug}/reports/${report.public_id}`);
         expect((await browser.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).status).toBe(200);
         expect((await browser.get(`/p/${seeded.project.slug}/reports/${other.public_id}`)).status).toBe(302);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
         expect((await browser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/status`, { status: 'completed' })).status).toBe(302);
         expect((await browser.post(`/p/${seeded.project.slug}/reports/${report.public_id}/adjustment`, { adjustment_note: 'x' })).status).toBe(302);
     });

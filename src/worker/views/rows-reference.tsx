@@ -7,7 +7,10 @@ import type { FC } from 'hono/jsx';
 import { statusDotClass } from '../../shared/status';
 import type { Attachment, Report } from '../lib/models';
 import { paths } from '../routes/paths';
+import { badgeText } from '../../shared/conversation';
 import { ChatButton, cx, StatusSelect, Time, type ViewContext } from './components';
+
+const COMPLETE_CONFIRM = '確定這張單已經完成了嗎？';
 import type { PortalRow } from './portal';
 import { CategoryAutosave } from './report';
 
@@ -25,6 +28,32 @@ function dialogsSrc(slug: string, publicId: string, backPath: string): string {
     return `${paths.reportDialogs(slug, publicId)}?back=${encodeURIComponent(backPath)}`;
 }
 
+/**
+ * 清單與看板上每張單的明顯標記：紅底「N 則未讀」（各自依自己這一方的已讀狀態，點了開對話面板）；
+ * 團隊端另有「待審留言 N」（草稿，只有團隊看得到）。
+ */
+export const ReportFlags: FC<{ v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; class: string }> = ({ v, row, slug, isOwner, class: extra }) => {
+    const report = row.report;
+    const drafts = isOwner ? row.drafts ?? 0 : 0;
+    const waiting = row.waiting === 'developer' || row.waiting === 'client' ? row.waiting : null;
+    if (row.unread <= 0 && drafts <= 0 && waiting === null) {
+        return null;
+    }
+    return (
+        <div class={`flex flex-wrap items-center gap-1.5 ${extra}`} data-report-flags>
+            {waiting ? (
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting={waiting}>{`等${waiting === 'developer' ? v.cfg.labels.owner : v.cfg.labels.client}`}</span>
+            ) : null}
+            {row.unread > 0 ? (
+                <button type="button" class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold leading-4 text-white shadow-sm hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-chat-open={report.public_id} data-unread-flag={report.public_id}>{`${badgeText(row.unread)} 則未讀`}</button>
+            ) : null}
+            {drafts > 0 ? (
+                <a href={`${paths.report(slug, report.public_id)}#message-drafts`} class="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold leading-4 text-amber-900 hover:bg-amber-100" data-draft-badge={report.public_id} title="有待審留言，只有團隊看得到">{`待審留言 ${drafts}`}</a>
+            ) : null}
+        </div>
+    );
+};
+
 export type RowProps = { v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; backPath: string; showCategory?: boolean; categories?: string[]; attachmentUrl: (report: Report, attachment: Attachment) => string };
 
 export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCategory, categories, attachmentUrl }) => {
@@ -40,6 +69,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     <button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
                     <ChatButton publicId={report.public_id} title={report.title} total={row.messagesCount} unread={row.unread} isOwner={isOwner} class="-my-1" />
                 </div>
+                <ReportFlags v={v} row={row} slug={slug} isOwner={isOwner} class="mt-1" />
                 {isOwner && deleted ? (
                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{labels.client}已刪除</span>
@@ -53,7 +83,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     <label for={`status-${report.public_id}`} class="sr-only">「{report.title}」的狀態</label>
                     <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
                         <span class={`size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}`} aria-hidden="true" data-status-dot></span>
-                        <StatusSelect id={`status-${report.public_id}`} status={report.status} class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" autosave />
+                        <StatusSelect id={`status-${report.public_id}`} status={report.status} class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" autosave teamSide={isOwner} />
                     </div>
                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
@@ -98,6 +128,13 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
                 <div class="flex flex-wrap gap-2 sm:justify-center">
                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`edit-report-${report.public_id}`}>編輯</button>
+                    {!isOwner && report.status !== 'completed' ? (
+                        <form method="post" action={paths.reportStatus(slug, report.public_id)} data-confirm={COMPLETE_CONFIRM}>
+                            <input type="hidden" name="_back" value={backPath} />
+                            <input type="hidden" name="status" value="completed" />
+                            <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report>完成</button>
+                        </form>
+                    ) : null}
                     {isOwner && deleted ? (
                         <form method="post" action={paths.reportRestore(slug, report.public_id)}>
 <input type="hidden" name="_back" value={backPath} />
@@ -126,11 +163,19 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span></p>
+                    <ReportFlags v={v} row={row} slug={slug} isOwner={isOwner} class="mt-1" />
                     {(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="card-category" compact class="mt-1" /> : null}
                     <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`detail-report-${report.public_id}`} data-report-detail-open>{report.title}</button>
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>
                     <ChatButton publicId={report.public_id} title={report.title} total={row.messagesCount} unread={row.unread} isOwner={isOwner} />
+                    {!isOwner && report.status !== 'completed' ? (
+                        <form method="post" action={paths.reportStatus(slug, report.public_id)} data-confirm={COMPLETE_CONFIRM}>
+                            <input type="hidden" name="_back" value={backPath} />
+                            <input type="hidden" name="status" value="completed" />
+                            <button type="submit" class="inline-flex h-8 cursor-pointer items-center rounded-lg px-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-card-action data-complete-report>完成</button>
+                        </form>
+                    ) : null}
                     <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label={`編輯「${report.title}」`} title="編輯" data-card-action data-dialog-open={`edit-report-${report.public_id}`}>
                         <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                     </button>
@@ -181,7 +226,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
             <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
 <input type="hidden" name="_back" value={backPath} />
                 <label for={`board-status-${report.public_id}`} class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>
-                <StatusSelect id={`board-status-${report.public_id}`} status={report.status} class="w-full !px-2 !py-1.5 !text-xs" autosave />
+                <StatusSelect id={`board-status-${report.public_id}`} status={report.status} class="w-full !px-2 !py-1.5 !text-xs" autosave teamSide={isOwner} />
                 <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                 <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
             </form>

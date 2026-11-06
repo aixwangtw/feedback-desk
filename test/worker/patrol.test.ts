@@ -190,7 +190,8 @@ describe('scheduled patrol API', () => {
             ['message', 0],
         ]);
         expect(JSON.parse(results[0].detail)).toEqual({ body_length: 7 });
-        expect(JSON.parse(results[4].detail)).toEqual({ previous: 'new' });
+        // The message already moved the new report to needs_input (留言自動切狀態); the endpoint still works.
+        expect(JSON.parse(results[4].detail)).toEqual({ previous: 'needs_input' });
         expect(JSON.parse(results[5].detail).error).toBe('report_not_found');
         expect(results.map((r) => r.detail).join('')).not.toContain('改了按鈕');
     });

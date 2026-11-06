@@ -59,6 +59,7 @@ const setupThread = (section) => {
     // 同頁的紅色數字先在本地拿掉；對話面板收到事件後重算上方提示與右下角數字。
     const markRead = () => {
         document.querySelectorAll(`[data-chat-open="${CSS.escape(reportId)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
+        document.querySelectorAll(`[data-unread-flag="${CSS.escape(reportId)}"]`).forEach((flag) => flag.remove());
         document.dispatchEvent(new CustomEvent('feedback:report-read', { detail: { id: reportId } }));
     };
 

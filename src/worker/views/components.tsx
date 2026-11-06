@@ -4,6 +4,8 @@ import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../
 import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
+import type { Notifications } from '../lib/notifications';
+import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
 import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_BUTTON_LABELLED, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
@@ -58,7 +60,10 @@ export const StatusBadge: FC<{ status: ReportStatus }> = ({ status }) => (
     <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`}>{statusLabel(status)}</span>
 );
 
-export const StatusSelect: FC<{ status: ReportStatus; id: string; class?: string; autosave?: boolean }> = ({ status, id, class: extra, autosave }) => (
+/** 開發團隊不能改成已完成：選單沒有「已完成」，單已完成時顯示停用的「已完成（由客戶確認）」。 */
+export const COMPLETED_BY_CLIENT_LABEL = '已完成（由客戶確認）';
+
+export const StatusSelect: FC<{ status: ReportStatus; id: string; class?: string; autosave?: boolean; teamSide?: boolean }> = ({ status, id, class: extra, autosave, teamSide }) => (
     <select
         name="status"
         id={id}
@@ -66,11 +71,19 @@ export const StatusSelect: FC<{ status: ReportStatus; id: string; class?: string
         data-status-select={autosave ? '' : undefined}
         data-status-autosave={autosave ? '' : undefined}
     >
-        {STATUSES.map((option) => (
-            <option value={option} data-dot={statusDotClass(option)} selected={status === option}>
-                {statusLabel(option)}
-            </option>
-        ))}
+        {STATUSES.map((option) =>
+            teamSide && option === 'completed' ? (
+                status === 'completed' ? (
+                    <option value={option} data-dot={statusDotClass(option)} selected disabled>
+                        {COMPLETED_BY_CLIENT_LABEL}
+                    </option>
+                ) : null
+            ) : (
+                <option value={option} data-dot={statusDotClass(option)} selected={status === option}>
+                    {statusLabel(option)}
+                </option>
+            ),
+        )}
     </select>
 );
 
@@ -111,10 +124,72 @@ export interface LayoutProps {
     success?: string;
     /** Signed-in project members get the bottom-right chat panel. */
     chatPanel?: { slug: string; viewer: 'owner' | 'client' };
+    /** 頁首通知鈴鐺（登出旁）；沒有登入身分時不給。 */
+    bell?: Notifications | null;
     children?: Child;
 }
 
-export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogout, logoutUrl, passwordLink, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, children }) => (
+/** Excerpt width of a bell item, in characters. */
+const BELL_EXCERPT_CHARS = 80;
+
+/**
+ * 頁首通知鈴鐺：只列對方發的、自己還沒讀的留言；點了開啟該單留言處（開單即標已讀）。
+ * 團隊端另列待審留言；客戶端永遠沒有草稿，用語寫「新留言」。
+ */
+export const NotificationBell: FC<{ v: ViewContext; bell: Notifications }> = ({ v, bell }) => {
+    const labels = v.cfg.labels;
+    return (
+        <details class="relative" data-notification-bell data-bell-count={String(bell.total)}>
+            <summary class="relative grid size-10 cursor-pointer list-none place-items-center rounded-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 [&::-webkit-details-marker]:hidden" aria-label={`通知（${bell.total} 則新留言）`} title="通知">
+                <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                </svg>
+                {bell.total > 0 ? (
+                    <span class="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white" data-bell-badge>{badgeText(bell.total)}</span>
+                ) : null}
+            </summary>
+            <div class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5">
+                <p class="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">{bell.isOwner ? `${labels.client}的新留言` : `${labels.owner}的新留言`}</p>
+                <div class="max-h-96 overflow-y-auto">
+                    {bell.items.length === 0 ? (
+                        <p class="px-4 py-6 text-center text-sm text-slate-500">目前沒有新留言</p>
+                    ) : (
+                        bell.items.map((item) => {
+                            const excerpt = charSlice(item.excerpt, BELL_EXCERPT_CHARS);
+                            return (
+                                <a href={`${paths.report(item.projectSlug, item.publicId)}#conversation`} class="block border-b border-slate-100 px-4 py-3 transition hover:bg-teal-50" data-bell-item={item.publicId}>
+                                    <span class="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                                        <span class="truncate">{item.projectName}</span>
+                                        <Time v={v} at={item.at} relative class="shrink-0" />
+                                    </span>
+                                    <span class="mt-0.5 flex items-center gap-2">
+                                        <span class="min-w-0 flex-1 truncate text-sm font-semibold text-slate-950">{item.title}</span>
+                                        <span class="shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{badgeText(item.unread)}</span>
+                                    </span>
+                                    <span class="mt-1 block text-xs leading-5 text-slate-600">{excerpt.length < item.excerpt.length ? `${excerpt}…` : excerpt}</span>
+                                </a>
+                            );
+                        })
+                    )}
+                </div>
+                {bell.drafts.length > 0 ? (
+                    <div class="border-t border-amber-200 bg-amber-50/70">
+                        <p class="px-4 pt-2.5 text-xs font-semibold text-amber-900">待審留言（只有{labels.owner}看得到）</p>
+                        {bell.drafts.map((draft) => (
+                            <a href={`${paths.report(draft.projectSlug, draft.publicId)}#message-drafts`} class="flex items-center justify-between gap-2 px-4 py-2 text-sm hover:bg-amber-100" data-bell-draft={draft.publicId}>
+                                <span class="min-w-0 truncate"><span class="text-[11px] text-amber-800">{draft.projectName}｜</span>{draft.title}</span>
+                                <span class="shrink-0 rounded-full border border-amber-400 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900">待審留言 {draft.count}</span>
+                            </a>
+                        ))}
+                    </div>
+                ) : null}
+            </div>
+        </details>
+    );
+};
+
+export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogout, logoutUrl, passwordLink, maxWidth = 'max-w-5xl', headerAction, success, chatPanel, bell, children }) => (
     <>
     {raw('<!DOCTYPE html>')}
     <html lang="zh-Hant">
@@ -167,6 +242,7 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogou
                         {project && passwordLink ? (
                             <a href={paths.account(project.slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-account-link>我的帳號</a>
                         ) : null}
+                        {bell ? <NotificationBell v={v} bell={bell} /> : null}
                         {(project || logoutUrl) && showLogout ? (
                             <form method="post" action={logoutUrl ?? (project ? paths.logout(project.slug) : paths.ownerGlobalLogout())}>
                                 <button type="submit" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-logout>登出</button>
@@ -304,6 +380,10 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
                     <div class="shrink-0 border-b border-slate-100 p-3">
                         <label for="chat-search" class="sr-only">搜尋標題</label>
                         <input id="chat-search" type="search" placeholder="搜尋標題或編號" autocomplete="off" class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-search />
+                    </div>
+                    <div class="flex shrink-0 gap-1 border-b border-slate-100 px-3 pt-2" role="tablist" aria-label="對話分類" data-chat-tabs>
+                        <button type="button" role="tab" aria-selected="true" class="-mb-px border-b-2 border-teal-700 px-2.5 pb-2 text-xs font-semibold text-teal-800" data-chat-tab="awaiting">未回覆 <span data-chat-tab-count="awaiting">0</span></button>
+                        <button type="button" role="tab" aria-selected="false" class="-mb-px border-b-2 border-transparent px-2.5 pb-2 text-xs font-semibold text-slate-500 hover:text-slate-900" data-chat-tab="replied">已回覆 <span data-chat-tab-count="replied">0</span></button>
                     </div>
                     <ul class="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto" aria-label="回饋單對話清單" data-chat-list></ul>
                     <p class="p-6 text-center text-sm text-slate-500" data-chat-list-status>載入中…</p>

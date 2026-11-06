@@ -23,6 +23,7 @@ import {
 } from './db';
 import { CLIENT_VISIBLE_SQL, isVisibleToClient, type Attachment, type ClientAccount, type Developer, type Project, type Report } from './models';
 import {
+    ADJUSTMENT_REMINDER,
     addMessage,
     changeStatus,
     createReport,
@@ -44,6 +45,7 @@ import { signedAttachmentUrl } from './signed';
 import type { Author } from './access';
 import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
 import { findClaimableUploads } from './uploads';
+import { createDraft, parseReplaceMessageId, validatedDraftBody } from './drafts';
 import { paths } from '../routes/paths';
 
 export class ServiceError extends Error {
@@ -511,7 +513,8 @@ export async function createTeamReport(
     );
     if (forClient) {
         const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
-        await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body: notice, uploads: [], author: teamAuthor(ctx) }, ctx.now);
+        // 開單附的通知留言不套用留言自動切狀態：單維持待處理。
+        await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body: notice, uploads: [], author: teamAuthor(ctx), applyStatusRule: false }, ctx.now);
     }
     return {
         public_id: report.public_id,
@@ -619,8 +622,47 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
     }
     const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
-    await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: teamAuthor(ctx) }, ctx.now);
-    return { public_id: report.public_id, title: report.title, author: report.creator_type === 'public' ? author : withAgent(author, ctx.agent, true), images_added: uploads.length };
+    const result = await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body, uploads, author: teamAuthor(ctx) }, ctx.now);
+    return {
+        public_id: report.public_id,
+        title: report.title,
+        author: report.creator_type === 'public' ? author : withAgent(author, ctx.agent, true),
+        images_added: uploads.length,
+        status: result.status,
+        status_changed: result.statusChanged,
+        ...(result.statusChanged ? { notice: ADJUSTMENT_REMINDER } : {}),
+    };
+}
+
+/**
+ * 待審留言（草稿）：只有團隊看得到，團隊在單頁按「送出」才發給客戶。report 只接受 public_id；
+ * replace_message_id 指定要修改的團隊留言（送出時改寫，不新增）。附圖用 purpose=message 的上傳。
+ */
+export async function createReportDraft(ctx: TeamContext, slug: string, identifier: string, input: { body?: unknown; replace_message_id?: unknown; upload_ids?: string[] }) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier, 'public_id');
+    const body = validatedDraftBody(typeof input.body === 'string' ? input.body : '');
+    const replacesMessageId = parseReplaceMessageId(input.replace_message_id);
+    const uploadIds = Array.isArray(input.upload_ids) ? input.upload_ids.map(String) : [];
+    if (uploadIds.length > 5) {
+        throw new ServiceError('too_many_images', '一則留言最多附 5 張圖。', 422);
+    }
+    const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'message', reportId: report.id });
+    if (uploads === null) {
+        throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
+    }
+    const draft = await createDraft(ctx.env, report, { body, replacesMessageId, uploads, author: teamAuthor(ctx) }, ctx.now);
+    return {
+        draft: {
+            id: draft.id,
+            body: draft.body,
+            replaces_message_id: draft.replaces_message_id,
+            report_url: absolute(ctx, paths.report(project.slug, report.public_id)),
+        },
+        public_id: report.public_id,
+        title: report.title,
+        images_added: uploads.length,
+    };
 }
 
 // ------------------------------------------------------------------ projects

@@ -16,7 +16,7 @@ export const MAX_ADJUSTMENT_NOTE = 20_000;
 export const MAX_REPORTER_NAME = 50;
 
 /** Kinds of entries in report_events (migration 0006). */
-export type EventKind = 'created' | 'message' | 'adjustment' | 'status' | 'claim' | 'release' | 'takeover' | 'handoff';
+export type EventKind = 'created' | 'message' | 'draft' | 'message_edit' | 'adjustment' | 'status' | 'claim' | 'release' | 'takeover' | 'handoff';
 
 /** One activity-log row; `report` is the id, or the public_id of a report inserted in the same batch. */
 export function eventStatement(db: D1Database, report: { id: number } | { publicId: string }, kind: EventKind, author: Author, at: string, detail: string | null = null): D1PreparedStatement {
@@ -130,12 +130,30 @@ async function deleteObjects(env: Env, attachments: Pick<Attachment, 'object_key
     }
 }
 
+/** Draft images stored as JSON; anything malformed counts as no files. */
+export function parseStoredFiles(json: string | null): StoredFile[] {
+    if (!json) {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(json) as unknown;
+        return Array.isArray(parsed)
+            ? parsed.filter((file): file is StoredFile => !!file && typeof file === 'object' && typeof (file as StoredFile).object_key === 'string')
+            : [];
+    } catch {
+        return [];
+    }
+}
+
 /** Permanently deletes a report with its messages, attachment rows and stored files. */
 export async function deleteReport(env: Env, report: Report): Promise<void> {
     const { results } = await env.DB.prepare('SELECT object_key FROM attachments WHERE report_id = ?').bind(report.id).all<{ object_key: string }>();
     const pending = await env.DB.prepare('SELECT object_key FROM uploads WHERE report_id = ?').bind(report.id).all<{ object_key: string }>();
+    // Draft images live only in message_drafts.attachments until a draft is sent.
+    const drafts = await env.DB.prepare('SELECT attachments FROM message_drafts WHERE report_id = ? AND attachments IS NOT NULL').bind(report.id).all<{ attachments: string }>();
+    const draftFiles = drafts.results.flatMap((row) => parseStoredFiles(row.attachments));
     await env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(report.id).run();
-    await deleteObjects(env, [...results, ...pending.results]);
+    await deleteObjects(env, [...results, ...pending.results, ...draftFiles]);
 }
 
 /** Status change shared by the web pages, the API and MCP; completion time and activity time follow the same rule. */
@@ -154,12 +172,72 @@ export async function setClientDeleted(env: Env, report: Report, deleted: boolea
         .run();
 }
 
+/** 團隊留言把單切成待審核後，給人看的提醒（網頁、指令、MCP、排程 API 共用）。 */
+export const ADJUSTMENT_REMINDER = '狀態已改為待審核，記得更新調整重點。';
+
+/**
+ * 留言自動切狀態：待審核的單客戶留言 → 待處理（要我方回覆）；團隊在待處理的單留言 → 待審核
+ * （記得更新調整重點）。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
+ */
+export function statusAfterMessage(current: ReportStatus, byTeam: boolean): ReportStatus | null {
+    if (byTeam && current === 'new') {
+        return 'needs_input';
+    }
+    if (!byTeam && current === 'needs_input') {
+        return 'new';
+    }
+    return null;
+}
+
+/**
+ * Statements of the status rule above, for the batch that writes the message. The update only
+ * applies while the report still has the status it was read with, so two writers cannot flip it twice.
+ */
+export function statusRuleStatements(db: D1Database, report: Pick<Report, 'id' | 'status'>, byTeam: boolean, at: string, author?: Author): { next: ReportStatus | null; statements: D1PreparedStatement[] } {
+    const next = statusAfterMessage(report.status, byTeam);
+    if (next === null) {
+        return { next: null, statements: [] };
+    }
+    return {
+        next,
+        statements: [
+            db.prepare('UPDATE reports SET status = ?, completed_at = NULL, updated_at = ? WHERE id = ? AND status = ?').bind(next, at, report.id, report.status),
+            ...(author ? [eventStatement(db, report, 'status', author, at, `${report.status}>${next}`)] : []),
+        ],
+    };
+}
+
+/** A file already stored in R2 (draft images), attached to a message when the draft is sent. */
+export interface StoredFile {
+    object_key: string;
+    original_name: string;
+    mime_type: string;
+    size: number;
+}
+
+/** Statements that turn stored files into attachments of one message. */
+export function storedFileStatements(db: D1Database, reportId: number, messageId: number, files: StoredFile[], at: string, author?: Author): D1PreparedStatement[] {
+    return files.map((file) =>
+        db
+            .prepare(
+                `INSERT INTO attachments (report_id, message_id, kind, object_key, original_name, mime_type, size, uploader_client_account_id, uploader_developer_id, created_at)
+                 VALUES (?, ?, 'feedback', ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(reportId, messageId, file.object_key, file.original_name, file.mime_type, file.size, author?.clientAccountId ?? null, author?.developerId ?? null, at),
+    );
+}
+
+/**
+ * Adds a message (web, API, MCP, patrol, a sent draft). Unless `applyStatusRule` is false (the
+ * notice left when the team shares a new report with the client), the status rule above runs in
+ * the same batch. Returns the new message id and the report status afterwards.
+ */
 export async function addMessage(
     env: Env,
     report: Report,
-    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[]; author?: Author },
+    data: { author_type: 'reporter' | 'owner'; author_name: string | null; body: string; uploads: Upload[]; author?: Author; storedFiles?: StoredFile[]; applyStatusRule?: boolean; extraStatements?: D1PreparedStatement[] },
     now = Date.now(),
-): Promise<void> {
+): Promise<{ id: number; status: ReportStatus; statusChanged: boolean }> {
     const db = env.DB;
     const at = nowIso(now);
     const message = await db
@@ -171,17 +249,22 @@ export async function addMessage(
     if (!message) {
         throw new Error('message insert returned no id');
     }
+    const rule = data.applyStatusRule === false ? { next: null, statements: [] } : statusRuleStatements(db, report, data.author_type === 'owner', at, data.author);
     try {
         // Attachments point at the message by its own id.
         await db.batch([
             ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at, author: data.author }),
+            ...storedFileStatements(db, report.id, message.id, data.storedFiles ?? [], at, data.author),
             db.prepare('UPDATE reports SET latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(at, at, report.id),
             ...(data.author ? [eventStatement(db, report, 'message', data.author, at)] : []),
+            ...rule.statements,
+            ...(data.extraStatements ?? []),
         ]);
     } catch (error) {
         await db.prepare('DELETE FROM messages WHERE id = ?').bind(message.id).run();
         throw error;
     }
+    return { id: message.id, status: rule.next ?? report.status, statusChanged: rule.next !== null };
 }
 
 /** Overwrites or appends; blank text is stored as null so the client side shows no empty block. */
@@ -228,6 +311,24 @@ export async function updateAdjustment(
     }
     await db.batch(statements);
     await deleteObjects(env, removed);
+}
+
+/** 清單頁籤：待開發團隊回覆、待客戶回覆、已完成、全部。 */
+export const PORTAL_TABS = ['developer', 'client', 'completed', 'all'] as const;
+export type PortalTab = (typeof PORTAL_TABS)[number];
+/** 每張單在等誰：由狀態與留言時間推導，不是新的狀態值。 */
+export type WaitingSide = 'developer' | 'client' | 'completed';
+
+/**
+ * SQL for who the report is waiting on (推導，不新增狀態值、不改資料結構): completed → 'completed';
+ * new → 'developer'; needs_input whose newest client message is later than the team's last reply
+ * (team message or adjustment update, whichever is later) → 'developer'; everything else → 'client'.
+ */
+export function waitingSideSql(table: string): string {
+    const latestClient = `(SELECT MAX(wc.created_at) FROM messages wc WHERE wc.report_id = ${table}.id AND wc.author_type = 'reporter')`;
+    const latestTeam = `MAX(COALESCE((SELECT MAX(wt.created_at) FROM messages wt WHERE wt.report_id = ${table}.id AND wt.author_type IN ('owner', 'agent')), ''), COALESCE(${table}.adjustment_updated_at, ''))`;
+    return `(CASE WHEN ${table}.status = 'completed' THEN 'completed' WHEN ${table}.status = 'new' THEN 'developer'
+        WHEN COALESCE(${latestClient}, '') > ${latestTeam} THEN 'developer' ELSE 'client' END)`;
 }
 
 /** Message author types written by the team side (people and AI agents). */

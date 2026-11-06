@@ -5,6 +5,7 @@
 import type { ReportStatus } from '../../shared/status';
 import type { FeedbackConfig } from '../env';
 import type { Attachment, Report } from '../lib/models';
+import type { WaitingSide } from '../lib/reports';
 import type { PortalRow } from './portal';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 
@@ -23,7 +24,7 @@ export interface PortalRowsPayload {
     showCategory: boolean;
     categories: string[];
     now: number;
-    labels: { client: string };
+    labels: { client: string; owner: string };
     utcOffsetMinutes: number;
     timezoneName: string;
     rows: Array<{
@@ -34,6 +35,8 @@ export interface PortalRowsPayload {
         adjustmentAttachments: CompactAttachment[];
         unread: number;
         messagesCount: number;
+        drafts: number;
+        waiting?: WaitingSide;
     }>;
 }
 
@@ -47,7 +50,7 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
         showCategory: ctx.showCategory === true,
         categories: ctx.categories ?? [],
         now: ctx.v.now,
-        labels: { client: ctx.v.cfg.labels.client },
+        labels: { client: ctx.v.cfg.labels.client, owner: ctx.v.cfg.labels.owner },
         utcOffsetMinutes: ctx.v.cfg.utcOffsetMinutes,
         timezoneName: ctx.v.cfg.timezoneName,
         rows: rows.map((row) => ({
@@ -68,6 +71,9 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             // Already computed for this viewer side (the team's unread state never reaches the client).
             unread: row.unread,
             messagesCount: row.messagesCount,
+            // Team side only; always 0 for the client.
+            drafts: ctx.isOwner ? row.drafts ?? 0 : 0,
+            waiting: row.waiting,
         })),
     };
 }

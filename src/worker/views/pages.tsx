@@ -1,3 +1,4 @@
+import type { Notifications } from '../lib/notifications';
 import { MAX_CATEGORY_INPUT_LENGTH } from '../../shared/categories';
 import type { FC } from 'hono/jsx';
 import type { Developer, Project, Report } from '../lib/models';
@@ -417,10 +418,11 @@ export const ProjectsOverviewPage: FC<{
     developer: Developer;
     projects: Project[];
     success?: string;
-}> = ({ v, developer, projects, success }) => {
+    bell?: Notifications | null;
+}> = ({ v, developer, projects, success, bell }) => {
     const labels = v.cfg.labels;
     return (
-        <Layout v={v} title="專案總覽" showLogout logoutUrl={paths.ownerGlobalLogout()} success={success} maxWidth="max-w-5xl">
+        <Layout v={v} title="專案總覽" showLogout logoutUrl={paths.ownerGlobalLogout()} success={success} maxWidth="max-w-5xl" bell={bell}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">

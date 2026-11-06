@@ -1,6 +1,8 @@
 import type { FC } from 'hono/jsx';
 import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
+import type { Notifications } from '../lib/notifications';
+import type { PortalTab, WaitingSide } from '../lib/reports';
 import { paths } from '../routes/paths';
 import { cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock, CategoryAutosave, editCategoryOptions } from './report';
@@ -25,6 +27,10 @@ export interface PortalRow {
     unread: number;
     /** All messages on the report. */
     messagesCount: number;
+    /** Team side only: 待審留言（草稿）數。 */
+    drafts?: number;
+    /** 在等誰（推導）：等開發團隊、等客戶；已完成不標。 */
+    waiting?: WaitingSide;
 }
 
 export interface PortalFormState {
@@ -46,6 +52,9 @@ export interface PortalProps {
     sort: string;
     direction: 'asc' | 'desc';
     selectedStatus: ReportStatus | null;
+    /** 目前頁籤；舊網址用 status= 篩選時為 null。 */
+    selectedTab?: PortalTab | null;
+    tabCounts?: Record<PortalTab, number>;
     /** 分類篩選；'' 為全部，'_none' 為未分類。 */
     selectedCategory?: string;
     keyword: string;
@@ -67,6 +76,8 @@ export interface PortalProps {
     guest?: boolean;
     projects?: Array<{ name: string; slug: string }>;
     form?: PortalFormState;
+    /** 頁首通知鈴鐺。 */
+    bell?: Notifications | null;
 }
 
 const INPUT = 'block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10';
@@ -87,6 +98,42 @@ const Thumb: FC<{ href: string; name: string; size?: string; border?: string; ad
     </a>
 );
 
+/**
+ * 清單與看板頂部的頁籤（取代狀態篩選下拉）：「待{開發團隊}回覆 N」「待{客戶}回覆 N」，
+ * 最右邊兩個不顯眼的小連結「已完成 N」「全部 N」。
+ */
+const PortalTabs: FC<{ labels: { owner: string; client: string }; selectedTab: PortalTab | null; counts: Record<PortalTab, number>; url: (tab: PortalTab) => string }> = ({ labels, selectedTab, counts, url }) => {
+    const main: Array<[PortalTab, string]> = [
+        ['developer', `待${labels.owner}回覆`],
+        ['client', `待${labels.client}回覆`],
+    ];
+    const minor: Array<[PortalTab, string]> = [
+        ['completed', '已完成'],
+        ['all', '全部'],
+    ];
+    return (
+        <nav class="flex flex-wrap items-end gap-x-1 border-b border-slate-200 px-4 pt-2" aria-label="頁籤" data-portal-tabs>
+            {main.map(([tab, label]) => (
+                <a
+                    href={url(tab)}
+                    class={cx('-mb-px inline-flex min-h-10 items-center gap-1.5 border-b-2 px-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', selectedTab === tab ? 'border-teal-700 text-teal-800' : 'border-transparent text-slate-600 hover:text-slate-950')}
+                    aria-current={selectedTab === tab ? 'page' : undefined}
+                    data-portal-tab={tab}
+                >
+                    {label} <span class="rounded-full bg-slate-100 px-1.5 text-xs text-slate-700">{counts[tab]}</span>
+                </a>
+            ))}
+            <span class="ml-auto inline-flex items-center gap-3 pb-2 text-xs">
+                {minor.map(([tab, label]) => (
+                    <a href={url(tab)} class={cx('rounded underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', selectedTab === tab ? 'font-semibold text-teal-800' : 'text-slate-500')} aria-current={selectedTab === tab ? 'page' : undefined} data-portal-tab={tab}>
+                        {`${label} ${counts[tab]}`}
+                    </a>
+                ))}
+            </span>
+        </nav>
+    );
+};
+
 export const PortalPage: FC<PortalProps> = (props) => {
     const { v, project, isOwner, rows, sort, direction, selectedStatus, keyword, viewMode, deletedFilter, creator } = props;
     const unreadOnly = isOwner && props.unreadOnly;
@@ -96,6 +143,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
         view: viewMode,
         q: keyword,
         status: selectedStatus,
+        tab: props.selectedTab ?? null,
         category: props.selectedCategory ? props.selectedCategory : null,
         deleted: isOwner ? deletedFilter : null,
         creator: isOwner ? creator : null,
@@ -123,7 +171,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     for (const row of rows) {
         pageStatusCounts[row.report.status] = (pageStatusCounts[row.report.status] ?? 0) + 1;
     }
-    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedCategory ?? '') !== '' || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
+    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedTab ?? 'all') !== 'all' || (props.selectedCategory ?? '') !== '' || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const categories = projectCategories(project);
     const showCategory = categories.length > 0;
@@ -139,7 +187,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     );
 
     return (
-        <Layout v={v} title={`問題清單｜${project.name}`} project={project} projects={isOwner ? props.projects : undefined} showLogout={!props.guest} passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }}>
+        <Layout v={v} title={`問題清單｜${project.name}`} project={project} projects={isOwner ? props.projects : undefined} showLogout={!props.guest} passwordLink={props.passwordLink} maxWidth="max-w-[96rem]" success={props.success} chatPanel={{ slug, viewer: isOwner ? 'owner' : 'client' }} bell={props.bell}>
             <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
@@ -189,8 +237,12 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     </div>
                 ) : null}
 
+                <PortalTabs labels={labels} selectedTab={props.selectedTab ?? null} counts={props.tabCounts ?? { developer: 0, client: 0, completed: 0, all: 0 }} url={(tab) => portalUrl({ tab }, ['status', 'page'])} />
+
                 <form method="get" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
                     <input type="hidden" name="view" value={viewMode} />
+                    {props.selectedTab ? <input type="hidden" name="tab" value={props.selectedTab} /> : null}
+                    {selectedStatus ? <input type="hidden" name="status" value={selectedStatus} /> : null}
                     {unreadOnly ? <input type="hidden" name="unread" value="1" /> : null}
                     <label class="relative col-span-2 block min-w-0 md:mr-auto md:w-80">
                         <span class="sr-only">搜尋問題</span>
@@ -199,14 +251,6 @@ export const PortalPage: FC<PortalProps> = (props) => {
                         {keyword !== '' ? (
                             <a href={portalUrl({}, ['q', 'page'])} class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="清除搜尋" title="清除搜尋">×</a>
                         ) : null}
-                    </label>
-                    <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
-                        <select name="status" data-auto-submit class={FILTER_SELECT}>
-                            <option value="">全部</option>
-                            {STATUSES.map((status) => (
-                                <option value={status} selected={selectedStatus === status}>{statusLabel(status)}</option>
-                            ))}
-                        </select>
                     </label>
                     {showCategory ? (
                         <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">分類

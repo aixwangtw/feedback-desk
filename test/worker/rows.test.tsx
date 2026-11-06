@@ -11,7 +11,7 @@ function attachment(id: number, kind: 'feedback' | 'adjustment', name: string): 
     return { id, report_id: 1, message_id: null, kind, object_key: 'k', original_name: name, mime_type: 'image/png', size: 1, uploader_client_account_id: null, uploader_developer_id: null, created_at: '' };
 }
 
-function row(overrides: Partial<Report>, attachments: Attachment[] = [], adjustments: Attachment[] = [], badges: Partial<Pick<PortalRow, 'unread' | 'messagesCount'>> = {}): PortalRow {
+function row(overrides: Partial<Report>, attachments: Attachment[] = [], adjustments: Attachment[] = [], badges: Partial<Pick<PortalRow, 'unread' | 'messagesCount' | 'drafts' | 'waiting'>> = {}): PortalRow {
     const report: Report = {
         id: 1, project_id: 1, public_id: '0199c3a1-0000-4000-8000-000000000001', reporter_token_hash: '', reporter_name: null, category: null, creator_type: 'client', creator_developer_id: null, creator_client_account_id: null, creator_agent: null, claimed_by_developer_id: null, claimed_agent: null, claimed_at: null,
         title: '標題 <b>"引號" & \'單引號\'</b>', description: 'd', adjustment_note: null, page_url: null, status: 'needs_input', completed_at: null, client_deleted_at: null, shared_with_client: 0,
@@ -29,6 +29,11 @@ const cases: Array<[string, PortalRow]> = [
     ['over 99 unread', row({}, [], [], { unread: 120, messagesCount: 130 })],
     ['adjustment update only (unread without messages)', row({}, [], [], { unread: 1, messagesCount: 0 })],
     ['messages, none unread', row({}, [], [], { messagesCount: 3 })],
+    ['drafts only', row({}, [], [], { messagesCount: 1, drafts: 2 })],
+    ['unread and drafts', row({}, [], [], { unread: 3, messagesCount: 4, drafts: 1 })],
+    ['waiting on the team', row({ status: 'new' }, [], [], { waiting: 'developer' })],
+    ['waiting on the client, with unread', row({}, [], [], { waiting: 'client', unread: 1, messagesCount: 2 })],
+    ['completed (no waiting label, team menu shows the disabled option)', row({ status: 'completed' }, [], [], { waiting: 'completed' })],
 ];
 
 describe('string-rendered rows match the JSX reference', () => {
@@ -62,6 +67,21 @@ describe('string-rendered rows match the JSX reference', () => {
             expect(card.indexOf('data-category-autosave')).toBeGreaterThan(card.indexOf('data-report-number'));
             expect(card.indexOf('data-category-autosave')).toBeLessThan(card.indexOf('data-report-detail-open'));
         }
+    });
+
+    it('shows the red unread flag on both sides and the draft badge only to the team', () => {
+        const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };
+        const both = row({}, [], [], { unread: 3, messagesCount: 4, drafts: 2 });
+        const team = listRowHtml({ v, slug: 'demo', isOwner: true, backPath: '/p/demo' }, both);
+        expect(team).toContain(`data-unread-flag="${both.report.public_id}"`);
+        expect(team).toContain('3 則未讀');
+        expect(team).toContain('待審留言 2');
+        expect(boardCardHtml({ v, slug: 'demo', isOwner: true, backPath: '/p/demo' }, both, 0)).toContain('待審留言 2');
+        const client = listRowHtml({ v, slug: 'demo', isOwner: false, backPath: '/p/demo' }, both) + boardCardHtml({ v, slug: 'demo', isOwner: false, backPath: '/p/demo' }, both, 0);
+        expect(client).toContain('3 則未讀');
+        expect(client).not.toContain('待審留言');
+        expect(client).not.toContain('data-draft-badge');
+        expect(listRowHtml({ v, slug: 'demo', isOwner: true, backPath: '/p/demo' }, row({}))).not.toContain('data-report-flags');
     });
 
     const v = { cfg: config(workerEnv), now: Date.parse('2026-10-19T00:00:00Z') };

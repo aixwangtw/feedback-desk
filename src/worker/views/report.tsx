@@ -1,8 +1,10 @@
 import type { FC } from 'hono/jsx';
 import type { Attachment, Message, Project, Report } from '../lib/models';
+import type { DraftView } from '../lib/drafts';
+import type { Notifications } from '../lib/notifications';
 import { isStatus, statusLabel } from '../../shared/status';
 import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
-import { MAX_ADJUSTMENT_NOTE } from '../lib/reports';
+import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
 import { cx, ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
@@ -173,7 +175,84 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     work?: WorkState;
     /** Signed in with a personal team account (claims need a name; the shared owner link has none). */
     canClaim?: boolean;
+    /** 待審留言（草稿）：只有開發團隊的單頁有。 */
+    drafts?: DraftView[];
+    /** 草稿編輯失敗時，那則草稿的錯誤與剛輸入的內容。 */
+    draftErrors?: { id: number; errors: string[]; old: string };
+    /** 頁首通知鈴鐺。 */
+    bell?: Notifications | null;
 }
+
+/** 待審留言（草稿）：只在開發團隊的單頁出現；按「送出」才變成正式留言。 */
+export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string; drafts: DraftView[]; draftErrors?: { id: number; errors: string[]; old: string } }> = ({ v, slug, publicId, drafts, draftErrors }) => {
+    const labels = v.cfg.labels;
+    const base = `${paths.report(slug, publicId)}/drafts`;
+    const back = paths.report(slug, publicId);
+    return (
+        <div id="message-drafts" class="border-t border-amber-200 bg-amber-50/70 px-5 py-4 sm:px-7" data-message-drafts>
+            <h3 class="text-sm font-bold text-amber-900">
+                待審留言 {drafts.length}
+                <span class="ml-2 text-xs font-normal text-amber-800">只有{labels.owner}看得到，按「送出」才會發給{labels.client}</span>
+            </h3>
+            <ol class="mt-3 grid gap-3">
+                {drafts.map((draft) => {
+                    const errors = draftErrors?.id === draft.id ? draftErrors.errors : [];
+                    return (
+                        <li class="rounded-xl border border-dashed border-amber-400 bg-white p-3.5 shadow-sm" data-message-draft={String(draft.id)}>
+                            <div class="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
+                                <span class="font-semibold text-amber-900">{withAgent(draft.display_author, draft.author_agent, true)}</span>
+                                <Time v={v} at={draft.updated_at} relative />
+                                {draft.replaces_message_id !== null ? (
+                                    <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900" data-draft-replaces={String(draft.replaces_message_id)}>修改原留言</span>
+                                ) : null}
+                            </div>
+                            {draft.replaces_body !== null ? (
+                                <details class="mt-2 text-xs text-slate-600">
+                                    <summary class="cursor-pointer">原留言內容</summary>
+                                    <p class="mt-1 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 leading-5">{draft.replaces_body}</p>
+                                </details>
+                            ) : null}
+                            <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-draft-body>{draft.body}</p>
+                            {draft.files.length > 0 ? (
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    {draft.files.map((file, index) => (
+                                        <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
+                                            <img src={`${base}/${draft.id}/files/${index}`} alt={file.original_name} class="size-full object-cover" loading="lazy" />
+                                        </a>
+                                    ))}
+                                </div>
+                            ) : null}
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <form method="post" action={`${base}/${draft.id}/send`}>
+                                    <input type="hidden" name="_back" value={back} />
+                                    <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-draft-send>送出</button>
+                                </form>
+                                <form method="post" action={`${base}/${draft.id}/discard`} data-confirm="確定捨棄這則待審留言？">
+                                    <input type="hidden" name="_back" value={back} />
+                                    <button type="submit" class="inline-flex min-h-9 items-center rounded-lg border border-rose-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-draft-discard>捨棄</button>
+                                </form>
+                                <details class="w-full" open={errors.length > 0} data-draft-editor>
+                                    <summary class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">編輯</summary>
+                                    <form method="post" action={`${base}/${draft.id}/update`} class="mt-2 grid gap-2">
+                                        <input type="hidden" name="_back" value={back} />
+                                        <label for={`draft-body-${draft.id}`} class="sr-only">待審留言內容</label>
+                                        <textarea id={`draft-body-${draft.id}`} name="body" required maxlength={MAX_MESSAGE} rows={5} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{errors.length > 0 ? draftErrors?.old ?? '' : draft.body}</textarea>
+                                        {errors.map((error) => (
+                                            <p class="text-xs text-rose-700">{error}</p>
+                                        ))}
+                                        <div>
+                                            <button type="submit" class="rounded-lg bg-slate-900 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-slate-800">儲存草稿（不送出）</button>
+                                        </div>
+                                    </form>
+                                </details>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ol>
+        </div>
+    );
+};
 
 export interface WorkState {
     claim: { by: string; since: string; yours: boolean } | null;
@@ -301,6 +380,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
             showLogout={props.canManage}
             success={props.success}
             chatPanel={props.canManage ? { slug, viewer: isOwner ? 'owner' : 'client' } : undefined}
+            bell={props.bell}
             headerAction={
                 <a href={isPublicReporter ? paths.home() : paths.portal(slug)} class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">{isPublicReporter ? '回首頁' : '返回問題清單'}</a>
             }
@@ -439,6 +519,8 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                             <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} />
                         </div>
 
+                        {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} /> : null}
+
                         {readOnly ? (
                             <p class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</p>
                         ) : (
@@ -477,7 +559,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                             <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-4 grid gap-3">
 <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
                                 <label for="status" class="sr-only">處理狀態</label>
-                                <StatusSelect id="status" status={report.status} class="w-full" />
+                                <StatusSelect id="status" status={report.status} class="w-full" teamSide={isOwner} />
                                 <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">儲存狀態</button>
                             </form>
                         </section>

@@ -361,12 +361,68 @@ export async function message(rt: Runtime, argv: string[]): Promise<number> {
     for (const image of images) {
         uploadIds.push((await api.upload(`${base}/uploads?purpose=message`, image.bytes, image.name, image.mime)).id);
     }
-    const result = await api.post<{ title: string; author: string; images_added: number }>(`${base}/messages`, { body, upload_ids: uploadIds });
+    const result = await api.post<{ title: string; author: string; images_added: number; notice?: string }>(`${base}/messages`, { body, upload_ids: uploadIds });
     if (bool(args, 'json')) {
         rt.out(JSON.stringify(result, null, 2));
         return 0;
     }
     rt.out(`已留言：${escapeInline(result.title)}（署名 ${escapeInline(result.author)}，附圖 ${result.images_added} 張）`);
+    // 待處理的單留言後伺服器自動改成待審核，提醒更新調整重點。
+    if (result.notice) rt.out(escapeInline(result.notice));
+    return 0;
+}
+
+/**
+ * 待審留言（草稿）：只有團隊看得到，團隊在單頁按「送出」才發給客戶。--replace-message 指定要修改的
+ * 團隊留言（送出時改寫，不新增）。附圖沿用開單、留言的 --attach 檢查規則。
+ */
+export async function draft(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, {
+        body: { type: 'string' },
+        text: { type: 'string' },
+        'replace-message': { type: 'string' },
+        image: { type: 'string', multiple: true },
+        attach: { type: 'string', multiple: true },
+    });
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report public_id>');
+    if (/^\d+$/.test(ref.trim())) {
+        throw new CliError('純數字不能指定回饋單：請改用網址中的 public_id。');
+    }
+    const body = str(args, 'body') ?? str(args, 'text');
+    if (!body || body.trim() === '') {
+        throw new CliError('請用 --body（或 --text）提供待審留言內容。');
+    }
+    const replace = str(args, 'replace-message');
+    if (replace !== undefined && !/^\d+$/.test(replace.trim())) {
+        throw new CliError('--replace-message 要填留言 id（數字）。');
+    }
+    const paths = attachPaths(args);
+    if (paths.length > MAX_IMAGES) {
+        throw new CliError(`一則留言最多附 ${MAX_IMAGES} 張圖。`);
+    }
+    // 先全部檢查過再上傳：任何一張不合格，草稿就不建立。
+    const images = readImages(paths);
+    const api = apiFor(rt, str(args, 'url'));
+    const base = `/projects/${encodePath(slug)}/reports/${encodePath(ref)}`;
+    const uploadIds: string[] = [];
+    for (const image of images) {
+        uploadIds.push((await api.upload(`${base}/uploads?purpose=message`, image.bytes, image.name, image.mime)).id);
+    }
+    const result = await api.post<{ title: string; images_added: number; draft: { id: number; body: string; replaces_message_id: number | null; report_url: string } }>(`${base}/drafts`, {
+        body,
+        upload_ids: uploadIds,
+        ...(replace !== undefined ? { replace_message_id: Number(replace.trim()) } : {}),
+    });
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已新增待審留言：${escapeInline(result.title)}（客戶看不到，團隊在單頁按「送出」才會發出）`);
+    rt.out(twoColumn('草稿 id', String(result.draft.id)));
+    rt.out(twoColumn('修改原留言', result.draft.replaces_message_id !== null ? String(result.draft.replaces_message_id) : '否（送出時新增一則）'));
+    rt.out(twoColumn('附圖', String(result.images_added)));
+    rt.out(`${result.draft.report_url}#message-drafts`);
     return 0;
 }
 

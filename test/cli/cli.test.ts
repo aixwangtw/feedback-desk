@@ -482,6 +482,67 @@ describe('attachments on create and message', () => {
     });
 });
 
+describe('draft (待審留言)', () => {
+    let uploads = 0;
+    const handler: Handler = ({ url, body }) => {
+        if (url.includes('/uploads?')) return jsonResponse({ id: `up-${++uploads}`, name: 'x', size: 12 }, 201);
+        if (url.endsWith('/drafts')) {
+            const input = body as { replace_message_id?: number; upload_ids: string[] };
+            return jsonResponse({ title: '單', images_added: input.upload_ids.length, draft: { id: 7, body: '內容', replaces_message_id: input.replace_message_id ?? null, report_url: 'https://desk.example.com/p/demo/reports/uuid-1' } }, 201);
+        }
+        return jsonResponse({}, 404);
+    };
+    const file = (fake: { cwd: string }, name: string, bytes: Uint8Array) => {
+        const path = join(fake.cwd, name);
+        writeFileSync(path, bytes);
+        return path;
+    };
+
+    it('uploads images first, then posts the draft with --replace-message, and prints the draft id', async () => {
+        const fake = signedIn(handler);
+        const a = file(fake, 'a.png', PNG);
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', '已修正', '--attach', a, '--replace-message', '12'], fake.rt)).toBe(0);
+        expect(fake.calls.map((call) => [call.method, new URL(call.url).pathname])).toEqual([
+            ['PUT', '/api/v1/projects/demo/reports/uuid-1/uploads'],
+            ['POST', '/api/v1/projects/demo/reports/uuid-1/drafts'],
+        ]);
+        expect(fake.calls[0].url).toContain('purpose=message');
+        expect(fake.calls[1].body).toEqual({ body: '已修正', upload_ids: ['up-1'], replace_message_id: 12 });
+        expect(fake.text()).toContain('草稿 id');
+        expect(fake.text()).toContain('7');
+        expect(fake.text()).toContain('#message-drafts');
+
+        const plain = signedIn(handler);
+        expect(await main(['draft', 'demo', 'uuid-1', '--text', '用 --text 也可以'], plain.rt)).toBe(0);
+        expect(plain.calls[0].body).toEqual({ body: '用 --text 也可以', upload_ids: [] });
+        expect(plain.text()).toContain('否（送出時新增一則）');
+    });
+
+    it('checks images with the shared rules and refuses bad input before calling the server', async () => {
+        const fake = signedIn(handler);
+        const text = file(fake, 'notes.txt', new TextEncoder().encode('not an image'));
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', '--attach', text], fake.rt)).toBe(1);
+        expect(fake.errors()).toContain('只接受 jpg／png／webp');
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', ' '], fake.rt)).toBe(1);
+        expect(await main(['draft', 'demo', '12', '--body', 'x'], fake.rt)).toBe(1);
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', '--replace-message', 'abc'], fake.rt)).toBe(1);
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', ...Array.from({ length: 6 }, () => ['--attach', file(fake, 'a.png', PNG)]).flat()], fake.rt)).toBe(1);
+        expect(fake.calls).toHaveLength(0);
+    });
+
+    it('message prints the reminder when the server moved the report to needs_input', async () => {
+        const fake = signedIn(({ url }) => (url.endsWith('/messages') ? jsonResponse({ title: '單', author: '王小明', images_added: 0, status: 'needs_input', notice: '狀態已改為待審核，記得更新調整重點。' }) : jsonResponse({}, 404)));
+        expect(await main(['message', 'demo', 'uuid-1', '--body', '已修正'], fake.rt)).toBe(0);
+        expect(fake.text()).toContain('記得更新調整重點');
+    });
+
+    it('is listed in the help', async () => {
+        const fake = fakeRuntime();
+        expect(await main(['help'], fake.rt)).toBe(0);
+        expect(fake.text()).toContain('draft <project> <public_id>');
+    });
+});
+
 describe('create --for-client', () => {
     const handler: Handler = ({ url }) => (url.endsWith('/reports') ? jsonResponse({ public_id: 'uuid-9', title: '新單', url: 'https://desk.example.com/p/demo/reports/uuid-9', images_added: 0, shared_with_client: true }, 201) : jsonResponse({}, 404));
     const base = ['create', 'demo', '--title', '新單', '--description', '說明'];

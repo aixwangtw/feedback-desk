@@ -14,7 +14,8 @@ async function insertMessage(report: Pick<Report, 'id'>, authorType: 'reporter' 
 }
 
 async function portal(browser: Browser, seeded: SeededProject, query = ''): Promise<string> {
-    const response = await browser.get(`/p/${seeded.project.slug}${query}`);
+    // 「全部」頁籤：這些測試看的是每張單的數字，不是預設頁籤的篩選。
+    const response = await browser.get(`/p/${seeded.project.slug}?tab=all${query.replace(/^\?/, '&')}`);
     expect(response.status).toBe(200);
     return response.text();
 }
@@ -144,7 +145,7 @@ describe('unread client messages on the team side', () => {
         expect(html).toContain('<input type="hidden" name="unread" value="1"/>');
         // Other links keep the unread filter, "顯示全部" drops only it.
         expect(html).toMatch(/href="[^"]*view=list[^"]*unread=1[^"]*"/);
-        expect(html).toMatch(/href="\/p\/[^"?]+\?view=board&amp;q=%E7%95%99%E8%A8%80"[^>]*data-unread-filter="show-all"/);
+        expect(html).toMatch(/href="\/p\/[^"?]+\?view=board&amp;q=%E7%95%99%E8%A8%80&amp;tab=all"[^>]*data-unread-filter="show-all"/);
 
         // The old "sort by latest message" links now open the default order (unread first).
         html = await portal(owner, seeded, '?sort=latest_message_at&direction=desc');

@@ -214,7 +214,7 @@ describe('chat panel caching', () => {
         await insertMessage(older, 'owner', '2026-10-02T00:00:00.500Z');
         const owner = await new Browser().asOwner(seeded);
         expect((await list(owner, seeded)).items.map((item) => item.title)).toEqual(['後建的', '先建的']);
-        const html = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const html = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(html.indexOf('>後建的</button>')).toBeLessThan(html.indexOf('>先建的</button>'));
     });
 });
@@ -294,7 +294,8 @@ describe('chat panel conversation', () => {
 
         const response = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '已處理，附圖給你看', 'upload_ids[]': [uploadId] }, JSON_HEADERS);
         expect(response.status).toBe(201);
-        expect(await response.json()).toMatchObject({ message: '訊息已送出。' });
+        // 待處理的單團隊留言後自動改成待審核，回應附上提醒。
+        expect(await response.json()).toMatchObject({ message: '訊息已送出。狀態已改為待審核，記得更新調整重點。', status: 'needs_input' });
         const message = await env.DB.prepare('SELECT * FROM messages WHERE report_id = ? ORDER BY id DESC LIMIT 1').bind(report.id).first<{ id: number; author_type: string; author_name: string }>();
         expect(message).toMatchObject({ author_type: 'owner', author_name: '王小明' });
         const attachment = await env.DB.prepare('SELECT * FROM attachments WHERE message_id = ?').bind(message?.id).first<{ original_name: string }>();
@@ -379,7 +380,7 @@ describe('chat panel access', () => {
         expect(html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
         expect(html).not.toContain('<b>名字</b>');
         expect(html).toContain('&lt;b&gt;名字&lt;/b&gt;');
-        const page = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const page = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(page).not.toContain('<script>alert');
         expect(await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text()).not.toContain('<script>alert');
     });
@@ -391,19 +392,19 @@ describe('chat panel access', () => {
         expect(await (await owner.get(`/p/${seeded.project.slug}/login`)).text()).not.toContain('data-chat-root');
         await owner.asOwner(seeded);
         await insertMessage(report, 'reporter', new Date().toISOString());
-        const page = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const page = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(page).toContain('data-chat-root');
         expect(page).toContain('data-viewer="owner"');
         expect(page).toContain(`data-list-url="/p/${seeded.project.slug}/conversations"`);
         expect(page).toContain(`data-chat-open="${report.public_id}"`);
-        expect(await (await owner.get(`/p/${seeded.project.slug}?view=board`)).text()).toContain(`data-chat-open="${report.public_id}"`);
+        expect(await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text()).toContain(`data-chat-open="${report.public_id}"`);
         const reportPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
         expect(reportPage).toContain('data-chat-root');
         expect(reportPage).toContain('在對話面板開啟');
 
         await insertMessage(report, 'owner', new Date(Date.now() + 1000).toISOString());
         const client = await new Browser().asClient(seeded);
-        const clientPage = await (await client.get(`/p/${seeded.project.slug}`)).text();
+        const clientPage = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(clientPage).toContain('data-viewer="client"');
         expect(clientPage).toMatch(new RegExp(`data-chat-open="${report.public_id}"[^>]*aria-label="[^"]*共 2 則留言，1 則未讀`));
         expect(clientPage).toMatch(/data-unread-badge="" data-new-reply-badge="">1</);
@@ -416,7 +417,8 @@ describe('chat panel access', () => {
         await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '第一則老師留言' });
         await tick();
         await insertMessage(report, 'owner', new Date(Date.now() + 1000).toISOString(), '開發者回覆內容');
-        const html = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
+        // The reply is dated in the future, so the header bell still lists it; measure the thread only.
+        const html = (await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text()).replace(/<details[^>]*data-notification-bell[\s\S]*?<\/details>/, '');
         const positions = ['第一則老師留言', '開發者回覆內容', 'id="body"'].map((text) => html.indexOf(text));
         expect(positions.every((position) => position > 0)).toBe(true);
         expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -453,9 +455,9 @@ describe('portal default order', () => {
         // The panel list agrees.
         expect((await list(owner, seeded)).items.map((item) => item.title)).toEqual(expected);
 
-        const sorted = await (await owner.get(`/p/${seeded.project.slug}?sort=title&direction=asc`)).text();
+        const sorted = await (await owner.get(`/p/${seeded.project.slug}?tab=all&sort=title&direction=asc`)).text();
         expect(sorted).toContain('name="direction"');
-        expect(sorted).toMatch(/href="\/p\/[^"?]+\?view=list"[^>]*data-sort-reset[^>]*>恢復預設排序（新留言優先）/);
+        expect(sorted).toMatch(/href="\/p\/[^"?]+\?view=list&amp;tab=all"[^>]*data-sort-reset[^>]*>恢復預設排序（新留言優先）/);
         expect(emptyOld.id + emptyNew.id).toBeGreaterThan(0);
     });
 
@@ -475,11 +477,11 @@ describe('portal default order', () => {
             return ['甲待處理舊', '乙待審核舊', '丙待處理新', '丁待審核新', '戊已完成'].sort((a, b) => html.indexOf(`>${a}</button>`) - html.indexOf(`>${b}</button>`));
         };
         const owner = await new Browser().asOwner(seeded);
-        expect(await titlesOf(owner)).toEqual(['丙待處理新', '甲待處理舊', '丁待審核新', '乙待審核舊', '戊已完成']);
+        expect(await titlesOf(owner, '?tab=all')).toEqual(['丙待處理新', '甲待處理舊', '丁待審核新', '乙待審核舊', '戊已完成']);
         const client = await new Browser().asClient(seeded);
-        expect(await titlesOf(client)).toEqual(['丁待審核新', '乙待審核舊', '丙待處理新', '甲待處理舊', '戊已完成']);
+        expect(await titlesOf(client, '?tab=all')).toEqual(['丁待審核新', '乙待審核舊', '丙待處理新', '甲待處理舊', '戊已完成']);
         // A manual sort ignores the status groups.
-        expect(await titlesOf(owner, '?sort=created_at&direction=desc')).toEqual(['戊已完成', '丁待審核新', '丙待處理新', '乙待審核舊', '甲待處理舊']);
+        expect(await titlesOf(owner, '?tab=all&sort=created_at&direction=desc')).toEqual(['戊已完成', '丁待審核新', '丙待處理新', '乙待審核舊', '甲待處理舊']);
     });
 
     it('orders the client side by the client unread state', async () => {
@@ -491,7 +493,7 @@ describe('portal default order', () => {
         await insertMessage(replied, 'owner', at(base, 10));
         await env.DB.prepare('UPDATE reports SET adjustment_updated_at = ? WHERE id = ?').bind(at(base, 20), adjusted.id).run();
         const client = await new Browser().asClient(seeded);
-        const html = await (await client.get(`/p/${seeded.project.slug}`)).text();
+        const html = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         // Both unread: 乙 has no messages, so it sorts by its creation time, older than 甲's reply.
         const positions = ['甲有新回覆', '乙調整更新', '丙沒留言'].map((title) => html.indexOf(`>${title}</button>`));
         expect([...positions].sort((a, b) => a - b)).toEqual(positions);

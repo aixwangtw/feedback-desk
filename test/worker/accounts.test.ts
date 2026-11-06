@@ -124,10 +124,10 @@ describe('upgrade from one shared client login (migration 0005)', () => {
         const cookie = await seal(secret, 'fd_auth', { p: { [seeded.project.id]: { c: { s: 'password', f: fingerprint, e: Math.floor(Date.now() / 1000) + 3600 } } }, r: [] });
         const browser = new Browser();
         browser.cookies.set('fd_auth', cookie);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(200);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(200);
 
         await env.DB.prepare('UPDATE client_accounts SET password_hash = ? WHERE id = ?').bind(await hashPassword('another-password-123456'), seeded.clientAccount!.id).run();
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
     });
 });
 
@@ -148,7 +148,7 @@ describe('client accounts', () => {
         expect(message).toEqual({ author_client_account_id: ben.account.id, author_name: '張大文' });
 
         // Both clients see the report, with its creator; the team sees it too.
-        const benPortal = await (await benBrowser.get(`/p/${seeded.project.slug}`)).text();
+        const benPortal = await (await benBrowser.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(benPortal).toContain('小美的單');
         expect(benPortal).toContain('林小美');
         expect((await conversations(benBrowser, seeded)).items.find((item) => item.id === report.public_id)?.creator).toBe('林小美');
@@ -156,9 +156,11 @@ describe('client accounts', () => {
         expect(page).toContain('建立者：林小美');
         expect(page).toContain('張大文');
         const owner = await new Browser().asOwner(seeded);
-        const ownerPortal = await (await owner.get(`/p/${seeded.project.slug}?creator=client:${amy.account.id}`)).text();
+        const ownerPortal = await (await owner.get(`/p/${seeded.project.slug}?tab=all&creator=client:${amy.account.id}`)).text();
         expect(ownerPortal).toContain('小美的單');
-        expect(await (await owner.get(`/p/${seeded.project.slug}?creator=client:${ben.account.id}`)).text()).not.toContain('小美的單');
+        // The header bell lists 大文's unread message on it; only the list itself is filtered.
+        const filtered = (await (await owner.get(`/p/${seeded.project.slug}?tab=all&creator=client:${ben.account.id}`)).text()).replace(/<details[^>]*data-notification-bell[\s\S]*?<\/details>/, '');
+        expect(filtered).not.toContain('小美的單');
 
         // A renamed account shows its new name on what it wrote before.
         expect((await amyBrowser.post(`/p/${seeded.project.slug}/account/name`, { name: '林美美' })).status).toBe(303);
@@ -188,7 +190,7 @@ describe('client accounts', () => {
         const amy = await seedClientAccount(first.project, unique('amy'));
         expect((await new Browser().loginAs(second.project.slug, amy.account.username, amy.password)).status).toBe(422);
         const browser = await login(first, amy.account.username, amy.password);
-        expect((await browser.get(`/p/${second.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${second.project.slug}?tab=all`)).status).toBe(302);
         const { report } = await seedReport(second.project);
         expect((await browser.get(`/p/${second.project.slug}/reports/${report.public_id}`)).status).toBe(302);
     });
@@ -210,7 +212,7 @@ describe('client accounts', () => {
 
         const browser = await login(seeded, username, created.password);
         expect((await api('POST', `${base}/${username}/disable`, token)).status).toBe(200);
-        expect((await browser.get(`/p/${seeded.project.slug}`)).status).toBe(302);
+        expect((await browser.get(`/p/${seeded.project.slug}?tab=all`)).status).toBe(302);
         expect((await new Browser().loginAs(seeded.project.slug, username, created.password)).status).toBe(422);
         expect((await api('POST', `${base}/${username}/enable`, token)).status).toBe(200);
         expect((await api('DELETE', `${base}/${username}`, token)).status).toBe(200);
@@ -246,8 +248,8 @@ describe('passwords people choose', () => {
         expect((await here.post(`/p/${slug}/account/password`, { new_password: STRONG, new_password_confirmation: `${STRONG}x` })).status).toBe(422);
         expect((await here.post(`/p/${slug}/account/password`, { new_password: STRONG, new_password_confirmation: STRONG })).status).toBe(303);
 
-        expect((await here.get(`/p/${slug}`)).status).toBe(200);
-        expect((await elsewhere.get(`/p/${slug}`)).status).toBe(302);
+        expect((await here.get(`/p/${slug}?tab=all`)).status).toBe(200);
+        expect((await elsewhere.get(`/p/${slug}?tab=all`)).status).toBe(302);
         expect((await new Browser().loginAs(slug, amy.account.username, amy.password)).status).toBe(422);
         expect((await new Browser().loginAs(slug, amy.account.username, STRONG)).status).toBe(302);
         const row = await clientRow(amy.account.id);
@@ -270,7 +272,7 @@ describe('passwords people choose', () => {
         const again = await login(seeded, amy.account.username, STRONG);
         expect((await changePassword(again, slug, STRONG, 'Another#Strong-Pass-42')).status).toBe(303);
         await env.DB.prepare('UPDATE client_accounts SET password_hash = ?, password_set_by_self = 0 WHERE id = ?').bind(await hashPassword('recovered-password-123456'), amy.account.id).run();
-        expect((await again.get(`/p/${slug}`)).status).toBe(302);
+        expect((await again.get(`/p/${slug}?tab=all`)).status).toBe(302);
         expect((await api('POST', `/projects/${slug}/clients/${amy.account.username}/reset`, token)).status).toBe(200);
     });
 
@@ -286,8 +288,8 @@ describe('passwords people choose', () => {
         expect(done.status).toBe(303);
         const page = await (await here.get(`/p/${slug}/account`)).text();
         expect(page).toContain('API token 也已撤銷');
-        expect((await here.get(`/p/${slug}`)).status).toBe(200);
-        expect((await elsewhere.get(`/p/${slug}`)).status).toBe(302);
+        expect((await here.get(`/p/${slug}?tab=all`)).status).toBe(200);
+        expect((await elsewhere.get(`/p/${slug}?tab=all`)).status).toBe(302);
         expect((await api('GET', '/me', ownToken)).status).toBe(401);
         expect((await developerRow(developer.id)).password_set_by_self).toBe(1);
 
@@ -328,7 +330,7 @@ describe('passwords people choose', () => {
         const page = await (await browser.get(`/p/${seeded.project.slug}/account`)).text();
         expect(page).toContain('專屬連結登入');
         expect((await browser.post(`/p/${seeded.project.slug}/account/verify`, { current_password: 'x' })).status).toBe(403);
-        expect(await (await browser.get(`/p/${seeded.project.slug}`)).text()).not.toContain('data-account-link');
+        expect(await (await browser.get(`/p/${seeded.project.slug}?tab=all`)).text()).not.toContain('data-account-link');
     });
 });
 

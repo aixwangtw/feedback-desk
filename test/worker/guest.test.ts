@@ -27,7 +27,7 @@ async function reportsOf(projectId: number): Promise<Report[]> {
 describe('guest client entry', () => {
     it('opens the portal without login and shows the category options', async () => {
         const { slug, browser } = await guestSetup();
-        const response = await browser().get(`/p/${slug}`);
+        const response = await browser().get(`/p/${slug}?tab=all`);
         expect(response.status).toBe(200);
         const html = await response.text();
         expect(html).toContain('data-issue-category');
@@ -78,8 +78,8 @@ describe('guest client entry', () => {
     it('keeps other projects and unconfigured sites behind login', async () => {
         const { slug, vars } = await guestSetup();
         const other = await seedProject();
-        expect((await new Browser(undefined, vars).get(`/p/${other.project.slug}`)).status).toBe(302);
-        expect((await new Browser().get(`/p/${slug}`)).status).toBe(302);
+        expect((await new Browser(undefined, vars).get(`/p/${other.project.slug}?tab=all`)).status).toBe(302);
+        expect((await new Browser().get(`/p/${slug}?tab=all`)).status).toBe(302);
     });
 
     it('shows a category column and filters by category, including uncategorized', async () => {
@@ -88,7 +88,7 @@ describe('guest client entry', () => {
         await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '排版單', 'issues[0][description]': 'd', 'issues[0][category]': '經典排版' });
         await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '程式單', 'issues[0][description]': 'd', 'issues[0][category]': '程式使用問題' });
         await seedReport(seeded.project, { title: '舊單' });
-        const html = async (query: string, as = visitor) => (await as.get(`/p/${slug}${query}`)).text();
+        const html = async (query: string, as = visitor) => (await as.get(`/p/${slug}?tab=all${query.replace(/^\?/, '&')}`)).text();
 
         const all = await html('');
         expect(all).toContain('data-category-filter');
@@ -115,7 +115,7 @@ describe('guest client entry', () => {
 
     it('sites without categories have no category column or filter', async () => {
         const { slug, browser } = await guestSetup({}, '');
-        const html = await (await browser().get(`/p/${slug}`)).text();
+        const html = await (await browser().get(`/p/${slug}?tab=all`)).text();
         expect(html).not.toContain('data-category-filter');
         expect(html).not.toContain('data-report-category');
     });
@@ -169,7 +169,7 @@ describe('guest client entry', () => {
     it('orders list columns as title, status, category, images, adjustment, creator, dates, actions', async () => {
         const { seeded, slug, browser } = await guestSetup();
         await seedReport(seeded.project);
-        const html = await (await browser().get(`/p/${slug}`)).text();
+        const html = await (await browser().get(`/p/${slug}?tab=all`)).text();
         const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
         const order = ['標題', '狀態', '分類', '圖片', '調整重點', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
         expect(order.every((index) => index >= 0)).toBe(true);

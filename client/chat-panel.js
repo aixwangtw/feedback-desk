@@ -4,6 +4,10 @@
 
 import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from '../src/shared/conversation';
 import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
+import { chatTabCounts, filterByTab, rememberDismissed, sessionStorageOrNull, shouldAutoOpen } from '../src/shared/chat-tabs';
+
+const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
+const TAB_IDLE = ['border-transparent', 'text-slate-500', 'hover:text-slate-900'];
 
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
@@ -60,7 +64,11 @@ if (root) {
         maxFiles: DEFAULT_MAX_FILES,
         maxFileBytes: DEFAULT_MAX_FILE_BYTES,
         threadRequest: 0,
+        // 「未回覆／已回覆」頁籤，預設未回覆。
+        tab: 'awaiting',
+        autoOpenChecked: false,
     };
+    const tabButtons = Array.from(root.querySelectorAll('[data-chat-tab]'));
 
     const isOpen = () => !panel.hidden;
 
@@ -184,11 +192,27 @@ if (root) {
         }
     };
 
+    const renderTabs = () => {
+        const counts = chatTabCounts(state.items);
+        tabButtons.forEach((button) => {
+            const active = button.dataset.chatTab === state.tab;
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+            button.classList.remove(...TAB_ACTIVE, ...TAB_IDLE);
+            button.classList.add(...(active ? TAB_ACTIVE : TAB_IDLE));
+            const count = button.querySelector('[data-chat-tab-count]');
+            if (count) {
+                count.textContent = String(counts[button.dataset.chatTab] ?? 0);
+            }
+        });
+    };
+
     const renderList = () => {
         const keyword = search.value.trim().toLowerCase();
+        const inTab = filterByTab(state.items, state.tab);
         const items = keyword === ''
-            ? state.items
-            : state.items.filter((item) => item.title.toLowerCase().includes(keyword) || String(item.number) === keyword.replace(/^#/, ''));
+            ? inTab
+            : inTab.filter((item) => item.title.toLowerCase().includes(keyword) || String(item.number) === keyword.replace(/^#/, ''));
+        renderTabs();
 
         list.replaceChildren(...items.map((item) => {
             const li = el('li');
@@ -268,6 +292,15 @@ if (root) {
                 updateLauncherBadge(data.unread_total);
             }
             syncPage();
+            // 開頁第一次取回清單：有未回覆、這次瀏覽沒手動收合過，就自動展開（清單視圖、未回覆頁籤）。
+            if (!state.autoOpenChecked) {
+                state.autoOpenChecked = true;
+                if (!isOpen() && shouldAutoOpen(data.awaiting_total ?? 0, sessionStorageOrNull())) {
+                    state.tab = 'awaiting';
+                    setView('list');
+                    openPanel();
+                }
+            }
             if (isOpen()) {
                 renderList();
             }
@@ -330,6 +363,7 @@ if (root) {
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
         // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
         document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
+        document.querySelectorAll(`[data-unread-flag="${CSS.escape(data.id)}"]`).forEach((flag) => flag.remove());
 
         const item = state.items.find((candidate) => candidate.id === data.id);
         if (item) {
@@ -429,9 +463,22 @@ if (root) {
         launcher.focus({ preventScroll: true });
     };
 
+    // 手動收合（關閉鈕、啟動鈕、Esc）：同一次瀏覽不再自動展開。
+    const dismissPanel = () => {
+        rememberDismissed(sessionStorageOrNull());
+        closePanel();
+    };
+
+    tabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            state.tab = button.dataset.chatTab === 'replied' ? 'replied' : 'awaiting';
+            renderList();
+        });
+    });
+
     launcher.addEventListener('click', () => {
         if (isOpen()) {
-            closePanel();
+            dismissPanel();
 
             return;
         }
@@ -442,7 +489,7 @@ if (root) {
         }
     });
 
-    $('[data-chat-close]').addEventListener('click', closePanel);
+    $('[data-chat-close]').addEventListener('click', dismissPanel);
     $('[data-chat-back]').addEventListener('click', showList);
     search.addEventListener('input', renderList);
 
@@ -455,7 +502,7 @@ if (root) {
 
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && isOpen() && !document.querySelector('dialog[open]')) {
-            closePanel();
+            dismissPanel();
         }
     });
 

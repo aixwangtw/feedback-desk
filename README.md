@@ -15,8 +15,11 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 
 - 多專案：每個專案的單與截圖分開，各自有客戶入口與開發團隊入口。
 - 開單：客戶一次可以新增多個問題，每題最多 5 張截圖。
-- 清單：搜尋、依狀態與建立者篩選、欄位排序，列表與看板兩種檢視，看板可以拖拉卡片改狀態。預設排序是有未讀留言的單最前，再來是有留言的單（依最新留言時間），沒有留言的單依建立時間。
-- 三種狀態：待處理、待審核（開發團隊改好並寫了調整重點）、已完成（客戶確認）。
+- 清單：頂部頁籤「待開發團隊回覆」「待客戶回覆」（團隊預設前者、客戶預設後者），旁邊有「已完成」「全部」小連結；每張單標「等開發團隊」或「等客戶」、紅底「N 則未讀」，團隊端另標「待審留言 N」。搜尋、依分類與建立者篩選、欄位排序，列表與看板兩種檢視，看板可以拖拉卡片改狀態。
+- 頁首通知鈴鐺：團隊看到客戶的新留言（另列待審留言），客戶看到團隊在她單上的新留言；點了開該單並標為已讀。
+- 待審留言（草稿）：AI 或排程先寫好留言，客戶完全看不到；團隊在單頁按「送出」才發出（也能編輯、捨棄，或指定改寫某則團隊留言）。預設排序是有未讀留言的單最前，再來是有留言的單（依最新留言時間），沒有留言的單依建立時間。
+- 三種狀態：待處理、待審核（開發團隊改好並寫了調整重點）、已完成（客戶確認）。網頁上只有客戶能改成已完成（清單操作欄的「完成」按鈕），團隊的選單沒有「已完成」。
+- 留言自動切狀態：待審核的單客戶留言後改回待處理；團隊在待處理的單留言後改成待審核，並提醒更新調整重點。已完成的單不因留言改狀態；開單時附的通知留言不套用。
 - 留言串：雙方都能留言附圖，以聊天樣式顯示；調整重點只有開發團隊能寫。
 - 未讀提示：清單與看板的留言按鈕以紅色數字顯示未讀數（開發團隊看客戶的新留言；客戶看開發團隊的新回覆，調整重點更新也算一則），開發團隊可只看有未讀留言的單。
 - 留言對話面板：登入後右下角的對話按鈕可集中查看每張單的留言、搜尋、直接回覆並附圖，開啟即標為已讀；手機上全螢幕顯示。
@@ -469,7 +472,8 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `GET /api/patrol/projects` | 列出所有專案。 |
 | `GET /api/patrol/projects/{slug}/attention` | 需要處理的單：待處理、有團隊還沒看過的客戶留言、或客戶最後留言晚於最後一次調整重點與團隊留言；附完整內容與附件網址，一次最多 20 張，`total` 是全部張數。 |
 | `GET /api/patrol/projects/{slug}/reports/{public_id}` | 讀單張。 |
-| `POST /api/patrol/projects/{slug}/reports/{public_id}/messages` | 留言，內容 `{"body": "..."}`。 |
+| `POST /api/patrol/projects/{slug}/reports/{public_id}/messages` | 留言，內容 `{"body": "..."}`。待處理的單會自動改成待審核，回應的 `status`、`notice` 會說明。 |
+| `POST /api/patrol/projects/{slug}/reports/{public_id}/drafts` | 寫待審留言（草稿），內容 `{"body": "...", "replace_message_id": 123}`（`replace_message_id` 可省略；有給時送出會改寫那則團隊留言）。客戶看不到、不改狀態，團隊在單頁按「送出」才發出。成功回 201 `{"draft": {"id", "body", "replaces_message_id", "report_url"}}`。 |
 | `PUT /api/patrol/projects/{slug}/reports/{public_id}/adjustment` | 寫調整重點，內容 `{"note": "...", "append": true}`。 |
 | `POST /api/patrol/projects/{slug}/reports/{public_id}/needs-input` | 改成待審核。 |
 
@@ -489,7 +493,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `mcp install [--claude] [--codex] [--scope user\|local]` | 寫入 Claude Code、Codex 的 MCP 設定，各用一個獨立 token，重新執行會撤銷舊的。 |
 | `mcp token --agent <名稱>` | 給其他 MCP 用戶端（OpenClaw、Hermes Agent、Grok Build…）的專用 token，印出網址與標頭寫法。 |
 | `token create [--expires 天數] [--agent 名稱]\|list\|revoke <id>` | 管理自己的 API token；`--agent` 標示這個 token 給哪個 AI 用。 |
-| `patrol-token issue [--developer 帳號] [--name 用途]\|list\|revoke --id 編號` | 排程（雲端例行巡檢）專用 token，代表一個團隊帳號，只能用 `/api/patrol` 列專案與待處理單、讀單、留言、寫調整重點、改成待審核；不能改成已完成或刪除。只存雜湊，明文只顯示一次；寫入動作另有操作紀錄。 |
+| `patrol-token issue [--developer 帳號] [--name 用途]\|list\|revoke --id 編號` | 排程（雲端例行巡檢）專用 token，代表一個團隊帳號，只能用 `/api/patrol` 列專案與待處理單、讀單、留言、寫待審留言、寫調整重點、改成待審核；不能改成已完成或刪除。只存雜湊，明文只顯示一次；寫入動作另有操作紀錄。 |
 | `project create <名稱> [--slug] [--client-name] [--no-client]` | 建立專案並印出客戶與開發團隊入口連結。 |
 | `project list` | 列出專案。 |
 | `project categories <slug\|all> ["分類1,分類2"] [--clear]` | 查看或設定專案的開單分類（逗號或換行分隔，最多 20 個、每個 50 字）；沒設定就不顯示分類。開發團隊也可在網頁「我的帳號」→「專案設定」改。 |
@@ -506,7 +510,8 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 | `create <project> --title --description [--category] [--attach]... [--for-client [--notice]]` | 開新單（團隊與客戶帳號都可以）；專案有設定分類（`project categories`）時 `--category` 可指定其中之一（可省略）。`--attach` 可重複，附 jpg／png／webp 圖片（每張 10 MB 內、最多 5 張，PDF 請先轉成圖片；`--image` 是舊名，仍可用）；任一張不合格就整張單不建立。團隊帳號加 `--for-client` 會把這張單分享給客戶：客戶的清單、看板看得到並可看附圖、列入客戶編號，系統自動以團隊身分留一則通知留言（`--notice` 可改文字，須搭配 `--for-client`），客戶端顯示未讀；沒加的團隊單客戶完全看不到。 |
 | `adjust <project> <public_id> [--note] [--append] [--image]... [--by-id] [--force]` | 寫調整重點與圖片，不改狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `status <project> <public_id\|編號> <狀態> [--force]` | 改狀態：`new`／`needs_input`／`completed`，或中文。 |
-| `message <project> <public_id\|編號> --body [--attach]...` | 以自己的帳號留言；`--attach`（舊名 `--image`）規則同 `create`。 |
+| `message <project> <public_id\|編號> --body [--attach]...` | 以自己的帳號留言；`--attach`（舊名 `--image`）規則同 `create`。待處理的單留言後自動改成待審核，並提醒更新調整重點。 |
+| `draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖檔]...` | 寫待審留言（草稿，`--text` 同 `--body`）：客戶看不到，團隊在單頁按「送出」才發出；`--replace-message` 送出時改寫那則團隊留言（不新增）。附圖規則同 `create`。只接受 public_id。 |
 | `claim` / `release <project> <public_id\|編號> [--force]` | 認領／釋放，讓其他人與 AI 知道誰在處理。 |
 | `handoff <project> <public_id\|編號> --note [--release]` | 寫交接紀錄（做到哪、下一步），只有團隊看得到。 |
 

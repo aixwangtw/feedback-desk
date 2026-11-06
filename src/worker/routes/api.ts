@@ -336,6 +336,13 @@ api.post('/projects/:slug/reports/:ref/messages', async (c) => {
     return c.json(await team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), message));
 });
 
+/** 待審留言（草稿）：團隊帳號限定；客戶 token 一律 403。 */
+api.post('/projects/:slug/reports/:ref/drafts', async (c) => {
+    const team_ = ctx(c);
+    const input = await body<{ body?: unknown; replace_message_id?: unknown; upload_ids?: string[] }>(c);
+    return c.json(await team.createReportDraft(team_, c.req.param('slug'), c.req.param('ref'), input), 201);
+});
+
 async function storeUpload(c: AppContext, target: { projectId: number; reportId: number | null; purpose: 'report' | 'message' | 'adjustment' }): Promise<Response> {
     try {
         const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, nowIso: nowIso(c.get('now')) });

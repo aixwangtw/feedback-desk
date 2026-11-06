@@ -11,8 +11,8 @@ import { paths } from './paths';
 /**
  * REST API for the scheduled patrol (a cloud routine): `Authorization: Bearer fdp_...` from
  * `feedback-desk patrol-token issue`. It acts as the token's team account and can only list
- * projects, list reports that need attention, read a report, leave a message, write the adjustment
- * note and set needs_input. It cannot complete or delete reports. Writes are logged in patrol_logs.
+ * projects, list reports that need attention, read a report, leave a message, write a draft message
+ * (待審留言, team-only until a person sends it), write the adjustment note and set needs_input. It cannot complete or delete reports. Writes are logged in patrol_logs.
  */
 type PatrolEnv = AppEnv & { Variables: AppEnv['Variables'] & { patrolToken: PatrolToken } };
 type PatrolContext = Context<PatrolEnv>;
@@ -146,7 +146,7 @@ async function hasNewQuestion(db: D1Database, reportId: number, handledAt: numbe
 patrol.get('/projects/:slug/reports/:ref', async (c) => c.json(await team.getReport(ctx(c), c.req.param('slug'), c.req.param('ref'))));
 
 /** Runs one write and records it (summary only, never the text) in patrol_logs. */
-async function logged(c: PatrolContext, action: string, summary: Record<string, unknown>, run: () => Promise<Record<string, unknown>>) {
+async function logged(c: PatrolContext, action: string, summary: Record<string, unknown>, run: () => Promise<Record<string, unknown>>, successStatus: 200 | 201 = 200) {
     const slug = c.req.param('slug') ?? '';
     const ref = c.req.param('ref') ?? '';
     let result: Record<string, unknown> | null = null;
@@ -167,13 +167,33 @@ async function logged(c: PatrolContext, action: string, summary: Record<string, 
     if (failure) {
         throw failure;
     }
-    return c.json(result ?? {});
+    return c.json(result ?? {}, successStatus);
 }
 
 patrol.post('/projects/:slug/reports/:ref/messages', async (c) => {
     const input = await body(c);
     const text = typeof input.body === 'string' ? input.body : '';
     return logged(c, 'message', { body_length: charLength(text) }, () => team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: text }));
+});
+
+/**
+ * 待審留言（草稿）：客戶端看不到，團隊在單頁審過按「送出」才發出。body 必填；replace_message_id
+ * 指定要修改的團隊留言。草稿本身不改狀態。
+ */
+patrol.post('/projects/:slug/reports/:ref/drafts', async (c) => {
+    const input = await body(c);
+    const text = typeof input.body === 'string' ? input.body : '';
+    const replace = input.replace_message_id;
+    return logged(
+        c,
+        'draft',
+        { body_length: charLength(text), replace_message_id: typeof replace === 'number' || typeof replace === 'string' ? replace : null },
+        async () => {
+            const result = await team.createReportDraft(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: text, replace_message_id: replace });
+            return { draft: result.draft };
+        },
+        201,
+    );
 });
 
 patrol.put('/projects/:slug/reports/:ref/adjustment', async (c) => {

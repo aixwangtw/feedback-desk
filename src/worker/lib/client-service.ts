@@ -202,7 +202,7 @@ export async function postOwnMessage(ctx: ClientContext, slug: string, identifie
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
     }
     const author = messageAuthorName(ctx.env, report, false, null, ctx.account.name);
-    await addMessage(ctx.env, report, { author_type: 'reporter', author_name: author, body, uploads, author: clientAuthor(ctx) }, ctx.now);
+    const result = await addMessage(ctx.env, report, { author_type: 'reporter', author_name: author, body, uploads, author: clientAuthor(ctx) }, ctx.now);
     await markRead(ctx.env, report, 'client', ctx.now, ctx.account);
-    return { public_id: report.public_id, title: report.title, author: withAgent(author, ctx.agent), images_added: uploads.length };
+    return { public_id: report.public_id, title: report.title, author: withAgent(author, ctx.agent), images_added: uploads.length, status: result.status };
 }

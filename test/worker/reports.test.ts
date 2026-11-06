@@ -67,7 +67,7 @@ describe('uploads', () => {
             { original_name: 'b.jpg', mime_type: 'image/jpeg' },
         ]);
         expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM uploads WHERE id IN (?, ?)').bind(a, b).first('n')).toBe(0);
-        const portal = await (await client.get(`/p/${seeded.project.slug}`)).text();
+        const portal = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(portal).toContain('已新增 2 個問題。');
     });
 
@@ -193,17 +193,17 @@ describe('reports', () => {
         await seedReport(seeded.project, { title: 'Beta 版面', description: '50% 寬度', at: now - 2000 });
         await seedReport(seeded.project, { title: 'Gamma 顏色', creator: 'public', reporterName: '路人', at: now - 1000 });
         const owner = await new Browser().asOwner(seeded);
-        const all = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const all = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(all).toContain('共 3 題');
         expect(all).toContain('公開回報（路人）');
-        const search = await (await owner.get(`/p/${seeded.project.slug}?q=50%25`)).text();
+        const search = await (await owner.get(`/p/${seeded.project.slug}?tab=all&q=50%25`)).text();
         expect(search).toContain('Beta 版面');
         expect(search).not.toContain('Alpha 按鈕');
         expect(search).toContain('（篩選後 1 題）');
         expect(search).toMatch(/data-report-number="true">2</);
-        const sorted = await (await owner.get(`/p/${seeded.project.slug}?sort=title&direction=asc`)).text();
+        const sorted = await (await owner.get(`/p/${seeded.project.slug}?tab=all&sort=title&direction=asc`)).text();
         expect(sorted.indexOf('Alpha 按鈕')).toBeLessThan(sorted.indexOf('Beta 版面'));
-        const creator = await (await owner.get(`/p/${seeded.project.slug}?creator=public&view=board`)).text();
+        const creator = await (await owner.get(`/p/${seeded.project.slug}?tab=all&creator=public&view=board`)).text();
         expect(creator).toContain('Gamma 顏色');
         expect(creator).not.toContain('Alpha 按鈕');
         expect(creator).toContain('data-kanban-board');
@@ -214,7 +214,7 @@ describe('reports', () => {
         const { report } = await seedReport(seeded.project, { title: '對話框' });
         await seedAttachment(report);
         const owner = await new Browser().asOwner(seeded);
-        const list = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const list = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(list).not.toContain(`id="edit-report-${report.public_id}"`);
         expect(list).toContain(`data-dialogs-src="/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=`);
         const ownerDialogs = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs?back=%2Fp%2F${seeded.project.slug}%3Fstatus%3Dnew`)).text();
@@ -237,7 +237,7 @@ describe('reports', () => {
             await seedReport(seeded.project, { title: `單 ${i} <x>`, at: now - i * 1000 });
         }
         const owner = await new Browser().asOwner(seeded);
-        const first = await (await owner.get(`/p/${seeded.project.slug}`)).text();
+        const first = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(first).not.toContain('data-report-row=');
         expect(first).toContain('共 <span class="font-medium">52</span> 筆');
         const json = /<script type="application\/json" id="portal-rows-data">(.*?)<\/script>/s.exec(first)![1];
@@ -249,10 +249,10 @@ describe('reports', () => {
         expect(html).toContain('單 0 &lt;x&gt;');
         expect(html).toContain('data-dialogs-src=');
         expect(JSON.stringify(payload)).not.toContain('reporter_token_hash');
-        const board = await (await owner.get(`/p/${seeded.project.slug}?view=board`)).text();
+        const board = await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text();
         const boardPayload = JSON.parse(/id="portal-rows-data">(.*?)<\/script>/s.exec(board)![1]);
         expect(boardColumnHtml(boardPayload, 'new').match(/data-kanban-card=/g)?.length).toBe(50);
-        const second = await (await owner.get(`/p/${seeded.project.slug}?page=2`)).text();
+        const second = await (await owner.get(`/p/${seeded.project.slug}?tab=all&page=2`)).text();
         expect(second.match(/data-report-row=/g)?.length).toBe(2);
         expect(second).not.toContain('portal-rows-data');
     });

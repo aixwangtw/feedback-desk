@@ -82,6 +82,19 @@ const formatMegabytes = (bytes) => `${Math.round(bytes / 1024 / 1024)} MB`;
 // Each screenshot is sent in its own PUT request before the form is submitted; the form then only
 // carries the returned upload ids. The Workers free plan allows 10 ms of CPU per request, and
 // streaming one file straight into storage stays well inside it, while parsing a multipart body does not.
+// 需要再確認的表單（例如捨棄待審留言）：CSP 不允許 inline onsubmit，改用 data-confirm。
+document.addEventListener(
+    'submit',
+    (event) => {
+        const form = event.target instanceof HTMLFormElement ? event.target.closest('form[data-confirm]') : null;
+        if (form && !window.confirm(form.dataset.confirm)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    },
+    true,
+);
+
 document.addEventListener('submit', async (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.matches('[data-upload-form]') || form.dataset.uploadState === 'done') {
@@ -573,6 +586,16 @@ document.querySelectorAll('[data-kanban-list]').forEach((list) => {
             if (!form || !select || !feedback) {
                 insertCardInPageOrder(originalList, card);
                 refreshKanbanPageCounts();
+
+                return;
+            }
+
+            // 開發團隊的選單沒有可選的「已完成」：已完成只由客戶確認，卡片直接移回原欄。
+            if (!select.querySelector(`option[value="${CSS.escape(requestedStatus)}"]:not([disabled])`)) {
+                insertCardInPageOrder(originalList, card);
+                refreshKanbanPageCounts();
+                feedback.textContent = '已完成要由客戶確認';
+                announceKanban('已完成要由客戶確認，卡片已移回原本的欄位。');
 
                 return;
             }

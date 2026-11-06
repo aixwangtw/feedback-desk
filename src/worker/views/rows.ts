@@ -54,9 +54,20 @@ function time(v: ViewContext, at: string, relative = false): string {
     return `<time datetime="${esc(at)}" title="${esc(`${absolute}（${v.cfg.timezoneName}）`)}">${esc(relative ? formatRelative(at, v.now) : absolute)}</time>`;
 }
 
-function statusSelect(id: string, status: ReportStatus, extra: string): string {
+const COMPLETE_CONFIRM = '確定這張單已經完成了嗎？';
+/** Same text as COMPLETED_BY_CLIENT_LABEL in components.tsx. */
+const COMPLETED_BY_CLIENT = '已完成（由客戶確認）';
+
+/** StatusSelect（components.tsx）：團隊端沒有「已完成」，已完成的單顯示停用選項。 */
+function statusSelect(id: string, status: ReportStatus, extra: string, teamSide: boolean): string {
     let options = '';
     for (const option of STATUSES) {
+        if (teamSide && option === 'completed') {
+            if (status === 'completed') {
+                options += `<option value="${option}" data-dot="${statusDotClass(option)}" selected="" disabled="">${COMPLETED_BY_CLIENT}</option>`;
+            }
+            continue;
+        }
         options += `<option value="${option}" data-dot="${statusDotClass(option)}"${status === option ? ' selected=""' : ''}>${statusLabel(option)}</option>`;
     }
     return `<select name="status" id="${esc(id)}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10 ${extra}" data-status-select="" data-status-autosave="">${options}</select>`;
@@ -86,6 +97,27 @@ export function chatButtonHtml(isOwner: boolean, publicId: string, title: string
     return `${html}</button>`;
 }
 
+/** ReportFlags in rows-reference.tsx: 紅底「N 則未讀」與團隊端「待審留言 N」。 */
+export function reportFlagsHtml(ctx: RowContext, row: PortalRow, extra: string): string {
+    const id = esc(row.report.public_id);
+    const drafts = ctx.isOwner ? row.drafts ?? 0 : 0;
+    const waiting = row.waiting === 'developer' || row.waiting === 'client' ? row.waiting : null;
+    if (row.unread <= 0 && drafts <= 0 && waiting === null) {
+        return '';
+    }
+    let html = `<div class="flex flex-wrap items-center gap-1.5 ${extra}" data-report-flags="true">`;
+    if (waiting) {
+        html += `<span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting="${waiting}">等${esc(waiting === 'developer' ? ctx.v.cfg.labels.owner : ctx.v.cfg.labels.client)}</span>`;
+    }
+    if (row.unread > 0) {
+        html += `<button type="button" class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold leading-4 text-white shadow-sm hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-chat-open="${id}" data-unread-flag="${id}">${badgeText(row.unread)} 則未讀</button>`;
+    }
+    if (drafts > 0) {
+        html += `<a href="${esc(`${paths.report(ctx.slug, row.report.public_id)}#message-drafts`)}" class="inline-flex items-center rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold leading-4 text-amber-900 hover:bg-amber-100" data-draft-badge="${id}" title="有待審留言，只有團隊看得到">待審留言 ${drafts}</a>`;
+    }
+    return `${html}</div>`;
+}
+
 const TRASH = '<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v5M14 11v5"></path></svg>';
 
 export function listRowHtml(ctx: RowContext, row: PortalRow): string {
@@ -99,12 +131,12 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle${deleted ? ' bg-slate-50 text-slate-500' : ''}" data-report-row="${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
     html += `<td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span></td>`;
-    html += `<td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle"><div class="flex items-start gap-2"><button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button>${chatButtonHtml(isOwner, report.public_id, report.title, row, '-my-1')}</div>`;
+    html += `<td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle"><div class="flex items-start gap-2"><button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button>${chatButtonHtml(isOwner, report.public_id, report.title, row, '-my-1')}</div>${reportFlagsHtml(ctx, row, 'mt-1')}`;
     if (isOwner && deleted) {
         html += `<span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted="true"><span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">${esc(v.cfg.labels.client)}已刪除</span>${time(v, report.client_deleted_at as string)}</span>`;
     }
     html += '</td>';
-    html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'h-8 w-28 shrink-0 !px-2 !py-0 !text-xs')}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
+    html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'h-8 w-28 shrink-0 !px-2 !py-0 !text-xs', isOwner)}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
     if (ctx.showCategory) {
         html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
     }
@@ -136,6 +168,9 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
     html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><div class="flex flex-wrap gap-2 sm:justify-center"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
+    if (!isOwner && report.status !== 'completed') {
+        html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" data-confirm="${COMPLETE_CONFIRM}">${back}<input type="hidden" name="status" value="completed"/><button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report="true">完成</button></form>`;
+    }
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report="true">還原</button></form>`;
     }
@@ -156,12 +191,16 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const url = (attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}" title="拖拉卡片可改變狀態">`;
-    html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span></p>`;
+    html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span></p>${reportFlagsHtml(ctx, row, 'mt-1')}`;
     if ((ctx.categories ?? []).length > 0) {
         html += categorySelectHtml(ctx, report, 'card-category', 'mt-1');
     }
     html += `<button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-${id}" data-report-detail-open="true">${title}</button></div>`;
-    html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${chatButtonHtml(isOwner, report.public_id, report.title, row)}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
+    const complete =
+        !isOwner && report.status !== 'completed'
+            ? `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" data-confirm="${COMPLETE_CONFIRM}">${back}<input type="hidden" name="status" value="completed"/><button type="submit" class="inline-flex h-8 cursor-pointer items-center rounded-lg px-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-card-action="true" data-complete-report="true">完成</button></form>`
+            : '';
+    html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${chatButtonHtml(isOwner, report.public_id, report.title, row)}${complete}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「${title}」" title="還原" data-card-action="true" data-restore-report="true"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button></form>`;
     }
@@ -190,7 +229,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     }
     html += `<p class="mt-3 text-xs text-slate-500" data-report-creator="true">建立者：${esc(row.creatorLabel)}</p>`;
     html += `<p class="mt-3 text-xs text-slate-500">更新於 ${time(v, report.latest_activity_at, true)}</p>`;
-    html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form="true">${back}<label for="board-status-${id}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>${statusSelect(`board-status-${report.public_id}`, report.status, 'w-full !px-2 !py-1.5 !text-xs')}<noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="min-h-4 text-[11px] text-slate-500" data-status-feedback="true" aria-live="polite"></span></form>`;
+    html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form="true">${back}<label for="board-status-${id}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>${statusSelect(`board-status-${report.public_id}`, report.status, 'w-full !px-2 !py-1.5 !text-xs', isOwner)}<noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="min-h-4 text-[11px] text-slate-500" data-status-feedback="true" aria-live="polite"></span></form>`;
     html += '</article>';
     return html;
 }

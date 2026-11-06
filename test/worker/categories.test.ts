@@ -66,8 +66,8 @@ describe('per-project report categories', () => {
         const { slug, owner } = await setup();
         const other = await setup();
         await owner.post(`/p/${slug}/settings/categories`, { categories: '專屬分類' });
-        expect(await (await owner.get(`/p/${slug}`)).text()).toContain('data-issue-category');
-        const otherHtml = await (await other.owner.get(`/p/${other.slug}`)).text();
+        expect(await (await owner.get(`/p/${slug}?tab=all`)).text()).toContain('data-issue-category');
+        const otherHtml = await (await other.owner.get(`/p/${other.slug}?tab=all`)).text();
         expect(otherHtml).not.toContain('data-issue-category');
         expect(otherHtml).not.toContain('專屬分類');
     });
@@ -154,11 +154,11 @@ describe('per-project report categories', () => {
     it('list rows and board cards switch the category with the same dropdown; none without categories', async () => {
         const { seeded, slug, owner, client } = await setup();
         const { report } = await seedReport(seeded.project);
-        expect(await (await owner.get(`/p/${slug}`)).text()).not.toContain('data-category-autosave');
+        expect(await (await owner.get(`/p/${slug}?tab=all`)).text()).not.toContain('data-category-autosave');
         await owner.post(`/p/${slug}/settings/categories`, { categories: '程式問題,排版' });
-        const list = await (await client.get(`/p/${slug}`)).text();
+        const list = await (await client.get(`/p/${slug}?tab=all`)).text();
         expect(list).toContain(`id="row-category-${report.public_id}"`);
-        const board = await (await client.get(`/p/${slug}?view=board`)).text();
+        const board = await (await client.get(`/p/${slug}?tab=all&view=board`)).text();
         expect(board).toContain(`id="card-category-${report.public_id}"`);
     });
 });

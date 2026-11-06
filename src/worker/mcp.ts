@@ -251,7 +251,7 @@ export function createServer(ctx: team.TeamContext): McpServer {
         'add_message',
         {
             title: '留言',
-            description: `以目前登入的團隊帳號在回報單留言（公開單上一律顯示團隊稱呼）。可附 upload_ids（用 request_image_upload 的 purpose=message 上傳）。${UNTRUSTED}`,
+            description: `以目前登入的團隊帳號在回報單留言（公開單上一律顯示團隊稱呼）。可附 upload_ids（用 request_image_upload 的 purpose=message 上傳）。待處理的單留言後自動改成待審核（回傳 notice 提醒更新調整重點）。${UNTRUSTED}`,
             inputSchema: z.object({
                 project: PROJECT,
                 report: REPORT.describe('public_id 或團隊端清單編號'),

@@ -82,7 +82,6 @@ const setupThread = (section) => {
             });
             if (response.ok) {
                 form.reset();
-                document.getElementById(`dialog-preview-${reportId}`)?.replaceChildren();
                 await load({ scrollToEnd: true });
 
                 return;

@@ -40,7 +40,7 @@ const renderImagePreviews = (input) => {
 };
 
 document.addEventListener('change', (event) => {
-    if (event.target.matches('[data-image-input]')) {
+    if (event.target.matches('[data-image-input]:not([data-attachment-rules])')) {
         renderImagePreviews(event.target);
     }
 });

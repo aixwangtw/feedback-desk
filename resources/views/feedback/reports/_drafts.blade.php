@@ -23,12 +23,18 @@
                     <div class="mt-2 flex flex-wrap gap-2">
                         @foreach ($draft->attachmentList() as $index => $file)
                             @if (\App\Support\FeedbackAttachmentRules::isVideoMime($file['mime_type']))
-                                <video controls playsinline preload="metadata" src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" class="max-h-60 w-full max-w-md rounded-lg border border-slate-200 bg-black" title="{{ $file['original_name'] }}"></video>
+                                <div class="min-w-0 w-full max-w-md">
+                                    <video controls playsinline preload="metadata" src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" class="max-h-60 w-full rounded-lg border border-slate-200 bg-black" title="{{ $file['original_name'] }}"></video>
+                                    <x-feedback.attachment-caption :name="$file['original_name']" class="mt-0.5" />
+                                </div>
                                 @continue
                             @endif
+                            <div class="min-w-0 w-24">
                             <a href="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt="{{ $file['original_name'] }}">
                                 <img src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" alt="{{ $file['original_name'] }}" class="size-full object-cover" loading="lazy">
                             </a>
+                            <x-feedback.attachment-caption :name="$file['original_name']" class="mt-0.5" />
+                            </div>
                         @endforeach
                     </div>
                 @endif

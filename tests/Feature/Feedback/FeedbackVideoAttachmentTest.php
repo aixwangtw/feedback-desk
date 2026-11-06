@@ -142,7 +142,7 @@ class FeedbackVideoAttachmentTest extends TestCase
         $this->actingAsTeam();
         $portal = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertMatchesRegularExpression('/>\s*附件\s*<input id="chat-screenshots"/u', $portal);
-        $this->assertStringContainsString('data-max-video-bytes="'.FeedbackAttachmentRules::MAX_VIDEO_BYTES.'"', $portal);
+        $this->assertStringContainsString('data-attachment-rules="'.e(FeedbackAttachmentRules::browserRulesJson()).'"', $portal);
 
         $response = $this->postJson(route('feedback.messages.store', [$this->project, $this->report]), [
             'body' => '格式不對',

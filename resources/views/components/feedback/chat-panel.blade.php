@@ -4,9 +4,6 @@
 <div data-chat-root
      data-list-url="{{ route('feedback.conversations.index', $project) }}"
      data-thread-url-template="{{ route('feedback.conversations.show', [$project, '__REPORT__']) }}"
-     data-max-files="{{ \App\Support\FeedbackAttachmentRules::MAX_FILES }}"
-     data-max-image-bytes="{{ \App\Support\FeedbackAttachmentRules::MAX_IMAGE_BYTES }}"
-     data-max-video-bytes="{{ \App\Support\FeedbackAttachmentRules::MAX_VIDEO_BYTES }}"
      data-viewer="{{ app(\App\Support\FeedbackAccess::class)->isOwner($project) ? 'owner' : 'client' }}">
     <button type="button" class="fixed bottom-5 right-5 z-40 grid size-14 place-items-center rounded-full bg-teal-700 text-white shadow-lg shadow-teal-900/20 transition hover:bg-teal-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-teal-600/40 sm:bottom-6 sm:right-6" aria-controls="chat-panel" aria-expanded="false" data-chat-launcher>
         <svg class="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -74,14 +71,14 @@
                             </div>
                             <button type="button" class="mb-2 inline-flex items-center rounded-lg border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100" data-chat-draft-resume hidden>帶入待審留言</button>
                         @endif
-                        <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error hidden></p>
-                        <div id="chat-preview" class="mb-2 grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                        <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error data-attachment-error hidden></p>
+                        <div id="chat-preview" class="mb-2 flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
                         <label for="chat-body" class="sr-only">回覆內容</label>
                         <textarea id="chat-body" name="body" rows="2" maxlength="10000" placeholder="輸入回覆…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-body-input></textarea>
                         <div class="mt-2 flex items-center justify-between gap-2">
                             <label for="chat-screenshots" class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                                 {{ \App\Support\FeedbackAttachmentRules::MESSAGE_BUTTON }}
-                                <input id="chat-screenshots" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="chat-preview" data-chat-files>
+                                <input id="chat-screenshots" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-attachment-rules="{{ \App\Support\FeedbackAttachmentRules::browserRulesJson() }}" data-preview-target="chat-preview" data-chat-files>
                             </label>
                             <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">{{ \App\Support\FeedbackAttachmentRules::messageHint() }}</span>
                             <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-chat-send>送出</button>

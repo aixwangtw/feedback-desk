@@ -43,6 +43,64 @@ final class FeedbackAttachmentRules
     /** 可附影片的地方，欄位與錯誤訊息裡的名稱。 */
     public const MESSAGE_FIELD = '圖片／影片';
 
+    /** 瀏覽器端（拖曳、按鈕選檔）檢查不合格時的說明，文字與伺服器端允許的格式一致。 */
+    public const TYPE_ERROR = '只能附 jpg、png、webp 圖片或 mp4 影片';
+
+    public const TYPE_ERROR_IMAGES_ONLY = '只能附 jpg、png、webp 圖片';
+
+    /**
+     * 給瀏覽器端共用 JS（resources/js/attachment-files.js）的規則：數字與文字都來自這裡的常數，JS 不寫死。
+     *
+     * @return array{allowVideo: bool, maxFiles: int, maxImageBytes: int, maxVideoBytes: int, imageTypes: list<string>, videoTypes: list<string>, fieldName: string, typeMessage: string}
+     */
+    public static function browserRules(): array
+    {
+        return [
+            'allowVideo' => true,
+            'maxFiles' => self::MAX_FILES,
+            'maxImageBytes' => self::MAX_IMAGE_BYTES,
+            'maxVideoBytes' => self::MAX_VIDEO_BYTES,
+            'imageTypes' => self::IMAGE_MIME_TYPES,
+            'videoTypes' => ['video/mp4'],
+            'fieldName' => self::MESSAGE_FIELD,
+            'typeMessage' => self::TYPE_ERROR,
+        ];
+    }
+
+    /**
+     * 公開回報者在單頁留言只能附圖片，張數與大小用公開回報自己的上限。
+     *
+     * @return array{allowVideo: bool, maxFiles: int, maxImageBytes: int, maxVideoBytes: int, imageTypes: list<string>, videoTypes: list<string>, fieldName: string, typeMessage: string}
+     */
+    public static function publicBrowserRules(): array
+    {
+        return [
+            ...self::browserRules(),
+            'allowVideo' => false,
+            'maxFiles' => PublicReporting::MAX_SCREENSHOTS,
+            'maxImageBytes' => PublicReporting::MAX_SCREENSHOT_KILOBYTES * 1024,
+            'fieldName' => '截圖',
+            'typeMessage' => self::TYPE_ERROR_IMAGES_ONLY,
+        ];
+    }
+
+    /** 放進 data-attachment-rules 屬性的 JSON（Blade 的 {{ }} 會跳脫引號）。 */
+    public static function browserRulesJson(bool $imagesOnly = false): string
+    {
+        return json_encode($imagesOnly ? self::publicBrowserRules() : self::browserRules(), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * 附件顯示用的短標題：檔名去掉副檔名（「圖一-缺圖的位置.png」顯示成「圖一-缺圖的位置」）。
+     * JS 端對應 attachment-files.js 的 attachmentTitle，兩邊規則一致。
+     */
+    public static function displayTitle(string $name): string
+    {
+        $title = preg_replace('/\.[A-Za-z0-9]{1,5}$/u', '', $name);
+
+        return $title === null || $title === '' ? $name : $title;
+    }
+
     public static function maxImageMegabytes(): int
     {
         return self::MAX_IMAGE_MEGABYTES;

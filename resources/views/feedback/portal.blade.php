@@ -426,14 +426,14 @@
                     <div class="max-h-[50dvh] overflow-y-auto rounded-xl bg-slate-50/70 px-3 py-3" aria-live="polite" data-dialog-thread-body><p class="py-4 text-center text-sm text-slate-500">留言載入中…</p></div>
                     <form action="{{ route('feedback.messages.store', [$project, $report]) }}" method="POST" enctype="multipart/form-data" class="grid gap-2" data-dialog-thread-form novalidate>
                         @csrf
-                        <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error hidden></p>
-                        <div id="dialog-preview-{{ $report->public_id }}" class="grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                        <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
+                        <div id="dialog-preview-{{ $report->public_id }}" class="flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
                         <label for="dialog-body-{{ $report->public_id }}" class="sr-only">留言內容</label>
                         <textarea id="dialog-body-{{ $report->public_id }}" name="body" rows="2" maxlength="10000" placeholder="輸入留言…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-dialog-thread-input></textarea>
                         <div class="flex items-center justify-between gap-2">
                             <label for="dialog-screenshots-{{ $report->public_id }}" class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                                 {{ \App\Support\FeedbackAttachmentRules::MESSAGE_BUTTON }}
-                                <input id="dialog-screenshots-{{ $report->public_id }}" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="dialog-preview-{{ $report->public_id }}">
+                                <input id="dialog-screenshots-{{ $report->public_id }}" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-attachment-rules="{{ \App\Support\FeedbackAttachmentRules::browserRulesJson() }}" data-preview-target="dialog-preview-{{ $report->public_id }}">
                             </label>
                             <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">{{ \App\Support\FeedbackAttachmentRules::messageHint() }}</span>
                             <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>

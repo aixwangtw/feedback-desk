@@ -2,6 +2,7 @@
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
 import { orderConversations } from './chat-order';
+import { attachmentTitle } from './attachment-files';
 import { draftAttachmentViews, draftFormFields, draftMeta, nextDraftIndex, shouldFillComposer } from './chat-drafts';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, rememberDismissed, shouldAutoOpen, tabCounts, visibleItems } from './chat-tabs';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
@@ -9,9 +10,7 @@ import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInL
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 60000;
-// 上限由伺服器 FeedbackAttachmentRules 帶到 data-max-*（見 chat-panel.blade.php），這裡只是讀不到時的預設。
-const VIDEO_TYPES = ['video/mp4'];
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', ...VIDEO_TYPES];
+// 附件的檢查規則（張數、大小、格式）由 attachment-composer.js 依伺服器帶來的 data-attachment-rules 處理。
 // 與 portal.blade.php、message-badges.blade.php 相同的樣式。
 const SUMMARY_TONES = {
     alert: ['border-rose-200', 'bg-rose-50', 'text-rose-900'],
@@ -24,10 +23,6 @@ const root = document.querySelector('[data-chat-root]');
 
 if (root) {
     const $ = (selector) => root.querySelector(selector);
-    const MAX_FILES = Number(root.dataset.maxFiles) || 5;
-    const MAX_FILE_BYTES = Number(root.dataset.maxImageBytes) || 10 * 1024 * 1024;
-    const MAX_VIDEO_BYTES = Number(root.dataset.maxVideoBytes) || 50 * 1024 * 1024;
-    const megabytes = (bytes) => Math.floor(bytes / 1024 / 1024);
     const launcher = $('[data-chat-launcher]');
     const launcherBadge = $('[data-chat-launcher-badge]');
     const panel = $('[data-chat-panel]');
@@ -47,7 +42,6 @@ if (root) {
     const form = $('[data-chat-form]');
     const bodyInput = $('[data-chat-body-input]');
     const fileInput = $('[data-chat-files]');
-    const preview = document.getElementById('chat-preview');
     const sendButton = $('[data-chat-send]');
     const errorBox = $('[data-chat-error]');
     // 待審留言區塊只在開發團隊的頁面輸出；客戶端這些都是 null。
@@ -380,6 +374,16 @@ if (root) {
             return;
         }
         draftFiles.dataset.signature = signature;
+        const captioned = (media, view, widthClass) => {
+            const wrap = document.createElement('div');
+            wrap.className = `min-w-0 ${widthClass}`;
+            const caption = el('span', 'mt-0.5 block truncate text-[11px] leading-4 text-amber-900', attachmentTitle(view.name));
+            caption.title = view.name;
+            caption.dataset.attachmentTitle = '';
+            wrap.append(media, caption);
+
+            return wrap;
+        };
         draftFiles.replaceChildren(...views.map((view) => {
             if (view.kind === 'video') {
                 const video = document.createElement('video');
@@ -389,7 +393,7 @@ if (root) {
                 video.src = view.url;
                 video.title = view.name;
                 video.className = 'max-h-40 w-full rounded-lg border border-amber-200 bg-black';
-                return video;
+                return captioned(video, view, 'w-full');
             }
             const link = document.createElement('a');
             link.href = view.url;
@@ -404,7 +408,7 @@ if (root) {
             img.loading = 'lazy';
             img.className = 'size-full object-cover';
             link.append(img);
-            return link;
+            return captioned(link, view, 'w-16');
         }));
     };
 
@@ -586,7 +590,6 @@ if (root) {
         state.draftDismissedFor = null;
         form.reset();
         renderDraftUi();
-        preview.replaceChildren();
         errorBox.hidden = true;
         errorBox.textContent = '';
     };
@@ -744,33 +747,6 @@ if (root) {
         errorBox.hidden = false;
     };
 
-    const validateFiles = () => {
-        const files = Array.from(fileInput.files);
-        if (files.length > MAX_FILES) {
-            return `圖片／影片一次最多 ${MAX_FILES} 個。`;
-        }
-        if (files.some((file) => !ALLOWED_TYPES.includes(file.type))) {
-            return '附件只接受 JPG、PNG、WebP 圖片或 MP4 影片。';
-        }
-        if (files.some((file) => VIDEO_TYPES.includes(file.type) && file.size > MAX_VIDEO_BYTES)) {
-            return `每支影片不可超過 ${megabytes(MAX_VIDEO_BYTES)} MB。`;
-        }
-        if (files.some((file) => !VIDEO_TYPES.includes(file.type) && file.size > MAX_FILE_BYTES)) {
-            return `每張圖片不可超過 ${megabytes(MAX_FILE_BYTES)} MB。`;
-        }
-
-        return null;
-    };
-
-    fileInput.addEventListener('change', () => {
-        const problem = validateFiles();
-        if (problem) {
-            showError(problem);
-        } else {
-            errorBox.hidden = true;
-        }
-    });
-
     const send = async () => {
         if (!state.postUrl || sendButton.disabled) {
             return;
@@ -781,14 +757,8 @@ if (root) {
 
             return;
         }
-        // 草稿模式只送草稿（附件已在草稿裡），不看面板選的檔案。
+        // 草稿模式只送草稿（附件已在草稿裡），不看面板選的檔案；一般回覆的附件在加入時就已檢查過。
         const draft = state.draftMode ? currentDraft() : null;
-        const problem = draft === null ? validateFiles() : null;
-        if (problem) {
-            showError(problem);
-
-            return;
-        }
 
         const id = state.currentId;
         sendButton.disabled = true;

@@ -155,12 +155,12 @@
                                 @error('screenshots')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                                 @error('screenshots.*')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                             </div>
-                            <div id="message-preview" class="grid grid-cols-3 gap-3 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                            <div id="message-preview" class="flex flex-wrap gap-3 empty:hidden" aria-live="polite"></div>
                             <div class="flex flex-wrap items-center justify-between gap-3">
                                 <div class="flex flex-wrap items-center gap-3">
                                     <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                                         {{ $isPublicReporter ? '加入截圖' : \App\Support\FeedbackAttachmentRules::MESSAGE_BUTTON }}
-                                        <input id="message-screenshots" name="screenshots[]" type="file" accept="{{ $isPublicReporter ? 'image/jpeg,image/png,image/webp' : \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="message-preview">
+                                        <input id="message-screenshots" name="screenshots[]" type="file" accept="{{ $isPublicReporter ? 'image/jpeg,image/png,image/webp' : \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-attachment-rules="{{ \App\Support\FeedbackAttachmentRules::browserRulesJson($isPublicReporter) }}" data-preview-target="message-preview">
                                     </label>
                                     <span class="text-xs text-slate-500">{{ $isPublicReporter ? '截圖最多 '.\App\Support\PublicReporting::MAX_SCREENSHOTS.' 張，每張 5 MB。' : \App\Support\FeedbackAttachmentRules::messageHint().'。' }}</span>
                                 </div>

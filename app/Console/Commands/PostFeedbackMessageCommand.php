@@ -21,7 +21,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {--file=* : 同 --attach（舊名稱，保留相容）}
     {--as= : 以這個團隊個人帳號留言（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}')]
-#[Description('以開發團隊身分在回饋單留言（可附圖；待處理的單會自動改成待審核），完成後輸出留言 id')]
+#[Description('以開發團隊身分在回饋單留言（可附圖；等工程師的單會自動改成等客戶），完成後輸出留言 id')]
 #[Help(<<<'HELP'
 以開發團隊身分在回饋單留言，客戶端會看到這則留言並出現紅色未讀數字。
 
@@ -37,7 +37,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 說明：
   - report 只接受 public_id；純數字會被拒絕，避免和畫面上的「編號」搞混。
   - 留言前後的空白會去掉；空白留言會被拒絕。
-  - 待處理的單留言後會自動改成待審核（記得更新調整重點）；已完成、待審核的單狀態不變。其他狀態用 php artisan feedback:status。
+  - 等工程師（new）的單留言後會自動改成等客戶（needs_input，記得更新調整重點）；已完成、等客戶的單狀態不變。其他狀態用 php artisan feedback:status。
 HELP)]
 class PostFeedbackMessageCommand extends Command
 {
@@ -98,7 +98,7 @@ class PostFeedbackMessageCommand extends Command
         $this->components->twoColumnDetail('留言 id', (string) $message->id);
         $this->components->twoColumnDetail('附圖', (string) count($images));
         if ($report->status !== $previous) {
-            $this->components->warn(PostFeedbackMessageAction::ADJUSTMENT_REMINDER);
+            $this->components->warn(PostFeedbackMessageAction::adjustmentReminder());
         }
         $this->line(route('feedback.reports.show', [$project, $report]));
 

@@ -10,6 +10,7 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use App\Support\FeedbackServiceException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -43,24 +44,40 @@ class FeedbackMessageDraftController extends Controller
     }
 
     public function send(
+        Request $request,
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackMessageDraft $feedbackMessageDraft,
         FeedbackAccess $access,
         ManageFeedbackMessageDraftAction $drafts,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $this->authorizeDraft($feedbackProject, $feedbackReport, $feedbackMessageDraft, $access);
         $replaces = $feedbackMessageDraft->replaces_message_id !== null;
+        // 對話面板會帶上輸入框裡（可能改過）的文字；單頁的「送出」不帶，照草稿原文。
+        $request->validate(['body' => ['sometimes', 'string', 'max:'.PostFeedbackMessageAction::MAX_BODY_LENGTH]], [], ['body' => '留言內容']);
+        $editedBody = $request->has('body') ? (string) $request->input('body') : null;
+        $previous = $feedbackReport->status;
 
         try {
-            $drafts->send($feedbackMessageDraft, $access->actor($feedbackProject));
+            $drafts->send($feedbackMessageDraft, $access->actor($feedbackProject), $editedBody);
         } catch (FeedbackServiceException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $exception->getMessage(), 'errors' => ['body' => [$exception->getMessage()]]], 422);
+            }
+
             return back()->with('error', $exception->getMessage());
+        }
+
+        $feedbackReport->refresh();
+        $notice = ($replaces ? '已修改原留言。' : '留言已送出。').($feedbackReport->status !== $previous ? PostFeedbackMessageAction::adjustmentReminder() : '');
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $notice, 'status' => $feedbackReport->status->value]);
         }
 
         return redirect()
             ->to(route('feedback.reports.show', [$feedbackProject, $feedbackReport]).'#conversation')
-            ->with('success', ($replaces ? '已修改原留言。' : '留言已送出。').PostFeedbackMessageAction::ADJUSTMENT_REMINDER);
+            ->with('success', $notice);
     }
 
     public function destroy(

@@ -102,8 +102,8 @@ class FeedbackClientDeletionTest extends TestCase
         $this->patch(route('feedback.reports.restore', [$this->project, $deleted]))->assertForbidden();
 
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $visible]), [
-            'status' => FeedbackReportStatus::NeedsInput->value,
-        ])->assertOk()->assertJsonPath('counts', [FeedbackReportStatus::NeedsInput->value => 1]);
+            'status' => FeedbackReportStatus::Completed->value,
+        ])->assertOk()->assertJsonPath('counts', [FeedbackReportStatus::Completed->value => 1]);
 
         $this->assertSame('老師刪掉的', $deleted->refresh()->title);
         $this->assertNotNull($deleted->client_deleted_at);

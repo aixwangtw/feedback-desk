@@ -13,9 +13,9 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * 清單與看板用兩個頁籤分「待開發團隊回覆」「待客戶回覆」，已完成放在最右邊的連結；
- * 每張單標「等開發團隊／等客戶」，雙方看到的字一樣。由狀態與最後留言推導，不新增狀態值。
- * 「完成」按鈕在操作欄，只有客戶能按；開發團隊不能把單改成已完成。
+ * 清單與看板的兩個頁籤直接對應狀態：developer＝new（等工程師）、client＝needs_input（等客戶稱呼），
+ * 已完成放在最右邊的連結；頁籤與每張單的標示都是狀態名稱，雙方看到的字一樣，不再看最後發言者。
+ * 「完成」按鈕在操作欄，只有客戶能按；網頁上沒有改狀態的選單，團隊改任何狀態都 403。
  */
 class FeedbackWaitingTabsTest extends TestCase
 {
@@ -54,16 +54,19 @@ class FeedbackWaitingTabsTest extends TestCase
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('/data-waiting-tab="developer"[^>]*aria-current="page"/', $html);
-        $this->assertStringContainsString('待開發者回覆 <span data-waiting-tab-count>3</span>', $html);
-        $this->assertStringContainsString('待老師回覆 <span data-waiting-tab-count>1</span>', $html);
-        $this->assertStringNotContainsString('待開發者處理', $html);
+        $newLabel = FeedbackReportStatus::New->label();
+        $needsInputLabel = FeedbackReportStatus::NeedsInput->label();
+        $this->assertSame('等老師', $needsInputLabel);
+        $this->assertStringContainsString($newLabel.' <span data-waiting-tab-count>2</span>', $html);
+        $this->assertStringContainsString($needsInputLabel.' <span data-waiting-tab-count>2</span>', $html);
         $this->assertStringContainsString('data-completed-link', $html);
-        foreach (['fresh', 'followUp', 'legacy'] as $key) {
+        foreach (['fresh', 'followUp'] as $key) {
             $this->assertStringContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
         }
-        $this->assertStringNotContainsString('data-report-row="'.$this->reports['waitingClient']->public_id.'"', $html);
-        $this->assertStringNotContainsString('data-report-row="'.$this->reports['done']->public_id.'"', $html);
-        $this->assertSame(3, substr_count($html, '>等開發者<'));
+        foreach (['waitingClient', 'legacy', 'done'] as $key) {
+            $this->assertStringNotContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
+        }
+        $this->assertSame(2, substr_count($html, 'data-waiting-on="developer">'.$newLabel.'<'));
         // 不再有狀態下拉篩選。
         $this->assertStringNotContainsString('篩選狀態', $html);
     }
@@ -75,13 +78,16 @@ class FeedbackWaitingTabsTest extends TestCase
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression('/data-waiting-tab="client"[^>]*aria-current="page"/', $html);
-        $this->assertStringContainsString('data-report-row="'.$this->reports['waitingClient']->public_id.'"', $html);
+        // 舊資料那張單狀態是 needs_input，依狀態歸在 client 頁籤，不看最後是誰留言。
+        foreach (['waitingClient', 'legacy'] as $key) {
+            $this->assertStringContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
+        }
         $this->assertStringNotContainsString('data-report-row="'.$this->reports['fresh']->public_id.'"', $html);
-        $this->assertSame(1, substr_count($html, '>等老師<'));
+        $this->assertSame(2, substr_count($html, 'data-waiting-on="client">'.FeedbackReportStatus::NeedsInput->label().'<'));
 
         $developerTab = $this->get(route('feedback.portal', [$this->project, 'tab' => 'developer']))->assertOk()->getContent();
         $this->assertStringContainsString('data-report-row="'.$this->reports['fresh']->public_id.'"', $developerTab);
-        $this->assertSame(3, substr_count($developerTab, '>等開發者<'));
+        $this->assertSame(2, substr_count($developerTab, 'data-waiting-on="developer">'.FeedbackReportStatus::New->label().'<'));
     }
 
     public function test_tab_is_kept_in_the_url_and_completed_reports_live_behind_the_completed_link(): void
@@ -124,13 +130,16 @@ class FeedbackWaitingTabsTest extends TestCase
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'client']))->assertOk()->getContent();
         $this->assertStringNotContainsString('data-complete-report=', $html);
         $this->assertStringNotContainsString('<option value="completed"', $html);
+        $this->assertStringNotContainsString('name="status"', $html);
+        $this->assertStringNotContainsString('data-status-autosave', $html);
 
         $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
 
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'new'])->assertRedirect();
-        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'new'])->assertForbidden();
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
 
     private function report(string $title, FeedbackReportStatus $status): FeedbackReport

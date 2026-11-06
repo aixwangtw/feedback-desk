@@ -6,12 +6,9 @@ use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackReport;
 
 /**
- * 這張單在等誰：清單與看板的兩個頁籤、每張單上的「等開發團隊／等客戶」標示共用。
- * 不新增狀態值，由現有狀態與最後留言推導：
- *  - 已完成 → completed（不放頁籤，最右邊連結）
- *  - 待處理，或客戶最後留言晚於團隊最後回覆（留言或調整重點）→ developer（等開發團隊回覆）
- *  - 其餘（待審核且團隊回覆在後）→ client（等客戶回覆）
- * 查詢要帶 withWaitingStats（latest_reporter_message_at、latest_team_message_at）。
+ * 清單與看板的兩個頁籤、每張單上的「等開發／等客戶」標示共用。
+ * 直接對應狀態：等開發＝new（developer 頁籤）、等客戶＝needs_input（client 頁籤）、已完成＝completed。
+ * 頁籤與標示的文字就是狀態名稱（config feedback.status_labels）。
  */
 final class FeedbackWaitingOn
 {
@@ -29,51 +26,40 @@ final class FeedbackWaitingOn
 
     public static function for(FeedbackReport $report): string
     {
-        if ($report->status === FeedbackReportStatus::Completed) {
-            return self::COMPLETED;
-        }
-        if ($report->status === FeedbackReportStatus::New) {
-            return self::DEVELOPER;
-        }
-
-        $reporterAt = self::timestamp($report->latest_reporter_message_at ?? null);
-        $teamAt = max(self::timestamp($report->latest_team_message_at ?? null) ?? 0, $report->adjustment_updated_at?->getTimestamp() ?? 0);
-
-        return $reporterAt !== null && $reporterAt > $teamAt ? self::DEVELOPER : self::CLIENT;
+        return self::fromStatus($report->status);
     }
 
-    /**
-     * 頁籤標題：待開發者回覆／待老師回覆（稱呼照站台設定）。
-     */
-    public static function tabLabel(string $waitingOn): string
+    public static function fromStatus(FeedbackReportStatus $status): string
     {
-        return $waitingOn === self::CLIENT
-            ? '待'.config('feedback.labels.client').'回覆'
-            : '待'.config('feedback.labels.owner').'回覆';
-    }
-
-    /**
-     * 每張單上的標示：等開發者／等老師；已完成沒有標示。
-     */
-    public static function badgeLabel(string $waitingOn): ?string
-    {
-        return match ($waitingOn) {
-            self::DEVELOPER => '等'.config('feedback.labels.owner'),
-            self::CLIENT => '等'.config('feedback.labels.client'),
-            default => null,
+        return match ($status) {
+            FeedbackReportStatus::New => self::DEVELOPER,
+            FeedbackReportStatus::NeedsInput => self::CLIENT,
+            FeedbackReportStatus::Completed => self::COMPLETED,
         };
     }
 
-    private static function timestamp(mixed $value): ?int
+    public static function status(string $waitingOn): FeedbackReportStatus
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        if ($value instanceof \DateTimeInterface) {
-            return $value->getTimestamp();
-        }
-        $time = strtotime((string) $value.' UTC');
+        return match ($waitingOn) {
+            self::DEVELOPER => FeedbackReportStatus::New,
+            self::CLIENT => FeedbackReportStatus::NeedsInput,
+            default => FeedbackReportStatus::Completed,
+        };
+    }
 
-        return $time === false ? null : $time;
+    /**
+     * 頁籤標題＝狀態名稱：等開發／等老師。
+     */
+    public static function tabLabel(string $waitingOn): string
+    {
+        return self::status($waitingOn)->label();
+    }
+
+    /**
+     * 每張單上的標示（同狀態名稱）；已完成沒有標示。
+     */
+    public static function badgeLabel(string $waitingOn): ?string
+    {
+        return $waitingOn === self::COMPLETED ? null : self::status($waitingOn)->label();
     }
 }

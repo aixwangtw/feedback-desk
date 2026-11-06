@@ -216,10 +216,8 @@ class FeedbackLoginTest extends TestCase
 
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, $cookie);
-        $this->withCredentials()->patchJson(route('feedback.reports.status.update', [$project, $report]), [
-            'status' => FeedbackReportStatus::NeedsInput->value,
-        ])->assertOk();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+        $this->withCredentials()->get(route('feedback.reports.show', [$project, $report]))->assertOk();
+        $this->assertTrue(session("feedback.owner.{$project->id}"));
     }
 
     public function test_entry_link_also_remembers_access_until_the_link_is_rotated(): void

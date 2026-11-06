@@ -177,15 +177,14 @@
                 @include('feedback.reports._work', ['project' => $project, 'report' => $report, 'work' => $work, 'canClaim' => $canClaim])
             @endif
             @if ($canManage)
-                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 class="text-sm font-semibold text-slate-950">更新狀態</h2>
-                    <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-4 grid gap-3">
-                        @csrf
-                        @method('PATCH')
-                        <label for="status" class="sr-only">處理狀態</label>
-                        <x-feedback.status-select id="status" :status="$report->status" :allow-complete="! $isOwner" class="w-full" />
-                        <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">儲存狀態</button>
-                    </form>
+                {{-- 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」。 --}}
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel>
+                    <h2 class="text-sm font-semibold text-slate-950">狀態</h2>
+                    <div class="mt-3"><x-feedback.status-badge :status="$report->status" /></div>
+                    <p class="mt-3 text-xs leading-5 text-slate-500">{{ config('feedback.labels.client') }}留言會變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆會變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」。</p>
+                    @if (! $isOwner)
+                        <div class="mt-3"><x-feedback.complete-button :$project :$report :is-owner="$isOwner" /></div>
+                    @endif
                 </section>
             @endif
 

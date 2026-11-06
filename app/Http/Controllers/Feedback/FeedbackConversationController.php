@@ -7,6 +7,7 @@ use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackMessage;
+use App\Models\FeedbackMessageDraft;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -69,6 +70,7 @@ class FeedbackConversationController extends Controller
             'items' => $items->all(),
             'unread_total' => $items->sum('unread'),
             'awaiting_total' => $items->where('awaiting_reply', true)->count(),
+            ...($isOwner ? ['drafts_total' => $items->sum('drafts_count')] : []),
         ]);
     }
 
@@ -87,7 +89,11 @@ class FeedbackConversationController extends Controller
 
         $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper', 'adjustmentAttachments']);
 
+        // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
+        $drafts = $isOwner ? ['drafts' => $this->drafts($feedbackProject, $feedbackReport)] : [];
+
         return response()->json([
+            ...$drafts,
             'id' => $feedbackReport->public_id,
             'number' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $isOwner),
             'title' => $feedbackReport->title,
@@ -102,6 +108,28 @@ class FeedbackConversationController extends Controller
                 'adjustmentWasNew' => $adjustmentWasNew,
             ])->render(),
         ]);
+    }
+
+    /**
+     * @return list<array{id: int, body: string, author: string, replaces_message_id: int|null, replaces_body: string|null, attachments_count: int, send_url: string, page_url: string}>
+     */
+    private function drafts(FeedbackProject $project, FeedbackReport $report): array
+    {
+        return $report->messageDrafts()
+            ->with(['authorDeveloper', 'replacesMessage'])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (FeedbackMessageDraft $draft): array => [
+                'id' => $draft->id,
+                'body' => $draft->body,
+                'author' => $draft->displayAuthor(),
+                'replaces_message_id' => $draft->replaces_message_id,
+                'replaces_body' => $draft->replacesMessage?->body,
+                'attachments_count' => count($draft->attachmentList()),
+                'send_url' => route('feedback.drafts.send', [$project, $report, $draft]),
+                'page_url' => route('feedback.reports.show', [$project, $report]).'#message-drafts',
+            ])
+            ->all();
     }
 
     /**
@@ -142,7 +170,11 @@ class FeedbackConversationController extends Controller
             'unread' => $unread,
             'adjustment_updated' => $adjustmentUpdated,
             'has_update' => $unread > 0 || $adjustmentUpdated,
-            'awaiting_reply' => $this->isAwaitingReply($report, $latestAuthor, $isOwner),
+            // 團隊端還有沒送出的待審留言也算未回覆（面板會彈出提醒）；客戶端不看草稿。
+            'awaiting_reply' => $this->isAwaitingReply($report, $latestAuthor, $isOwner)
+                || ($isOwner && (int) ($report->message_drafts_count ?? 0) > 0),
+            // 待審留言數只給開發團隊（withOwnerMessageStats 帶出）；客戶端沒有這個欄位。
+            ...($isOwner ? ['drafts_count' => (int) ($report->message_drafts_count ?? 0)] : []),
             'messages_count' => (int) $report->feedback_messages_count,
             'creator' => $report->creatorLabel(),
             'thread_url' => route('feedback.conversations.show', [$project, $report]),

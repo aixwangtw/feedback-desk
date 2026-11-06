@@ -136,9 +136,11 @@ class FeedbackPortalTest extends TestCase
         $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-status-guide', false)
-            ->assertSee('rounded-full bg-amber-500" aria-hidden="true" data-status-dot', false)
-            ->assertSee('data-dot="bg-slate-500"', false)
-            // 開發團隊端的狀態選單沒有「已完成」選項（已完成由客戶確認）。
+            ->assertSee('bg-amber-50 text-amber-800 ring-amber-200', false)
+            ->assertSee(FeedbackReportStatus::NeedsInput->label())
+            // 清單上狀態只以文字顯示，沒有下拉選單，也沒有已完成的綠色圓點選項。
+            ->assertDontSee('name="status"', false)
+            ->assertDontSee('data-status-autosave', false)
             ->assertDontSee('data-dot="bg-emerald-500"', false);
     }
 
@@ -187,8 +189,8 @@ class FeedbackPortalTest extends TestCase
 
         $this->patch(route('feedback.owner.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::NeedsInput->value,
-        ])->assertRedirect();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+        ])->assertForbidden();
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
 
     public function test_owner_authentication_preserves_https_behind_the_local_tunnel(): void

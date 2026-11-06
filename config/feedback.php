@@ -48,6 +48,16 @@ return [
         'owner' => $ownerLabel,
     ],
 
+    /*
+     * 狀態顯示名稱：直接寫出在等誰（資料庫的值 new／needs_input／completed 不變）。
+     * 網頁、對話面板、CLI、MCP／API 的中文標籤都從這裡來（FeedbackReportStatus::label()）。
+     */
+    'status_labels' => [
+        'new' => env('FEEDBACK_STATUS_LABEL_NEW', '等工程師'),
+        'needs_input' => env('FEEDBACK_STATUS_LABEL_NEEDS_INPUT', '等'.$clientLabel),
+        'completed' => env('FEEDBACK_STATUS_LABEL_COMPLETED', '已完成'),
+    ],
+
     'portal_title' => env('FEEDBACK_PORTAL_TITLE', '問題回報追蹤'),
 
     'home' => [

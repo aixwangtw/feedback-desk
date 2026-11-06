@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feedback;
 
+use App\Actions\PostFeedbackMessageAction;
 use App\Enums\FeedbackAuthorType;
 use App\Models\FeedbackAttachment;
 use App\Models\FeedbackMessage;
@@ -266,7 +267,7 @@ class FeedbackConversationPanelTest extends TestCase
         $this->postJson(route('feedback.messages.store', [$this->project, $report]), [
             'body' => '已處理，附圖給你看',
             'screenshots' => [$this->image('fixed.png')],
-        ])->assertCreated()->assertJsonPath('message', '訊息已送出。狀態已改為待審核，記得更新調整重點。')->assertJsonPath('status', 'needs_input');
+        ])->assertCreated()->assertJsonPath('message', '訊息已送出。'.PostFeedbackMessageAction::adjustmentReminder())->assertJsonPath('status', 'needs_input');
 
         $message = $report->feedbackMessages()->latest('id')->first();
         $this->assertSame(FeedbackAuthorType::Owner, $message->author_type);

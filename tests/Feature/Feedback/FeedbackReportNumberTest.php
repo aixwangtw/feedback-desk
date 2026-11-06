@@ -85,9 +85,9 @@ class FeedbackReportNumberTest extends TestCase
 
         foreach (['', '?status=completed'] as $query) {
             $this->get(route('feedback.portal', $project).$query)
-                ->assertSee('待處理 1 題', false)
-                ->assertSee('待審核 0 題', false)
-                ->assertSee('已完成 2 題', false)
+                ->assertSee(FeedbackReportStatus::New->label().' 1 題', false)
+                ->assertSee(FeedbackReportStatus::NeedsInput->label().' 0 題', false)
+                ->assertSee(FeedbackReportStatus::Completed->label().' 2 題', false)
                 ->assertDontSee('處理中', false)
                 ->assertDontSee('處理失敗', false)
                 ->assertSee('?status=completed" class="rounded', false);
@@ -105,9 +105,10 @@ class FeedbackReportNumberTest extends TestCase
             ->assertJsonPath('counts.completed', 1)
             ->assertJsonMissingPath('counts.failed');
 
-        $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'needs_input'])
+        $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'needs_input'])->assertForbidden();
+        $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'completed'])
             ->assertOk()
-            ->assertJson(['counts' => ['new' => 1, 'needs_input' => 1, 'completed' => 1]]);
+            ->assertJson(['counts' => ['new' => 1, 'completed' => 2]]);
     }
 
     /**

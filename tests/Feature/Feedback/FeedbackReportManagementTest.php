@@ -179,10 +179,13 @@ class FeedbackReportManagementTest extends TestCase
         }
 
         $this->assertStringNotContainsString('data-drag-handle', $html);
-        $this->assertStringContainsString('title="拖拉卡片可改變狀態"', $html);
+        $this->assertStringNotContainsString('拖拉卡片可改變狀態', $html);
+        $this->assertStringNotContainsString('data-kanban-sortable', $html);
+        $this->assertStringNotContainsString('data-kanban-status-form', $html);
+        $this->assertStringNotContainsString('data-status-autosave', $html);
+        $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//select')->length);
         $this->assertStringContainsString('aria-label="編輯「', $html);
         $this->assertStringContainsString('aria-label="刪除「', $html);
-        $this->assertStringContainsString('data-kanban-status-form', $html);
         $this->assertStringContainsString('data-kanban-total-count="new">1</span>', $html);
         $this->assertStringNotContainsString('此狀態由自動化設定；卡片可拖出但不能拖入。', $html);
     }
@@ -237,22 +240,24 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertStringContainsString('view=board&amp;page=2', $html);
     }
 
-    public function test_status_dropdown_only_offers_three_statuses(): void
+    public function test_list_shows_status_as_text_without_a_dropdown(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::NeedsInput]);
         $this->actingAsTeacher($project);
 
-        $options = $this->statusOptions($this->get(route('feedback.portal', $project))->getContent(), $report);
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->assertOk()->getContent();
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
 
-        $this->assertSame([
-            ['value' => 'new', 'selected' => false, 'hidden' => false],
-            ['value' => 'needs_input', 'selected' => true, 'hidden' => false],
-            ['value' => 'completed', 'selected' => false, 'hidden' => false],
-        ], $options);
+        $this->assertNull($document->getElementById('status-'.$report->public_id), 'The status dropdown must not be rendered.');
+        $this->assertSame(0, (new \DOMXPath($document))->query('//select[@name="status"]')->length);
+        $this->assertStringNotContainsString('data-status-autosave', $html);
+        $this->assertStringContainsString('data-report-row="'.$report->public_id.'"', $html);
+        $this->assertStringContainsString(FeedbackReportStatus::NeedsInput->label(), $html);
     }
 
-    public function test_detail_page_lets_teacher_change_status_with_the_same_options(): void
+    public function test_detail_page_shows_status_as_text_without_a_dropdown(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create(['status' => FeedbackReportStatus::NeedsInput]);
@@ -260,10 +265,10 @@ class FeedbackReportManagementTest extends TestCase
 
         $this->get(route('feedback.reports.show', [$project, $report]))
             ->assertOk()
-            ->assertSee(route('feedback.reports.status.update', [$project, $report]), false)
-            ->assertSee('<option value="needs_input" data-dot="bg-amber-500" selected>', false)
-            ->assertDontSee('<option value="in_progress"', false)
-            ->assertDontSee('<option value="failed"', false);
+            ->assertSee(FeedbackReportStatus::NeedsInput->label())
+            ->assertDontSee('<select', false)
+            ->assertDontSee('data-status-autosave', false)
+            ->assertDontSee('<option value="needs_input"', false);
     }
 
     public function test_teacher_and_engineer_can_create_reports(): void
@@ -284,41 +289,49 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertSame(['工程師新增', '老師新增'], $project->feedbackReports()->orderBy('title')->pluck('title')->all());
     }
 
-    public function test_teacher_and_engineer_can_change_status_without_leaving_the_page(): void
+    public function test_engineer_gets_403_for_every_status_and_the_status_stays(): void
+    {
+        $project = FeedbackProject::factory()->create();
+        $report = FeedbackReport::factory()->for($project)->create();
+
+        $this->actingAsEngineer($project);
+        foreach (FeedbackReportStatus::cases() as $status) {
+            $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => $status->value])->assertForbidden();
+        }
+
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+    }
+
+    public function test_teacher_can_only_complete_and_gets_403_for_new_and_needs_input(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
 
         $this->actingAsTeacher($project);
+        foreach ([FeedbackReportStatus::New, FeedbackReportStatus::NeedsInput] as $status) {
+            $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => $status->value])->assertForbidden();
+        }
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+
         $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
-        ])->assertOk()->assertJson(['status' => 'completed', 'label' => '已完成']);
+        ])->assertOk()->assertJson(['status' => 'completed', 'label' => FeedbackReportStatus::Completed->label()]);
 
         $report->refresh();
         $this->assertSame(FeedbackReportStatus::Completed, $report->status);
         $this->assertNotNull($report->completed_at);
-
-        $this->flushSession();
-        $this->actingAsEngineer($project);
-        $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
-            'status' => FeedbackReportStatus::NeedsInput->value,
-        ])->assertOk()->assertJson(['status' => 'needs_input']);
-
-        $report->refresh();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->status);
-        $this->assertNull($report->completed_at);
     }
 
     public function test_removed_statuses_cannot_be_chosen(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
-        $this->actingAsEngineer($project);
+        $this->actingAsTeacher($project);
 
         foreach (['in_progress', 'failed'] as $status) {
             $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
                 'status' => $status,
-            ])->assertUnprocessable()->assertJsonValidationErrors('status');
+            ])->assertForbidden();
         }
 
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
@@ -593,27 +606,5 @@ class FeedbackReportManagementTest extends TestCase
     private function fakePng(string $name): UploadedFile
     {
         return UploadedFile::fake()->createWithContent($name, base64_decode(self::PNG));
-    }
-
-    /**
-     * @return list<array{value: string, selected: bool, hidden: bool}>
-     */
-    private function statusOptions(string $html, FeedbackReport $report): array
-    {
-        $document = new \DOMDocument;
-        @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
-        $select = $document->getElementById('status-'.$report->public_id);
-        $this->assertNotNull($select, 'Status dropdown not rendered.');
-
-        $options = [];
-        foreach ($select->getElementsByTagName('option') as $option) {
-            $options[] = [
-                'value' => $option->getAttribute('value'),
-                'selected' => $option->hasAttribute('selected'),
-                'hidden' => $option->hasAttribute('hidden'),
-            ];
-        }
-
-        return $options;
     }
 }

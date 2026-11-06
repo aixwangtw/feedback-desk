@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feedback;
 
+use App\Actions\PostFeedbackMessageAction;
 use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackDeveloper;
@@ -70,7 +71,7 @@ class FeedbackMessageStatusRuleTest extends TestCase
 
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '已修正'])
             ->assertRedirect()
-            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, '待審核') && str_contains($text, '記得更新調整重點'));
+            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, PostFeedbackMessageAction::adjustmentReminder()));
 
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
         $this->assertSame('new>needs_input', FeedbackReportEvent::where('kind', 'status')->sole()->detail);

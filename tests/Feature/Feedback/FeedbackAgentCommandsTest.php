@@ -71,7 +71,7 @@ class FeedbackAgentCommandsTest extends TestCase
         $output = Artisan::output();
 
         $this->assertStringContainsString('按鈕點不下去', $output);
-        $this->assertStringContainsString('待審核', $output);
+        $this->assertStringContainsString(FeedbackReportStatus::NeedsInput->label(), $output);
     }
 
     public function test_reports_filters_by_multiple_statuses_using_value_or_label(): void
@@ -80,7 +80,7 @@ class FeedbackAgentCommandsTest extends TestCase
         $this->makeReport(['title' => 'B', 'status' => FeedbackReportStatus::NeedsInput]);
         $this->makeReport(['title' => 'C', 'status' => FeedbackReportStatus::Completed]);
 
-        $rows = $this->listJson(['--status' => ['new', '待審核']]);
+        $rows = $this->listJson(['--status' => ['new', FeedbackReportStatus::NeedsInput->label()]]);
 
         $this->assertEqualsCanonicalizing(['A', 'B'], array_column($rows, 'title'));
     }
@@ -88,7 +88,7 @@ class FeedbackAgentCommandsTest extends TestCase
     public function test_reports_rejects_unknown_status_and_lists_options(): void
     {
         $this->artisan('feedback:reports', ['project' => $this->project->slug, '--status' => ['bogus']])
-            ->expectsOutputToContain('needs_input（待審核）')
+            ->expectsOutputToContain('needs_input（'.FeedbackReportStatus::NeedsInput->label().'）')
             ->assertFailed();
     }
 
@@ -211,9 +211,9 @@ class FeedbackAgentCommandsTest extends TestCase
     {
         $report = $this->makeReport(['status' => FeedbackReportStatus::New, 'latest_activity_at' => now()->subDay()]);
 
-        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => '待審核'])
-            ->expectsOutputToContain('new（待處理）')
-            ->expectsOutputToContain('needs_input（待審核）')
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => FeedbackReportStatus::NeedsInput->label()])
+            ->expectsOutputToContain('new（'.FeedbackReportStatus::New->label().'）')
+            ->expectsOutputToContain('needs_input（'.FeedbackReportStatus::NeedsInput->label().'）')
             ->assertSuccessful();
         $report->refresh();
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->status);
@@ -227,6 +227,17 @@ class FeedbackAgentCommandsTest extends TestCase
 
         $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'new'])->assertSuccessful();
         $this->assertNull($report->refresh()->completed_at);
+    }
+
+    public function test_status_still_accepts_the_legacy_label_names(): void
+    {
+        $report = $this->makeReport(['status' => FeedbackReportStatus::New]);
+
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => '待審核'])->assertSuccessful();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => '待處理'])->assertSuccessful();
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
 
     public function test_status_completed_by_an_agent_prints_a_reminder_but_still_updates(): void
@@ -245,7 +256,7 @@ class FeedbackAgentCommandsTest extends TestCase
 
         $this->assertSame(1, Artisan::call('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => 'done']));
         $output = Artisan::output();
-        foreach (['new（待處理）', 'needs_input（待審核）', 'completed（已完成）'] as $option) {
+        foreach (FeedbackReportStatus::describedOptions() as $option) {
             $this->assertStringContainsString($option, $output);
         }
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);

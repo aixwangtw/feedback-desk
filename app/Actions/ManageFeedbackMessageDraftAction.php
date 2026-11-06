@@ -74,9 +74,14 @@ class ManageFeedbackMessageDraftAction
     /**
      * 送出：一般草稿照現行留言流程新增一則（作者＝按送出的人、時間＝現在，客戶端出現未讀）；
      * 修改原留言型的草稿改寫原留言內容，不新增一則，原留言時間不變。
+     * $editedBody：送出前在畫面上改過的文字（例如右下角對話面板），有給就以它為準。
      */
-    public function send(FeedbackMessageDraft $draft, FeedbackActor $sender): FeedbackMessage
+    public function send(FeedbackMessageDraft $draft, FeedbackActor $sender, ?string $editedBody = null): FeedbackMessage
     {
+        if ($editedBody !== null) {
+            $draft->body = $this->validatedBody($editedBody);
+        }
+
         $report = $draft->feedbackReport;
         $actor = new FeedbackActor($sender->name, true, $sender->developer, null, $draft->author_agent);
         $files = $draft->attachmentList();

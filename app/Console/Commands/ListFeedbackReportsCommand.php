@@ -14,7 +14,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 
 #[Signature('feedback:reports
     {project : 回報專案 slug（網址 /p/ 後面那段）}
-    {--status=* : 只列出這些狀態（new／needs_input／completed 或 待處理／待審核／已完成），可重複}
+    {--status=* : 只列出這些狀態（new／needs_input／completed，或中文名稱；舊名稱待處理／待審核也接受），可重複}
     {--creator= : 建立者篩選：client、client:<id>、public、shared 或 developer:<id>}
     {--include-deleted : 一併列出客戶已刪除（隱藏）的單}
     {--unread : 只列出有未讀客戶留言的單（開發團隊在網頁開啟該單後才算已讀）}
@@ -23,7 +23,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 #[Help(<<<'HELP'
 列出專案的回饋單，排序與網頁預設相同（建立時間，最新在前）。
 
-  待處理與待審核的單：
+  等工程師與等客戶的單：
     php artisan feedback:reports my-project --status=new --status=needs_input
 
   客戶建立的單，JSON 輸出：

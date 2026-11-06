@@ -56,11 +56,11 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">{{ config('feedback.portal_title') }}</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">{{ $viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」；{{ config('feedback.labels.client') }}確認沒問題後按操作欄的「完成」。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>待處理</span><span>已收到{{ config('feedback.labels.client') }}的回報，等{{ config('feedback.labels.owner') }}處理。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>待審核</span><span>{{ config('feedback.labels.owner') }}已改好並寫了調整重點，請{{ config('feedback.labels.client') }}確認。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>已完成</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label() }}</span><span>{{ config('feedback.labels.client') }}開了單或又留言，等{{ config('feedback.labels.owner') }}處理、回覆。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並寫了調整重點，請{{ config('feedback.labels.client') }}確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label() }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。' }}</p>
         </div>
@@ -220,17 +220,7 @@
                                 @endif
                             </td>
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
-                                <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="grid">
-                                    @csrf
-                                    @method('PATCH')
-                                    <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
-                                    <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
-                                        <span class="size-2.5 shrink-0 rounded-full {{ $report->status->dotClass() }}" aria-hidden="true" data-status-dot></span>
-                                        <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" :allow-complete="! $isOwner" class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" data-status-select data-status-autosave />
-                                    </div>
-                                    <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
-                                    <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
-                                </form>
+                                <x-feedback.status-badge :status="$report->status" />
                             </td>
                             @if ($reportCategories !== [])
                                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
@@ -315,7 +305,7 @@
                             </header>
                             <div class="grid min-h-36 content-start gap-3 p-3" data-kanban-list data-status="{{ $boardStatus->value }}">
                                 @foreach ($columnReports as $report)
-                                    <article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}" title="拖拉卡片可改變狀態">
+                                    <article class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}">
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
@@ -384,14 +374,6 @@
 
                                         <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                                         <p class="mt-1 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
-                                        <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
-                                            @csrf
-                                            @method('PATCH')
-                                            <label for="board-status-{{ $report->public_id }}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>
-                                            <x-feedback.status-select id="board-status-{{ $report->public_id }}" :status="$report->status" :allow-complete="! $isOwner" class="w-full !px-2 !py-1.5 !text-xs" data-status-select data-status-autosave />
-                                            <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
-                                            <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
-                                        </form>
                                     </article>
                                 @endforeach
                                 <p class="py-8 text-center text-xs text-slate-400" data-kanban-empty @if ($columnReports->isNotEmpty()) hidden @endif>本頁沒有問題</p>

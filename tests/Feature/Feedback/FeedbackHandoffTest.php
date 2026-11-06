@@ -157,11 +157,12 @@ class FeedbackHandoffTest extends TestCase
         $this->post(route('feedback.reports.claim', [$this->project, $this->report]), ['action' => 'takeover'])->assertSessionHas('success');
         $this->assertSame($this->ben->id, $this->report->refresh()->claimed_by_developer_id);
 
-        // 網頁改狀態不擋（只提示），並記在最近動態。
+        // 網頁上團隊不能改狀態（任何值都 403），狀態維持不變。
+        $status = $this->report->refresh()->status;
         $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'needs_input'])->assertRedirect();
-        $this->assertSame('李大同', $this->report->events()->where('kind', 'status')->value('actor_name'));
-        $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertSee('data-activity-log', false)->assertSee('待處理 → 待審核');
+        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'needs_input'])->assertForbidden();
+        $this->assertSame($status, $this->report->refresh()->status);
+        $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertSee('data-activity-log', false);
     }
 
     public function test_clients_and_the_shared_owner_cannot_claim_and_never_see_the_work_panel(): void

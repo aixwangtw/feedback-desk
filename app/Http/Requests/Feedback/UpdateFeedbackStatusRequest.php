@@ -25,13 +25,14 @@ class UpdateFeedbackStatusRequest extends FormRequest
             && app(FeedbackAccess::class)->canManage($report->feedbackProject)
             && app(FeedbackAccess::class)->ensureReportVisible($report);
 
-        // 已完成只由客戶確認；開發團隊端不能改成已完成。
+        // 網頁上不能手動改狀態：留言時自動切換（等工程師／等客戶），只有客戶能按「完成」結單。
+        // 排程與還原用 artisan feedback:status。
         abort_if(
             $allowed
-                && $this->input('status') === FeedbackReportStatus::Completed->value
-                && app(FeedbackAccess::class)->isOwner($report->feedbackProject),
+                && (app(FeedbackAccess::class)->isOwner($report->feedbackProject)
+                    || $this->input('status') !== FeedbackReportStatus::Completed->value),
             403,
-            '已完成要由'.config('feedback.labels.client').'確認，開發團隊不能直接改成已完成。',
+            '狀態會依留言自動切換；網頁上只有'.config('feedback.labels.client').'能按「完成」結單。',
         );
 
         return $allowed;

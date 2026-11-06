@@ -480,7 +480,7 @@ class FeedbackPublicReportingTest extends TestCase
         $this->withCookie(FeedbackAccess::PUBLIC_COOKIE_NAME, $cookie)->get('/')->assertSee('從別台來的');
     }
 
-    public function test_team_sees_public_reports_and_can_filter_and_change_status(): void
+    public function test_team_sees_public_reports_can_filter_but_cannot_change_status(): void
     {
         [$report] = $this->submitAsNewBrowser(['title' => '陌生人的單', 'reporter_name' => 'Mia']);
         FeedbackReport::factory()->for($this->project)->create(['title' => '客戶的單']);
@@ -498,8 +498,8 @@ class FeedbackPublicReportingTest extends TestCase
             ->assertDontSee('陌生人的單');
 
         $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertRedirect();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->fresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
+        $this->assertSame(FeedbackReportStatus::New, $report->fresh()->status);
     }
 
     public function test_existing_clients_cannot_see_public_reports(): void

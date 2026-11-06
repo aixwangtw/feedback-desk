@@ -14,15 +14,20 @@ use Illuminate\Support\Facades\Storage;
 /**
  * 在回饋單留言（可附圖）；網頁、MCP 共用。記下留言者的帳號與 AI 工具，並把這張單標成留言者那一方讀過。
  *
- * 留言自動切狀態（applyStatusRule）：待審核的單客戶留言 → 待處理（要我方回覆）；
- * 團隊在待處理的單留言 → 待審核（記得更新調整重點）。已完成的單不因留言改狀態。
+ * 留言自動切狀態（applyStatusRule）：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；
+ * 團隊在等工程師的單留言 → 等客戶（記得更新調整重點）。已完成的單不因留言改狀態。
  */
 class PostFeedbackMessageAction
 {
     public const MAX_BODY_LENGTH = 10000;
 
-    /** 團隊留言把單切成待審核後，給人看的提醒。 */
-    public const ADJUSTMENT_REMINDER = '狀態已改為待審核，記得更新調整重點。';
+    /**
+     * 團隊留言把單切成等客戶後，給人看的提醒（狀態名稱照站台設定）。
+     */
+    public static function adjustmentReminder(): string
+    {
+        return '狀態已改為「'.FeedbackReportStatus::NeedsInput->label().'」，記得更新調整重點。';
+    }
 
     public function __construct(private ChangeFeedbackReportStatusAction $changeStatus) {}
 

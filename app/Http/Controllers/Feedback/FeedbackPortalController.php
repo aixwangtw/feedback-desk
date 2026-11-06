@@ -115,9 +115,8 @@ class FeedbackPortalController extends Controller
             ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
             ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'));
 
-        // 兩個頁籤（等開發團隊／等客戶）與已完成：由狀態與最後留言推導，舊網址帶 status 時照舊只用狀態篩選。
-        $waitingOn = $baseFilteredReports(['feedback_reports.id', 'feedback_reports.status', 'feedback_reports.adjustment_updated_at'])
-            ->withWaitingStats()
+        // 兩個頁籤（等開發／等客戶）與已完成直接對應狀態；舊網址帶 status 時照舊只用狀態篩選。
+        $waitingOn = $baseFilteredReports(['feedback_reports.id', 'feedback_reports.status'])
             ->get()
             ->mapWithKeys(fn (FeedbackReport $report): array => [$report->id => FeedbackWaitingOn::for($report)])
             ->all();
@@ -205,7 +204,7 @@ class FeedbackPortalController extends Controller
     }
 
     /**
-     * 預設排序鍵：先依狀態分組（開發者端待處理最上、待審核其次；業主端相反，其餘在後），組內照對話面板的規則。
+     * 預設排序鍵：先依狀態分組（開發者端等開發最上、等客戶其次；客戶端相反，其餘在後），組內照對話面板的規則。
      *
      * @param  array<int, int>  $sequenceNumbers  report id => 從 0 起算的編號索引
      * @return array{0: int, 1: array{0: int, 1: int, 2: int}}

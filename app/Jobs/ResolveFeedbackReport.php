@@ -54,7 +54,7 @@ class ResolveFeedbackReport implements ShouldQueue
             throw $exception;
         }
 
-        // AI 修好也只改成待審核，已完成要等提出的人或負責人確認（見 FeedbackWorkRule）。
+        // AI 修好也只改成等客戶（needs_input），已完成要等提出的人或負責人確認（見 FeedbackWorkRule）。
         $reportStatus = match ($result->status) {
             FeedbackAutomationStatus::Completed => FeedbackReportStatus::NeedsInput,
             FeedbackAutomationStatus::NeedsInput => FeedbackReportStatus::NeedsInput,

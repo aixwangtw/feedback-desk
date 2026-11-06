@@ -333,18 +333,6 @@ class FeedbackReport extends Model
     }
 
     /**
-     * 推導「等誰」要用的最後留言時間：客戶最後一則、團隊（含 AI）最後一則。
-     *
-     * @param  Builder<FeedbackReport>  $query
-     */
-    #[Scope]
-    protected function withWaitingStats(Builder $query): void
-    {
-        $query->withMax(['feedbackMessages as latest_reporter_message_at' => fn (Builder $query) => $query->where('author_type', FeedbackAuthorType::Reporter->value)], 'created_at')
-            ->withMax(['feedbackMessages as latest_team_message_at' => fn (Builder $query) => $query->where('author_type', '!=', FeedbackAuthorType::Reporter->value)], 'created_at');
-    }
-
-    /**
      * 有開發者還沒看過的客戶留言的單。
      *
      * @param  Builder<FeedbackReport>  $query

@@ -332,7 +332,8 @@ document.querySelectorAll('[data-status-autosave]').forEach((select) => {
     });
 });
 
-document.querySelectorAll('[data-kanban-list]').forEach((list) => {
+// 狀態不再由人拖拉或下拉切換（留言自動切換、客戶按「完成」），看板只在明確標了 data-kanban-sortable 時才可拖拉。
+document.querySelectorAll('[data-kanban-list][data-kanban-sortable]').forEach((list) => {
     Sortable.create(list, {
         group: 'feedback-kanban',
         sort: false,

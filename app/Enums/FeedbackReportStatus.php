@@ -4,12 +4,15 @@ namespace App\Enums;
 
 enum FeedbackReportStatus: string
 {
+    /** 改名前的中文名稱，CLI／MCP 輸入照樣接受（排程與舊筆記還在用）。 */
+    public const LEGACY_LABELS = ['待處理' => self::New, '待審核' => self::NeedsInput];
+
     case New = 'new';
     case NeedsInput = 'needs_input';
     case Completed = 'completed';
 
     /**
-     * 接受狀態值（needs_input）或中文顯示名（待審核），不分大小寫。
+     * 接受狀態值（needs_input）、目前的中文顯示名（等老師），或改名前的舊名稱（待處理／待審核），不分大小寫。
      */
     public static function fromInput(string $input): ?self
     {
@@ -21,11 +24,11 @@ enum FeedbackReportStatus: string
             }
         }
 
-        return null;
+        return self::LEGACY_LABELS[$input] ?? null;
     }
 
     /**
-     * @return list<string> 例如 ["new（待處理）", ...]
+     * @return list<string> 例如 ["new（等開發）", ...]
      */
     public static function describedOptions(): array
     {
@@ -34,11 +37,7 @@ enum FeedbackReportStatus: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::New => '待處理',
-            self::NeedsInput => '待審核',
-            self::Completed => '已完成',
-        };
+        return (string) config("feedback.status_labels.{$this->value}", $this->value);
     }
 
     /**

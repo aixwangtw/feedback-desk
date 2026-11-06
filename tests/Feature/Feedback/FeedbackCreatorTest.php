@@ -252,7 +252,7 @@ class FeedbackCreatorTest extends TestCase
         $client = $this->reportTitled('client-1');
 
         $this->actingAsTeacher();
-        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('待處理 1 題', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('共 1 題', false);
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])
             ->assertOk()
             ->assertExactJson([
@@ -265,11 +265,8 @@ class FeedbackCreatorTest extends TestCase
         $this->expireSession();
         $this->actingAsOwner();
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])->assertForbidden();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'needs_input'])
-            ->assertOk()
-            ->assertJsonPath('counts.new', 3)
-            ->assertJsonPath('counts.needs_input', 1)
-            ->assertJsonMissingPath('counts.completed');
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'needs_input'])->assertForbidden();
+        $this->assertSame('completed', $client->refresh()->status->value);
     }
 
     public function test_teacher_gets_404_on_every_route_for_developer_reports(): void
@@ -312,8 +309,9 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertOk();
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
+        $this->assertSame('new', $report->refresh()->status->value);
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '開發者留言'])->assertRedirect();
     }
 

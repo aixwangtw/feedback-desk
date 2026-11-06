@@ -159,10 +159,10 @@
                             <div class="flex flex-wrap items-center justify-between gap-3">
                                 <div class="flex flex-wrap items-center gap-3">
                                     <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                        {{ $isPublicReporter ? '加入截圖' : '加入截圖／影片' }}
+                                        {{ $isPublicReporter ? '加入截圖' : \App\Support\FeedbackAttachmentRules::MESSAGE_BUTTON }}
                                         <input id="message-screenshots" name="screenshots[]" type="file" accept="{{ $isPublicReporter ? 'image/jpeg,image/png,image/webp' : \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="message-preview">
                                     </label>
-                                    <span class="text-xs text-slate-500">{{ $isPublicReporter ? '截圖最多 '.\App\Support\PublicReporting::MAX_SCREENSHOTS.' 張，每張 5 MB。' : \App\Support\FeedbackAttachmentRules::MESSAGE_HINT.'。' }}</span>
+                                    <span class="text-xs text-slate-500">{{ $isPublicReporter ? '截圖最多 '.\App\Support\PublicReporting::MAX_SCREENSHOTS.' 張，每張 5 MB。' : \App\Support\FeedbackAttachmentRules::messageHint().'。' }}</span>
                                 </div>
                                 <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">送出訊息</button>
                             </div>

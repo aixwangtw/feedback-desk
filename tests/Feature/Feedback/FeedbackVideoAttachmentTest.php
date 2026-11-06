@@ -128,6 +128,29 @@ class FeedbackVideoAttachmentTest extends TestCase
             ->assertSee('accept="'.FeedbackAttachmentRules::MESSAGE_ACCEPT.'"', false);
     }
 
+    public function test_upload_controls_that_take_videos_say_attachment_and_show_both_limits(): void
+    {
+        $hint = '圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 50 MB';
+        $this->assertSame($hint, FeedbackAttachmentRules::messageHint());
+
+        $this->actingAsClient();
+        $page = $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertOk()->getContent();
+        $this->assertStringContainsString($hint, $page);
+        $this->assertMatchesRegularExpression('/>\s*附件\s*<input id="message-screenshots"/u', $page);
+        $this->assertStringNotContainsString('加入截圖', $page);
+
+        $this->actingAsTeam();
+        $portal = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/>\s*附件\s*<input id="chat-screenshots"/u', $portal);
+        $this->assertStringContainsString('data-max-video-bytes="'.FeedbackAttachmentRules::MAX_VIDEO_BYTES.'"', $portal);
+
+        $response = $this->postJson(route('feedback.messages.store', [$this->project, $this->report]), [
+            'body' => '格式不對',
+            'screenshots' => [UploadedFile::fake()->create('doc.pdf', 10, 'application/pdf')],
+        ])->assertUnprocessable();
+        $this->assertStringContainsString('圖片／影片', json_encode($response->json('errors'), JSON_UNESCAPED_UNICODE));
+    }
+
     private function mp4File(): string
     {
         $path = tempnam(sys_get_temp_dir(), 'fd').'.mp4';

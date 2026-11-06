@@ -9,10 +9,7 @@ import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInL
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 60000;
-const MAX_FILES = 5;
-// 與伺服器 FeedbackAttachmentRules 相同：圖片每張 10 MB、mp4 影片每支 50 MB。
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+// 上限由伺服器 FeedbackAttachmentRules 帶到 data-max-*（見 chat-panel.blade.php），這裡只是讀不到時的預設。
 const VIDEO_TYPES = ['video/mp4'];
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', ...VIDEO_TYPES];
 // 與 portal.blade.php、message-badges.blade.php 相同的樣式。
@@ -27,6 +24,10 @@ const root = document.querySelector('[data-chat-root]');
 
 if (root) {
     const $ = (selector) => root.querySelector(selector);
+    const MAX_FILES = Number(root.dataset.maxFiles) || 5;
+    const MAX_FILE_BYTES = Number(root.dataset.maxImageBytes) || 10 * 1024 * 1024;
+    const MAX_VIDEO_BYTES = Number(root.dataset.maxVideoBytes) || 50 * 1024 * 1024;
+    const megabytes = (bytes) => Math.floor(bytes / 1024 / 1024);
     const launcher = $('[data-chat-launcher]');
     const launcherBadge = $('[data-chat-launcher-badge]');
     const panel = $('[data-chat-panel]');
@@ -640,16 +641,16 @@ if (root) {
     const validateFiles = () => {
         const files = Array.from(fileInput.files);
         if (files.length > MAX_FILES) {
-            return `附圖最多 ${MAX_FILES} 張。`;
+            return `圖片／影片一次最多 ${MAX_FILES} 個。`;
         }
         if (files.some((file) => !ALLOWED_TYPES.includes(file.type))) {
             return '附件只接受 JPG、PNG、WebP 圖片或 MP4 影片。';
         }
         if (files.some((file) => VIDEO_TYPES.includes(file.type) && file.size > MAX_VIDEO_BYTES)) {
-            return '每支影片不可超過 50 MB。';
+            return `每支影片不可超過 ${megabytes(MAX_VIDEO_BYTES)} MB。`;
         }
         if (files.some((file) => !VIDEO_TYPES.includes(file.type) && file.size > MAX_FILE_BYTES)) {
-            return '每張圖片不可超過 10 MB。';
+            return `每張圖片不可超過 ${megabytes(MAX_FILE_BYTES)} MB。`;
         }
 
         return null;
@@ -674,7 +675,7 @@ if (root) {
 
             return;
         }
-        // 草稿模式只送草稿（附圖已在草稿裡），不看面板選的檔案。
+        // 草稿模式只送草稿（附件已在草稿裡），不看面板選的檔案。
         const draft = state.draftMode ? currentDraft() : null;
         const problem = draft === null ? validateFiles() : null;
         if (problem) {
@@ -721,7 +722,7 @@ if (root) {
             } else if (response.status === 419) {
                 showError('頁面停留太久已過期，請重新整理頁面後再送出。');
             } else if (response.status === 413) {
-                showError('附圖太大，請縮小或減少張數後再試。');
+                showError('圖片／影片太大，請縮小或減少個數後再試。');
             } else if (response.status === 429) {
                 showError('送出太頻繁，請稍候再試。');
             } else {

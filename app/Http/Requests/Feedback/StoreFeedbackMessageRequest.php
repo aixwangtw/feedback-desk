@@ -94,10 +94,26 @@ class StoreFeedbackMessageRequest extends FormRequest
                         if ($value instanceof UploadedFile
                             && ! FeedbackAttachmentRules::isVideoMime($value->getMimeType())
                             && $value->getSize() > FeedbackAttachmentRules::MAX_IMAGE_BYTES) {
-                            $fail('每張圖片不可超過 10 MB。');
+                            $fail('每張圖片不可超過 '.FeedbackAttachmentRules::maxImageMegabytes().' MB。');
                         }
                     },
                 ],
         ];
+    }
+
+    /**
+     * 有登入的雙方可附影片，欄位名稱寫「圖片／影片」；公開回報者只能附圖。
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        $report = $this->route('feedbackReport');
+        $isPublicReporter = $report instanceof FeedbackReport
+            && $report->isPublicReport()
+            && ! app(FeedbackAccess::class)->isOwner($report->feedbackProject);
+        $field = $isPublicReporter ? '截圖' : FeedbackAttachmentRules::MESSAGE_FIELD;
+
+        return ['screenshots' => $field, 'screenshots.*' => $field];
     }
 }

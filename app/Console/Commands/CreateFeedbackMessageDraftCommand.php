@@ -7,6 +7,7 @@ use App\Actions\PostFeedbackMessageAction;
 use App\Console\Commands\Concerns\ResolvesFeedbackActor;
 use App\Console\Commands\Concerns\ValidatesFeedbackImageFiles;
 use App\Models\FeedbackProject;
+use App\Support\FeedbackAttachmentRules;
 use App\Support\FeedbackServiceException;
 use App\Support\StandardInput;
 use Illuminate\Console\Attributes\Description;
@@ -20,7 +21,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）}
     {--text= : 待審留言內容；未給時從標準輸入讀取}
     {--replace-message= : 要修改的團隊留言 id；送出時改寫那則留言，不新增一則}
-    {--attach=* : 要附上的圖片或影片路徑，可重複多次（jpg/png/webp 每張 10 MB、mp4 每支 50 MB，最多 5 個）}
+    {--attach=* : '.FeedbackAttachmentRules::CLI_ATTACH_HELP.'}
     {--as= : 以這個團隊個人帳號寫草稿（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}')]
 #[Description('新增待審留言（草稿）：只有開發團隊看得到，團隊在單頁按「送出」才會發給客戶，完成後輸出草稿 id')]

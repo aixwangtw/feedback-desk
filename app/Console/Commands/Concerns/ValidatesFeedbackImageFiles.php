@@ -50,7 +50,7 @@ trait ValidatesFeedbackImageFiles
         $mime = mime_content_type($path) ?: '';
         if ($allowVideo && FeedbackAttachmentRules::isVideoMime($mime)) {
             if (filesize($path) > FeedbackAttachmentRules::MAX_VIDEO_BYTES) {
-                $this->components->error("影片超過 50 MB：{$path}");
+                $this->components->error('影片超過 '.FeedbackAttachmentRules::maxVideoMegabytes()." MB：{$path}");
 
                 return null;
             }
@@ -67,7 +67,7 @@ trait ValidatesFeedbackImageFiles
         }
 
         if (filesize($path) > FeedbackAttachmentRules::MAX_IMAGE_BYTES) {
-            $this->components->error("圖片超過 10 MB：{$path}");
+            $this->components->error('圖片超過 '.FeedbackAttachmentRules::maxImageMegabytes()." MB：{$path}");
 
             return null;
         }

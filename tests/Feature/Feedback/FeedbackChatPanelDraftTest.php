@@ -15,8 +15,8 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * 右下角對話面板裡的待審留言：團隊打開那張單時草稿帶進輸入框、按送出走與單頁相同的送出流程
- * （可送出改過的文字、取代型改寫原留言）、清單標「有草稿」。客戶的面板完全拿不到草稿。
+ * 待審留言在單頁、詳情視窗、右下角對話面板三處共用同一份畫面（feedback.reports._drafts，經對話端點的 drafts_html 取得），
+ * 送出一律走 feedback.drafts.send（可送出改過的文字、取代型改寫原留言），清單標「有草稿」。客戶的三個地方都拿不到草稿。
  */
 class FeedbackChatPanelDraftTest extends TestCase
 {
@@ -49,16 +49,19 @@ class FeedbackChatPanelDraftTest extends TestCase
         $this->actingAsTeam();
 
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
-        $thread->assertJsonPath('drafts.0.id', $draft->id)
-            ->assertJsonPath('drafts.0.body', self::DRAFT_TEXT)
-            ->assertJsonPath('drafts.0.replaces_message_id', $original->id)
-            ->assertJsonPath('drafts.0.replaces_body', '原本的說明')
-            ->assertJsonPath('drafts.0.send_url', route('feedback.drafts.send', [$this->project, $this->report, $draft]));
+        $html = $thread->json('drafts_html');
+        $this->assertStringContainsString('data-message-draft="'.$draft->id.'"', $html);
+        $this->assertStringContainsString(self::DRAFT_TEXT, $html);
+        $this->assertStringContainsString('data-draft-replaces="'.$original->id.'"', $html);
+        $this->assertStringContainsString('原本的說明', $html);
+        $this->assertStringContainsString('data-draft-send-url="'.route('feedback.drafts.send', [$this->project, $this->report, $draft]).'"', $html);
+        // 視窗與面板重複出現，不放單頁才有的錨點 id。
+        $this->assertStringNotContainsString('id="message-drafts"', $html);
 
         $list = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
         $this->assertSame(1, collect($list->json('items'))->firstWhere('id', $this->report->public_id)['drafts_count']);
 
-        $this->get(route('feedback.portal', $this->project))->assertOk()->assertSee('data-chat-draft', false);
+        $this->get(route('feedback.portal', $this->project))->assertOk()->assertSee('data-chat-drafts', false)->assertSee('data-dialog-thread-drafts', false);
     }
 
     public function test_team_thread_lists_draft_attachments_with_the_draft_file_route_and_the_client_never_gets_them(): void
@@ -71,15 +74,17 @@ class FeedbackChatPanelDraftTest extends TestCase
         $this->actingAsTeam();
 
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
-        $thread->assertJsonPath('drafts.0.attachments_count', 2)
-            ->assertJsonPath('drafts.0.attachments.0.url', route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]))
-            ->assertJsonPath('drafts.0.attachments.0.is_video', true)
-            ->assertJsonPath('drafts.0.attachments.1.name', '截圖.png')
-            ->assertJsonPath('drafts.0.attachments.1.is_video', false);
+        $html = $thread->json('drafts_html');
+        $video = e(route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]));
+        $this->assertStringContainsString('<video controls playsinline preload="metadata" src="'.$video.'"', $html);
+        $this->assertStringContainsString('src="'.e(route('feedback.drafts.file', [$this->project, $this->report, $draft, 1])).'"', $html);
+        // 每個附件下方的短標題：檔名去掉副檔名，完整檔名放 title。
+        $this->assertStringContainsString('title="教學.mp4" data-attachment-title>教學</span>', $html);
+        $this->assertStringContainsString('title="截圖.png" data-attachment-title>截圖</span>', $html);
 
         $this->actingAsClient();
         $client = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
-        $this->assertArrayNotHasKey('drafts', $client->json());
+        $this->assertArrayNotHasKey('drafts_html', $client->json());
         $this->assertStringNotContainsString('drafts/a.mp4', $client->getContent());
         $this->assertStringNotContainsString('/files/0', $client->getContent());
         $this->getJson(route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]))->assertForbidden();
@@ -114,6 +119,7 @@ class FeedbackChatPanelDraftTest extends TestCase
         $this->actingAsClient();
 
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
+        $this->assertArrayNotHasKey('drafts_html', $thread->json());
         $this->assertArrayNotHasKey('drafts', $thread->json());
         $this->assertStringNotContainsString(self::DRAFT_TEXT, $thread->getContent());
 
@@ -125,7 +131,32 @@ class FeedbackChatPanelDraftTest extends TestCase
 
         $portal = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringNotContainsString(self::DRAFT_TEXT, $portal);
-        $this->assertStringNotContainsString('data-chat-draft', $portal);
+        // 三個地方（面板、詳情視窗、單頁）對客戶都不輸出草稿容器與按鈕。
+        $this->assertStringNotContainsString('data-chat-drafts', $portal);
+        $this->assertStringNotContainsString('data-dialog-thread-drafts', $portal);
+        $page = $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertOk()->getContent();
+        $this->assertStringNotContainsString(self::DRAFT_TEXT, $page);
+        $this->assertStringNotContainsString('data-message-drafts', $page);
+        $this->assertStringNotContainsString('data-chat-drafts', $page);
+    }
+
+    public function test_draft_actions_answer_json_for_the_shared_panel_and_window_scripts(): void
+    {
+        $draft = $this->draft();
+        $this->actingAsTeam();
+        $update = route('feedback.drafts.update', [$this->project, $this->report, $draft]);
+
+        $this->putJson($update, ['body' => '新的字'])->assertOk()->assertJsonPath('message', '待審留言已更新，尚未送出。');
+        $this->assertSame('新的字', $draft->fresh()->body);
+        $this->putJson($update, ['body' => ''])->assertUnprocessable();
+        $this->deleteJson($update)->assertOk()->assertJsonPath('message', '已捨棄待審留言。');
+        $this->assertNull(FeedbackMessageDraft::find($draft->id));
+
+        $this->actingAsClient();
+        $other = $this->draft();
+        $this->putJson(route('feedback.drafts.update', [$this->project, $this->report, $other]), ['body' => 'x'])->assertForbidden();
+        $this->deleteJson(route('feedback.drafts.destroy', [$this->project, $this->report, $other]))->assertForbidden();
+        $this->assertNotNull(FeedbackMessageDraft::find($other->id));
     }
 
     public function test_sending_from_the_panel_uses_the_edited_text_and_returns_json(): void

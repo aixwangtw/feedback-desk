@@ -49,28 +49,16 @@
                         <a href="#" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-page-link>開啟完整頁</a>
                     </div>
 
-                    <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-3 py-4 sm:px-4" aria-live="polite" data-chat-thread></div>
+                    <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-3 py-4 sm:px-4" data-chat-scroll>
+                        <div aria-live="polite" data-chat-thread></div>
+                        @if (app(\App\Support\FeedbackAccess::class)->isOwner($project))
+                            {{-- 待審留言（只有開發團隊）：與單頁、詳情視窗同一份畫面（feedback.reports._drafts），顯示在留言串最下面。 --}}
+                            <div class="mt-4 overflow-hidden rounded-xl empty:hidden" data-chat-drafts></div>
+                        @endif
+                    </div>
 
                     <form class="shrink-0 border-t border-slate-200 bg-white p-3" enctype="multipart/form-data" data-chat-form novalidate>
                         @csrf
-                        @if (app(\App\Support\FeedbackAccess::class)->isOwner($project))
-                            {{-- 待審留言（只有開發團隊）：草稿帶進下面的輸入框，按「送出草稿」才發給客戶；可先改文字。 --}}
-                            <div class="mb-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-950" data-chat-draft hidden>
-                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                    <span class="font-bold">待審留言（還沒發出）</span>
-                                    <span class="rounded bg-amber-200 px-1.5 py-0.5 font-semibold" data-chat-draft-replaces hidden>修改原留言</span>
-                                    <span class="text-amber-800" data-chat-draft-meta></span>
-                                    <span class="ml-auto flex items-center gap-2">
-                                        <button type="button" class="rounded px-1.5 py-0.5 font-semibold text-amber-900 underline-offset-2 hover:underline" data-chat-draft-next hidden>下一則</button>
-                                        <button type="button" class="rounded px-1.5 py-0.5 font-semibold text-amber-900 underline-offset-2 hover:underline" data-chat-draft-exit>改寫一般回覆</button>
-                                    </span>
-                                </div>
-                                <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-amber-900" data-chat-draft-original hidden></p>
-                                <div class="mt-2 flex flex-wrap gap-2 empty:hidden" data-chat-draft-files></div>
-                                <p class="mt-1 text-amber-800">按「送出草稿」才會發給{{ config('feedback.labels.client') }}；輸入框裡改過的文字會照改過的送出。</p>
-                            </div>
-                            <button type="button" class="mb-2 inline-flex items-center rounded-lg border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100" data-chat-draft-resume hidden>帶入待審留言</button>
-                        @endif
                         <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error data-attachment-error hidden></p>
                         <div id="chat-preview" class="mb-2 flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
                         <label for="chat-body" class="sr-only">回覆內容</label>

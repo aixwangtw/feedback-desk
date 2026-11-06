@@ -64,7 +64,7 @@
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整圖（「N 張調整圖」）。' : '標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整附圖。' }}</p>
         </div>
-        <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
+        <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
 
     <section class="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="issue-list-heading">
@@ -424,6 +424,9 @@
                 <section class="grid gap-3 border-t border-slate-100 pt-4" aria-label="留言" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $report->public_id }}">
                     <h3 class="text-sm font-bold text-slate-900">留言</h3>
                     <div class="max-h-[50dvh] overflow-y-auto rounded-xl bg-slate-50/70 px-3 py-3" aria-live="polite" data-dialog-thread-body><p class="py-4 text-center text-sm text-slate-500">留言載入中…</p></div>
+                    @if ($isOwner)
+                        <div class="empty:hidden" data-dialog-thread-drafts></div>
+                    @endif
                     <form action="{{ route('feedback.messages.store', [$project, $report]) }}" method="POST" enctype="multipart/form-data" class="grid gap-2" data-dialog-thread-form novalidate>
                         @csrf
                         <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>

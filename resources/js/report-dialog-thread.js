@@ -1,6 +1,8 @@
 // 清單／看板的單張詳情視窗：開啟時直接載入這張單的留言串（伺服器 Blade 已跳脫的 HTML），可在視窗內留言。
 // 載入即算已讀（與對話面板同一個端點），並通知對話面板同步紅色未讀數字。
 
+import { renderMessageDrafts } from './message-drafts';
+
 const POLL_MS = 5000;
 
 const fetchThread = async (url) => {
@@ -24,6 +26,8 @@ const setupThread = (section) => {
     const input = section.querySelector('[data-dialog-thread-input]');
     const sendButton = section.querySelector('[data-dialog-thread-send]');
     const errorBox = section.querySelector('[data-dialog-thread-error]');
+    // 待審留言（只有開發團隊拿得到，客戶端這個容器不存在）：顯示在留言串最下面，與單頁、面板同一份。
+    const draftsBox = section.querySelector('[data-dialog-thread-drafts]');
     const reportId = section.dataset.reportId;
     let lastHtml = '';
     let timer = null;
@@ -52,6 +56,9 @@ const setupThread = (section) => {
                 if (scrollToEnd || nearEnd) {
                     body.scrollTop = body.scrollHeight;
                 }
+            }
+            if (draftsBox && typeof data.drafts_html === 'string') {
+                renderMessageDrafts(draftsBox, data.drafts_html, { onChanged: () => load({ scrollToEnd: true }) });
             }
             markRead();
         } catch (error) {

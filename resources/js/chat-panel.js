@@ -2,8 +2,7 @@
 // 單一對話的 HTML 由伺服器 Blade 產生（已跳脫），與回饋單頁共用同一份留言樣式。
 
 import { orderConversations } from './chat-order';
-import { attachmentTitle } from './attachment-files';
-import { draftAttachmentViews, draftFormFields, draftMeta, nextDraftIndex, shouldFillComposer } from './chat-drafts';
+import { renderMessageDrafts } from './message-drafts';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, rememberDismissed, shouldAutoOpen, tabCounts, visibleItems } from './chat-tabs';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
@@ -34,6 +33,7 @@ if (root) {
     const placeholder = $('[data-chat-placeholder]');
     const threadView = $('[data-chat-thread-view]');
     const thread = $('[data-chat-thread]');
+    const scroller = $('[data-chat-scroll]');
     const threadNumber = $('[data-chat-thread-number]');
     const threadStatus = $('[data-chat-thread-status]');
     const threadTitle = $('[data-chat-thread-title]');
@@ -44,16 +44,8 @@ if (root) {
     const fileInput = $('[data-chat-files]');
     const sendButton = $('[data-chat-send]');
     const errorBox = $('[data-chat-error]');
-    // 待審留言區塊只在開發團隊的頁面輸出；客戶端這些都是 null。
-    const draftBox = $('[data-chat-draft]');
-    const draftReplaces = $('[data-chat-draft-replaces]');
-    const draftMetaText = $('[data-chat-draft-meta]');
-    const draftFiles = $('[data-chat-draft-files]');
-    const draftOriginal = $('[data-chat-draft-original]');
-    const draftNext = $('[data-chat-draft-next]');
-    const draftExit = $('[data-chat-draft-exit]');
-    const draftResume = $('[data-chat-draft-resume]');
-    const DRAFT_INPUT_CLASSES = ['border-2', 'border-dashed', 'border-amber-400', 'bg-amber-50/40'];
+    // 待審留言（只有開發團隊的頁面有這個容器）：顯示在留言串最下面，與單頁、詳情視窗同一份（message-drafts.js）。
+    const draftsBox = $('[data-chat-drafts]');
 
     const state = {
         items: [],
@@ -64,11 +56,6 @@ if (root) {
         lastListFetch: 0,
         threadRequest: 0,
         tab: 'awaiting',
-        drafts: [],
-        draftIndex: 0,
-        draftMode: false,
-        draftLoadedBody: null,
-        draftDismissedFor: null,
         autoOpenChecked: false,
         // 客戶端頁面載入時自動彈出的面板：先「偷看」第一張，不標已讀，等使用者真的操作才標（見 confirmRead）。
         peek: false,
@@ -326,7 +313,7 @@ if (root) {
                     state.tab = 'awaiting';
                     openPanel({ autoSelect: false });
                     setView('list');
-                    // 團隊端有沒送出的待審留言時，直接打開第一張有草稿的單（草稿已帶進輸入框）。
+                    // 團隊端有沒送出的待審留言時，直接打開第一張有草稿的單（草稿顯示在留言串最下面）。
                     const firstDraft = state.items.find((item) => (item.drafts_count ?? 0) > 0);
                     if (firstDraft) {
                         openThread(firstDraft.id);
@@ -360,148 +347,7 @@ if (root) {
 
     const withoutTimes = (html) => html.replace(/(<time\b[^>]*>)[^<]*(<\/time>)/g, '$1$2');
 
-    const isNearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
-
-    const currentDraft = () => state.drafts[state.draftIndex] ?? null;
-
-    const renderDraftFiles = (draft) => {
-        if (!draftFiles) {
-            return;
-        }
-        const views = draftAttachmentViews(draft);
-        const signature = JSON.stringify(views);
-        if (draftFiles.dataset.signature === signature) {
-            return;
-        }
-        draftFiles.dataset.signature = signature;
-        const captioned = (media, view, widthClass) => {
-            const wrap = document.createElement('div');
-            wrap.className = `min-w-0 ${widthClass}`;
-            const caption = el('span', 'mt-0.5 block truncate text-[11px] leading-4 text-amber-900', attachmentTitle(view.name));
-            caption.title = view.name;
-            caption.dataset.attachmentTitle = '';
-            wrap.append(media, caption);
-
-            return wrap;
-        };
-        draftFiles.replaceChildren(...views.map((view) => {
-            if (view.kind === 'video') {
-                const video = document.createElement('video');
-                video.controls = true;
-                video.playsInline = true;
-                video.preload = 'metadata';
-                video.src = view.url;
-                video.title = view.name;
-                video.className = 'max-h-40 w-full rounded-lg border border-amber-200 bg-black';
-                return captioned(video, view, 'w-full');
-            }
-            const link = document.createElement('a');
-            link.href = view.url;
-            link.target = '_blank';
-            link.rel = 'noreferrer';
-            link.dataset.lightboxTrigger = '';
-            link.dataset.lightboxAlt = view.name;
-            link.className = 'block size-16 overflow-hidden rounded-lg border border-amber-200 bg-white';
-            const img = document.createElement('img');
-            img.src = view.url;
-            img.alt = view.name;
-            img.loading = 'lazy';
-            img.className = 'size-full object-cover';
-            link.append(img);
-            return captioned(link, view, 'w-16');
-        }));
-    };
-
-    const renderDraftUi = () => {
-        if (!draftBox) {
-            return;
-        }
-        const draft = state.draftMode ? currentDraft() : null;
-        draftBox.hidden = draft === null;
-        draftResume.hidden = draft !== null || state.drafts.length === 0;
-        DRAFT_INPUT_CLASSES.forEach((name) => bodyInput.classList.toggle(name, draft !== null));
-        fileInput.disabled = draft !== null;
-        sendButton.textContent = draft !== null ? '送出草稿' : '送出';
-        if (draft === null) {
-            return;
-        }
-        draftReplaces.hidden = draft.replaces_message_id === null;
-        draftOriginal.hidden = draft.replaces_body === null;
-        draftOriginal.textContent = draft.replaces_body === null ? '' : `原留言：${draft.replaces_body}`;
-        draftMetaText.textContent = draftMeta(draft, state.draftIndex, state.drafts.length);
-        renderDraftFiles(draft);
-        draftNext.hidden = state.drafts.length < 2;
-    };
-
-    const enterDraft = (index) => {
-        const draft = state.drafts[index];
-        if (!draft) {
-            return;
-        }
-        if (shouldFillComposer(bodyInput.value, state.draftLoadedBody)) {
-            bodyInput.value = draft.body;
-            state.draftLoadedBody = draft.body;
-        }
-        state.draftIndex = index;
-        state.draftMode = true;
-        renderDraftUi();
-    };
-
-    const exitDraft = ({ dismiss = true } = {}) => {
-        if (state.draftMode && bodyInput.value === state.draftLoadedBody) {
-            bodyInput.value = '';
-        }
-        state.draftMode = false;
-        state.draftLoadedBody = null;
-        if (dismiss) {
-            state.draftDismissedFor = state.currentId;
-        }
-        renderDraftUi();
-    };
-
-    const applyDrafts = (data) => {
-        if (!draftBox || !Array.isArray(data.drafts)) {
-            return;
-        }
-        const activeId = state.draftMode ? currentDraft()?.id : null;
-        state.drafts = data.drafts;
-        if (state.drafts.length === 0) {
-            exitDraft({ dismiss: false });
-
-            return;
-        }
-        if (state.draftMode) {
-            const index = state.drafts.findIndex((draft) => draft.id === activeId);
-            if (index === -1) {
-                state.draftLoadedBody = bodyInput.value === state.draftLoadedBody ? null : state.draftLoadedBody;
-                enterDraft(0);
-            } else {
-                state.draftIndex = index;
-                renderDraftUi();
-            }
-        } else if (state.draftDismissedFor !== data.id) {
-            enterDraft(0);
-        } else {
-            renderDraftUi();
-        }
-    };
-
-    draftExit?.addEventListener('click', () => {
-        exitDraft();
-        bodyInput.focus();
-    });
-    draftResume?.addEventListener('click', () => {
-        state.draftDismissedFor = null;
-        enterDraft(0);
-        bodyInput.focus();
-    });
-    draftNext?.addEventListener('click', () => {
-        const index = nextDraftIndex(state.draftIndex, state.drafts.length);
-        if (bodyInput.value === state.draftLoadedBody) {
-            bodyInput.value = '';
-        }
-        enterDraft(index);
-    });
+    const isNearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
 
     const applyThread = (data, { forceScroll }) => {
         threadNumber.textContent = `編號 ${data.number}`;
@@ -511,7 +357,15 @@ if (root) {
         threadDeleted.hidden = !data.deleted;
         pageLink.href = data.page_url;
         state.postUrl = data.post_url;
-        applyDrafts(data);
+        if (draftsBox && typeof data.drafts_html === 'string') {
+            const openId = data.id;
+            renderMessageDrafts(draftsBox, data.drafts_html, {
+                onChanged: () => {
+                    loadThread(openId, { forceScroll: true });
+                    loadList();
+                },
+            });
+        }
 
         if (data.html !== state.lastThreadHtml) {
             const stickToBottom = forceScroll || isNearBottom();
@@ -534,7 +388,7 @@ if (root) {
             }
             state.lastThreadHtml = data.html;
             if (stickToBottom) {
-                thread.scrollTop = thread.scrollHeight;
+                scroller.scrollTop = scroller.scrollHeight;
             }
         }
 
@@ -583,13 +437,9 @@ if (root) {
     };
 
     const clearComposer = () => {
-        state.drafts = [];
-        state.draftMode = false;
-        state.draftLoadedBody = null;
-        state.draftIndex = 0;
-        state.draftDismissedFor = null;
+        draftsBox?.replaceChildren();
+        delete draftsBox?.dataset.signature;
         form.reset();
-        renderDraftUi();
         errorBox.hidden = true;
         errorBox.textContent = '';
     };
@@ -757,24 +607,15 @@ if (root) {
 
             return;
         }
-        // 草稿模式只送草稿（附件已在草稿裡），不看面板選的檔案；一般回覆的附件在加入時就已檢查過。
-        const draft = state.draftMode ? currentDraft() : null;
-
         const id = state.currentId;
         sendButton.disabled = true;
         sendButton.textContent = '送出中…';
         errorBox.hidden = true;
 
         try {
-            let body = new FormData(form);
-            if (draft !== null) {
-                // 待審留言：走與單頁「送出」相同的端點，帶上輸入框裡（可能改過）的文字；取代型會改寫原留言。
-                body = new FormData();
-                draftFormFields(form.querySelector('input[name="_token"]').value, bodyInput.value).forEach(([key, value]) => body.append(key, value));
-            }
-            const response = await fetch(draft !== null ? draft.send_url : state.postUrl, {
+            const response = await fetch(state.postUrl, {
                 method: 'POST',
-                body,
+                body: new FormData(form),
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
@@ -793,8 +634,6 @@ if (root) {
                 const data = await response.json().catch(() => ({}));
                 const firstError = Object.values(data.errors ?? {})[0]?.[0];
                 showError(firstError ?? '留言內容有誤，請檢查後再送出。');
-            } else if (draft !== null && response.status === 404) {
-                showError('這則待審留言已經送出或被捨棄，請重新開啟這張單。');
             } else if (response.status === 419) {
                 showError('頁面停留太久已過期，請重新整理頁面後再送出。');
             } else if (response.status === 413) {
@@ -808,7 +647,7 @@ if (root) {
             showError('網路連線失敗，留言尚未送出。');
         } finally {
             sendButton.disabled = false;
-            sendButton.textContent = state.draftMode ? '送出草稿' : '送出';
+            sendButton.textContent = '送出';
         }
     };
 

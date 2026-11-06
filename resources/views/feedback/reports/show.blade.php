@@ -139,7 +139,7 @@
                 </div>
 
                 @if ($isOwner && $drafts->isNotEmpty())
-                    @include('feedback.reports._drafts', ['project' => $project, 'report' => $report, 'drafts' => $drafts])
+                    @include('feedback.reports._drafts', ['project' => $project, 'report' => $report, 'drafts' => $drafts, 'anchor' => true])
                 @endif
 
                 @if (! $canPostMessage)

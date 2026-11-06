@@ -28,7 +28,7 @@ class FeedbackMessageDraftController extends Controller
         FeedbackMessageDraft $feedbackMessageDraft,
         FeedbackAccess $access,
         ManageFeedbackMessageDraftAction $drafts,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $this->authorizeDraft($feedbackProject, $feedbackReport, $feedbackMessageDraft, $access);
         $validated = $request->validateWithBag('draft'.$feedbackMessageDraft->id, [
             'body' => ['required', 'string', 'max:'.PostFeedbackMessageAction::MAX_BODY_LENGTH],
@@ -37,7 +37,15 @@ class FeedbackMessageDraftController extends Controller
         try {
             $drafts->update($feedbackMessageDraft, $validated['body']);
         } catch (FeedbackServiceException $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $exception->getMessage(), 'errors' => ['body' => [$exception->getMessage()]]], 422);
+            }
+
             return back()->withErrors(['body' => $exception->getMessage()], 'draft'.$feedbackMessageDraft->id);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => '待審留言已更新，尚未送出。']);
         }
 
         return $this->backToDrafts($feedbackProject, $feedbackReport, '待審留言已更新，尚未送出。');
@@ -81,14 +89,19 @@ class FeedbackMessageDraftController extends Controller
     }
 
     public function destroy(
+        Request $request,
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackMessageDraft $feedbackMessageDraft,
         FeedbackAccess $access,
         ManageFeedbackMessageDraftAction $drafts,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $this->authorizeDraft($feedbackProject, $feedbackReport, $feedbackMessageDraft, $access);
         $drafts->discard($feedbackMessageDraft);
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => '已捨棄待審留言。']);
+        }
 
         return $this->backToDrafts($feedbackProject, $feedbackReport, '已捨棄待審留言。');
     }

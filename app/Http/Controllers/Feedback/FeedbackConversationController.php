@@ -7,11 +7,9 @@ use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackMessage;
-use App\Models\FeedbackMessageDraft;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
-use App\Support\FeedbackAttachmentRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -97,7 +95,7 @@ class FeedbackConversationController extends Controller
         $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper', 'adjustmentAttachments']);
 
         // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
-        $drafts = $isOwner ? ['drafts' => $this->drafts($feedbackProject, $feedbackReport)] : [];
+        $drafts = $isOwner ? ['drafts_html' => $this->draftsHtml($feedbackProject, $feedbackReport)] : [];
 
         return response()->json([
             ...$drafts,
@@ -118,32 +116,21 @@ class FeedbackConversationController extends Controller
     }
 
     /**
-     * @return list<array{id: int, body: string, author: string, replaces_message_id: int|null, replaces_body: string|null, attachments_count: int, attachments: list<array{url: string, name: string, is_video: bool}>, send_url: string, page_url: string}>
+     * 待審留言的畫面（單頁、詳情視窗、面板共用同一份 feedback.reports._drafts），沒有草稿時是空字串。
      */
-    private function drafts(FeedbackProject $project, FeedbackReport $report): array
+    private function draftsHtml(FeedbackProject $project, FeedbackReport $report): string
     {
-        return $report->messageDrafts()
+        $drafts = $report->messageDrafts()
             ->with(['authorDeveloper', 'replacesMessage'])
             ->orderBy('id')
-            ->get()
-            ->map(fn (FeedbackMessageDraft $draft): array => [
-                'id' => $draft->id,
-                'body' => $draft->body,
-                'author' => $draft->displayAuthor(),
-                'replaces_message_id' => $draft->replaces_message_id,
-                'replaces_body' => $draft->replacesMessage?->body,
-                'attachments_count' => count($draft->attachmentList()),
-                'attachments' => collect($draft->attachmentList())
-                    ->map(fn (array $file, int $index): array => [
-                        'url' => route('feedback.drafts.file', [$project, $report, $draft, $index]),
-                        'name' => $file['original_name'],
-                        'is_video' => FeedbackAttachmentRules::isVideoMime($file['mime_type']),
-                    ])
-                    ->all(),
-                'send_url' => route('feedback.drafts.send', [$project, $report, $draft]),
-                'page_url' => route('feedback.reports.show', [$project, $report]).'#message-drafts',
-            ])
-            ->all();
+            ->get();
+
+        return $drafts->isEmpty() ? '' : view('feedback.reports._drafts', [
+            'project' => $project,
+            'report' => $report,
+            'drafts' => $drafts,
+            'anchor' => false,
+        ])->render();
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackWaitingOn;
 use App\Support\PublicReporting;
 use Closure;
 use Illuminate\Contracts\View\View;
@@ -96,7 +97,7 @@ class FeedbackPortalController extends Controller
         $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $isOwner, clientCreatedOnly: ! $isOwner);
 
         // 欄位要在留言統計之前指定，否則 select 會蓋掉 withCount／withMax 加上的欄位。
-        $filteredReports = fn (array $columns = ['feedback_reports.*']) => $feedbackProject->feedbackReports()
+        $baseFilteredReports = fn (array $columns = ['feedback_reports.*']) => $feedbackProject->feedbackReports()
             ->select($columns)
             ->when(! $isOwner, fn ($query) => $query->createdByClient())
             ->when($creator !== '', fn ($query) => $query->createdBy($creator))
@@ -113,6 +114,24 @@ class FeedbackPortalController extends Controller
                 ->orWhereLike('description', "%{$keyword}%")))
             ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
             ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'));
+
+        // 兩個頁籤（等開發團隊／等客戶）與已完成：由狀態與最後留言推導，舊網址帶 status 時照舊只用狀態篩選。
+        $waitingOn = $baseFilteredReports(['feedback_reports.id', 'feedback_reports.status', 'feedback_reports.adjustment_updated_at'])
+            ->withWaitingStats()
+            ->get()
+            ->mapWithKeys(fn (FeedbackReport $report): array => [$report->id => FeedbackWaitingOn::for($report)])
+            ->all();
+        $tabCounts = array_count_values($waitingOn) + array_fill_keys([...FeedbackWaitingOn::TABS, FeedbackWaitingOn::COMPLETED], 0);
+        $waitingTab = request()->string('tab')->toString();
+        if (! in_array($waitingTab, [...FeedbackWaitingOn::TABS, FeedbackWaitingOn::COMPLETED, FeedbackWaitingOn::ALL], true)) {
+            $waitingTab = $isOwner ? FeedbackWaitingOn::DEVELOPER : FeedbackWaitingOn::CLIENT;
+        }
+        if ($selectedStatus !== null) {
+            $waitingTab = null;
+        }
+        $tabReportIds = $waitingTab === null || $waitingTab === FeedbackWaitingOn::ALL ? null : array_keys(array_filter($waitingOn, fn (string $bucket): bool => $bucket === $waitingTab));
+        $filteredReports = fn (array $columns = ['feedback_reports.*']) => $baseFilteredReports($columns)
+            ->when($tabReportIds !== null, fn ($query) => $query->whereKey($tabReportIds));
         $withListRelations = fn ($query) => $query
             ->with(['creatorDeveloper', 'creatorClientAccount', 'feedbackProject'])
             ->with([
@@ -146,6 +165,9 @@ class FeedbackPortalController extends Controller
             'creator' => $creator,
             'creatorOptions' => $creatorOptions,
             'unreadOnly' => $unreadOnly,
+            'waitingTab' => $waitingTab,
+            'tabCounts' => $tabCounts,
+            'waitingOn' => $waitingOn,
             'unreadReportCount' => $isOwner ? $feedbackProject->feedbackReports()->unreadByOwner()->count() : 0,
         ]);
     }

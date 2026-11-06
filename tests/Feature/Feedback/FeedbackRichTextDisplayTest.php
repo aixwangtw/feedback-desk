@@ -44,7 +44,7 @@ class FeedbackRichTextDisplayTest extends TestCase
     {
         $this->actingAsClient();
 
-        $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $dialog = Str::between($html, 'id="detail-report-'.$this->report->public_id.'"', '</dialog>');
 
         $this->assertFormattedAndEscaped($dialog);

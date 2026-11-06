@@ -158,9 +158,10 @@ class FeedbackHandoffTest extends TestCase
         $this->assertSame($this->ben->id, $this->report->refresh()->claimed_by_developer_id);
 
         // 網頁改狀態不擋（只提示），並記在最近動態。
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertRedirect();
+        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
+        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'needs_input'])->assertRedirect();
         $this->assertSame('李大同', $this->report->events()->where('kind', 'status')->value('actor_name'));
-        $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertSee('data-activity-log', false)->assertSee('待處理 → 已完成');
+        $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertSee('data-activity-log', false)->assertSee('待處理 → 待審核');
     }
 
     public function test_clients_and_the_shared_owner_cannot_claim_and_never_see_the_work_panel(): void

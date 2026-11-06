@@ -45,7 +45,7 @@ class FeedbackGuestClientTest extends TestCase
     {
         FeedbackReport::factory()->for($this->project)->create(['title' => '舊的單', 'creator_client_account_id' => $this->account->id]);
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('舊的單')
             ->assertSee('data-issue-category', false)
@@ -159,19 +159,19 @@ class FeedbackGuestClientTest extends TestCase
         FeedbackReport::factory()->for($this->project)->create(['title' => '程式單', 'category' => '程式使用問題', 'creator_client_account_id' => $this->account->id]);
         FeedbackReport::factory()->for($this->project)->create(['title' => '舊單', 'category' => null, 'creator_client_account_id' => $this->account->id]);
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-category-filter', false)
             ->assertSee('未分類')
             ->assertSee('排版單')->assertSee('程式單')->assertSee('舊單');
 
-        $this->get(route('feedback.portal', [$this->project, 'category' => '經典排版']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'category' => '經典排版']))
             ->assertSee('排版單')->assertDontSee('程式單')->assertDontSee('舊單');
 
-        $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'category' => '_none']))
             ->assertSee('舊單')->assertDontSee('排版單')->assertDontSee('程式單');
 
-        $this->get(route('feedback.portal', [$this->project, 'category' => '亂填']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'category' => '亂填']))
             ->assertSee('排版單')->assertSee('舊單');
     }
 
@@ -192,7 +192,7 @@ class FeedbackGuestClientTest extends TestCase
         $this->project->update(['report_categories' => null]);
         FeedbackReport::factory()->for($this->project)->create(['title' => '一般單', 'creator_client_account_id' => $this->account->id]);
 
-        $this->get(route('feedback.portal', [$this->project, 'category' => '_none']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'category' => '_none']))
             ->assertOk()
             ->assertSee('一般單')
             ->assertDontSee('data-category-filter', false)
@@ -203,7 +203,7 @@ class FeedbackGuestClientTest extends TestCase
     {
         $report = FeedbackReport::factory()->for($this->project)->create(['title' => '排版單', 'category' => '經典排版', 'creator_client_account_id' => $this->account->id]);
 
-        $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
 
         $this->assertStringContainsString('id="edit-category-'.$report->public_id.'"', $html);
         $this->assertMatchesRegularExpression('/id="edit-category-'.$report->public_id.'"[\s\S]*?<option value="經典排版" selected/', $html);
@@ -226,7 +226,7 @@ class FeedbackGuestClientTest extends TestCase
     {
         $report = FeedbackReport::factory()->for($this->project)->create(['category' => null, 'creator_client_account_id' => $this->account->id]);
 
-        $this->get(route('feedback.portal', $this->project))->assertSee('<option value="" selected>未分類</option>', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('<option value="" selected>未分類</option>', false);
         $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => ''])
             ->assertSessionHasNoErrors();
         $this->assertNull($report->fresh()->category);
@@ -241,7 +241,7 @@ class FeedbackGuestClientTest extends TestCase
     {
         $report = FeedbackReport::factory()->for($this->project)->create(['category' => '舊分類', 'creator_client_account_id' => $this->account->id]);
 
-        $this->get(route('feedback.portal', $this->project))->assertSee('<option value="舊分類" selected>', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('<option value="舊分類" selected>', false);
         $this->put(route('feedback.reports.update', [$this->project, $report]), ['title' => 't', 'description' => 'd', 'category' => '舊分類'])
             ->assertSessionHasNoErrors();
         $this->assertSame('舊分類', $report->fresh()->category);
@@ -253,7 +253,7 @@ class FeedbackGuestClientTest extends TestCase
             'description' => '說明內文XYZ', 'adjustment_note' => '調整內文QRS', 'creator_client_account_id' => $this->account->id,
         ]);
 
-        $html = $this->get(route('feedback.portal', $this->project))->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
         $header = substr($html, strpos($html, '<thead'));
         $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>調整重點</th>'));
         $this->assertLessThan(strpos($header, '建立日期'), strpos($header, '>建立者</th>'));

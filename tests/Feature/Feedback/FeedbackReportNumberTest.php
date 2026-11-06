@@ -18,7 +18,7 @@ class FeedbackReportNumberTest extends TestCase
         [$project, $first, $second, $third] = $this->projectWithReports();
 
         foreach (['asc', 'desc'] as $direction) {
-            $html = $this->get(route('feedback.portal', $project).'?sort=title&direction='.$direction)->assertOk()->getContent();
+            $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&sort=title&direction='.$direction)->assertOk()->getContent();
 
             $this->assertSame(3, $this->numberOf($html, $first));
             $this->assertSame(2, $this->numberOf($html, $second));
@@ -31,9 +31,9 @@ class FeedbackReportNumberTest extends TestCase
         [$project, , $second, $third] = $this->projectWithReports();
         $third->update(['status' => FeedbackReportStatus::Completed]);
 
-        $this->get(route('feedback.portal', $project))->assertSee('共 3 題', false)->assertDontSee('篩選後', false);
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->assertSee('共 3 題', false)->assertDontSee('篩選後', false);
 
-        $response = $this->get(route('feedback.portal', $project).'?status=completed')
+        $response = $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&status=completed')
             ->assertSee('共 3 題（篩選後 1 題）', false);
         $html = $response->getContent();
 
@@ -49,7 +49,7 @@ class FeedbackReportNumberTest extends TestCase
 
         $third->delete();
 
-        $html = $this->get(route('feedback.portal', $project))->assertSee('共 2 題', false)->getContent();
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->assertSee('共 2 題', false)->getContent();
         $this->assertSame(1, $this->numberOf($html, $second));
         $this->assertSame(2, $this->numberOf($html, $first));
 
@@ -60,7 +60,7 @@ class FeedbackReportNumberTest extends TestCase
     {
         [$project] = $this->projectWithReports();
 
-        $html = $this->get(route('feedback.portal', $project))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->assertOk()->getContent();
         preg_match_all('/data-report-number>(\d+)</', $html, $matches);
 
         $this->assertSame(['1', '2', '3'], $matches[1]);

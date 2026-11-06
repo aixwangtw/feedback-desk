@@ -65,7 +65,7 @@ class FeedbackUnreadIndicatorsTest extends TestCase
 
         $this->actingAsClient();
 
-        $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringContainsString('data-unread-flag="'.$report->public_id.'"', $html);
         $this->assertStringContainsString('2 則未讀', $html);
         $this->assertStringNotContainsString('待回覆', $html);

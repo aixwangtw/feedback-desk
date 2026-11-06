@@ -75,7 +75,7 @@ class FeedbackReportManagementTest extends TestCase
         ]);
 
         $this->actingAsTeacher($project);
-        $html = $this->get(route('feedback.portal', $project))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->assertOk()->getContent();
 
         $row = Str::between($html, 'data-report-row="'.$report->public_id.'"', '</tr>');
         $this->assertStringNotContainsString('第一行說明', $row);
@@ -96,7 +96,7 @@ class FeedbackReportManagementTest extends TestCase
         $attachment = FeedbackAttachment::factory()->for($report)->create();
 
         $this->actingAsTeacher($project);
-        $this->get(route('feedback.portal', $project))
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertViewIs('feedback.portal')
             ->assertSee('新增問題')
@@ -114,7 +114,7 @@ class FeedbackReportManagementTest extends TestCase
         $this->actingAsEngineer($project);
         $this->get(route('feedback.owner.index', $project))
             ->assertRedirect(route('feedback.portal', $project));
-        $this->get(route('feedback.portal', $project))
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertViewIs('feedback.portal')
             ->assertSee('共用頁面的問題')
@@ -162,12 +162,13 @@ class FeedbackReportManagementTest extends TestCase
         });
         $this->actingAsEngineer($project);
 
-        $html = $this->get(route('feedback.portal', $project).'?view=board')->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&view=board')->assertOk()->getContent();
         $document = new \DOMDocument;
         @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
         $xpath = new \DOMXPath($document);
 
-        $this->assertSame(3, $xpath->query('//form[@method="GET"]//select[@name="status"]/option[@value != ""]')->length);
+        $this->assertSame(0, $xpath->query('//form[@method="GET"]//select[@name="status"]')->length, 'the status filter dropdown was replaced by tabs.');
+        $this->assertSame(2, $xpath->query('//a[@data-waiting-tab]')->length);
 
         foreach (FeedbackReportStatus::cases() as $status) {
             $column = $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]');
@@ -206,7 +207,7 @@ class FeedbackReportManagementTest extends TestCase
         ]);
         $this->actingAsTeacher($project);
 
-        $response = $this->get(route('feedback.portal', $project).'?view=board&q='.urlencode('儲存'))
+        $response = $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&view=board&q='.urlencode('儲存'))
             ->assertOk()
             ->assertViewHas('keyword', '儲存')
             ->assertSee('答案儲存異常')
@@ -226,7 +227,7 @@ class FeedbackReportManagementTest extends TestCase
         FeedbackReport::factory()->for($project)->count(51)->create();
         $this->actingAsTeacher($project);
 
-        $html = $this->get(route('feedback.portal', $project).'?view=board')->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&view=board')->assertOk()->getContent();
         $document = new \DOMDocument;
         @$document->loadHTML('<?xml encoding="utf-8"?>'.$html);
         $xpath = new \DOMXPath($document);
@@ -431,7 +432,7 @@ class FeedbackReportManagementTest extends TestCase
             ])
             ->assertRedirect(route('feedback.portal', $project));
 
-        $this->get(route('feedback.portal', $project))
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-open-on-load', false)
             ->assertSee('保留的內容');
@@ -485,7 +486,7 @@ class FeedbackReportManagementTest extends TestCase
                 'description' => 'x',
             ]);
 
-        $content = $this->get(route('feedback.portal', $project))->getContent();
+        $content = $this->get(route('feedback.portal', [$project, 'tab' => 'all']))->getContent();
 
         $this->assertDoesNotMatchRegularExpression('/<dialog id="new-issues"[^>]*data-open-on-load/', $content);
         $this->assertMatchesRegularExpression('/<dialog id="edit-report-'.$report->public_id.'"[^>]*data-open-on-load/', $content);

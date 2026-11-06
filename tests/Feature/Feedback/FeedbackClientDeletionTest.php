@@ -60,7 +60,7 @@ class FeedbackClientDeletionTest extends TestCase
         $report = FeedbackReport::factory()->for($this->project)->create();
         $this->actingAsTeacher();
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-dialog-open="client-delete-report-'.$report->public_id.'"', false)
             ->assertSee('確定刪除？')
@@ -165,7 +165,7 @@ class FeedbackClientDeletionTest extends TestCase
 
         $this->flushTestAccess();
         $this->actingAsTeacher();
-        $this->get(route('feedback.portal', $this->project))->assertSee('要還原的問題');
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('要還原的問題');
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
     }
 

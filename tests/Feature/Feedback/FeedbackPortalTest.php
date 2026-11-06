@@ -95,7 +95,7 @@ class FeedbackPortalTest extends TestCase
             fn ($job) => $job->report->is($report) && $job->queue === 'feedback-automation',
         );
 
-        $this->get(route('feedback.portal', $project).'?sort=title&direction=asc')
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']).'&sort=title&direction=asc')
             ->assertOk()
             ->assertSeeInOrder(['A 手機版無法儲存答案', 'Z 題目排序不正確']);
     }
@@ -133,11 +133,13 @@ class FeedbackPortalTest extends TestCase
 
         $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken);
 
-        $this->get(route('feedback.portal', $project))
+        $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-status-guide', false)
             ->assertSee('rounded-full bg-amber-500" aria-hidden="true" data-status-dot', false)
-            ->assertSee('data-dot="bg-emerald-500"', false);
+            ->assertSee('data-dot="bg-slate-500"', false)
+            // 開發團隊端的狀態選單沒有「已完成」選項（已完成由客戶確認）。
+            ->assertDontSee('data-dot="bg-emerald-500"', false);
     }
 
     public function test_removed_statuses_are_migrated_back_to_new(): void
@@ -153,24 +155,40 @@ class FeedbackPortalTest extends TestCase
         $this->assertSame(FeedbackReportStatus::Completed, $kept->refresh()->status);
     }
 
-    public function test_owner_can_mark_a_report_completed(): void
+    public function test_owner_cannot_mark_a_report_completed_but_the_client_can(): void
     {
         $ownerToken = Str::random(48);
+        $clientToken = Str::random(48);
         $project = FeedbackProject::factory()->create([
             'owner_token_hash' => hash('sha256', $ownerToken),
+            'client_token_hash' => hash('sha256', $clientToken),
         ]);
         $report = FeedbackReport::factory()->for($project)->create();
+        $clientReport = FeedbackReport::factory()->for($project)->create();
+
+        $this->get(route('feedback.client.authenticate', $project).'?token='.$clientToken)
+            ->assertRedirect(route('feedback.portal', $project));
+        $this->patch(route('feedback.reports.status.update', [$project, $clientReport]), [
+            'status' => FeedbackReportStatus::Completed->value,
+        ])->assertRedirect();
+
+        $clientReport->refresh();
+        $this->assertSame(FeedbackReportStatus::Completed, $clientReport->status);
+        $this->assertNotNull($clientReport->completed_at);
 
         $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken)
             ->assertRedirect(route('feedback.portal', $project));
 
         $this->patch(route('feedback.owner.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
-        ])->assertRedirect();
+        ])->assertForbidden();
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+        $this->assertNull($report->completed_at);
 
-        $report->refresh();
-        $this->assertSame(FeedbackReportStatus::Completed, $report->status);
-        $this->assertNotNull($report->completed_at);
+        $this->patch(route('feedback.owner.status.update', [$project, $report]), [
+            'status' => FeedbackReportStatus::NeedsInput->value,
+        ])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
 
     public function test_owner_authentication_preserves_https_behind_the_local_tunnel(): void

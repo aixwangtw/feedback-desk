@@ -174,7 +174,7 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $filter = 'developer:'.$this->devA->id;
-        $html = $this->get(route('feedback.portal', $this->project).'?creator='.urlencode($filter).'&sort=title&direction=asc')
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator='.urlencode($filter).'&sort=title&direction=asc')
             ->assertOk()
             ->assertSee('共 59 題（篩選後 56 題）', false)
             ->assertSee('<option value="'.$filter.'" selected', false)
@@ -188,10 +188,10 @@ class FeedbackCreatorTest extends TestCase
         preg_match('/<a href="([^"]*)"[^>]*data-view-mode="board"/', $html, $board);
         $this->assertStringContainsString('creator=developer%3A'.$this->devA->id, html_entity_decode($board[1]));
 
-        $this->get(route('feedback.portal', $this->project).'?creator=shared')->assertSee('共 59 題（篩選後 1 題）', false);
-        $this->get(route('feedback.portal', $this->project).'?creator=client')->assertSee('共 59 題（篩選後 1 題）', false);
-        $this->get(route('feedback.portal', $this->project).'?creator=developer:'.$this->devB->id)->assertSee('共 59 題（篩選後 1 題）', false);
-        $this->get(route('feedback.portal', $this->project).'?creator=bogus')->assertSee('共 59 題', false)->assertDontSee('篩選後', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator=shared')->assertSee('共 59 題（篩選後 1 題）', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator=client')->assertSee('共 59 題（篩選後 1 題）', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator=developer:'.$this->devB->id)->assertSee('共 59 題（篩選後 1 題）', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator=bogus')->assertSee('共 59 題', false)->assertDontSee('篩選後', false);
     }
 
     public function test_teacher_never_sees_developer_reports_creator_info_or_the_filter(): void
@@ -199,8 +199,8 @@ class FeedbackCreatorTest extends TestCase
         $this->seedMixedReports();
         $this->actingAsTeacher();
 
-        $html = $this->get(route('feedback.portal', $this->project).'?creator=shared')->assertOk()
-            ->assertSee('共 1 題', false)
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&creator=shared')->assertOk()
+            // 客戶看不到團隊的單，也沒有建立者篩選：creator 參數無效，全部分頁籤的總數與顯示數相同。
             ->assertDontSee('篩選後', false)
             ->assertDontSee('data-creator-filter', false)
             // 同專案的客戶看得到每張單是哪位客戶開的（每人一個帳號），但看不到團隊建立的單。
@@ -215,7 +215,7 @@ class FeedbackCreatorTest extends TestCase
             $this->assertStringNotContainsString($title, $html);
         }
 
-        $this->get(route('feedback.portal', $this->project).'?view=board')->assertOk()
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&view=board')->assertOk()
             ->assertDontSee('dev-a-1')->assertDontSee('Dev A');
     }
 
@@ -229,7 +229,7 @@ class FeedbackCreatorTest extends TestCase
         $newest = $this->makeReport('老師最新', now()->subDay());
 
         $this->actingAsTeacher();
-        $html = $this->get(route('feedback.portal', $this->project))->assertSee('共 3 題', false)->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('共 3 題', false)->getContent();
         preg_match_all('/data-report-number>(\d+)</', $html, $matches);
         $this->assertSame(['1', '2', '3'], $matches[1]);
         $this->assertSame(1, $this->numberOf($html, $newest));
@@ -239,7 +239,7 @@ class FeedbackCreatorTest extends TestCase
 
         $this->expireSession();
         $this->actingAsOwner();
-        $html = $this->get(route('feedback.portal', $this->project))->assertSee('共 5 題', false)->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('共 5 題', false)->getContent();
         $this->assertSame(1, $this->numberOf($html, $newest));
         $this->assertSame(3, $this->numberOf($html, $middle));
         $this->assertSame(5, $this->numberOf($html, $oldest));
@@ -252,7 +252,7 @@ class FeedbackCreatorTest extends TestCase
         $client = $this->reportTitled('client-1');
 
         $this->actingAsTeacher();
-        $this->get(route('feedback.portal', $this->project))->assertSee('待處理 1 題', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee('待處理 1 題', false);
         $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])
             ->assertOk()
             ->assertExactJson([
@@ -264,10 +264,12 @@ class FeedbackCreatorTest extends TestCase
 
         $this->expireSession();
         $this->actingAsOwner();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])->assertForbidden();
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'needs_input'])
             ->assertOk()
             ->assertJsonPath('counts.new', 3)
-            ->assertJsonPath('counts.completed', 1);
+            ->assertJsonPath('counts.needs_input', 1)
+            ->assertJsonMissingPath('counts.completed');
     }
 
     public function test_teacher_gets_404_on_every_route_for_developer_reports(): void
@@ -310,7 +312,8 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertOk();
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertOk();
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '開發者留言'])->assertRedirect();
     }
 

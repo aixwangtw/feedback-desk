@@ -386,13 +386,13 @@ class FeedbackConversationPanelTest extends TestCase
         $this->get(route('feedback.login', $this->project))->assertOk()->assertDontSee('data-chat-root', false);
 
         $this->actingAsOwner();
-        $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+        $page = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringContainsString('data-chat-root', $page);
         $this->assertStringContainsString('data-viewer="owner"', $page);
         $this->assertStringContainsString(route('feedback.conversations.index', $this->project), $page);
         $this->assertMatchesRegularExpression('/name="_token" value="[^"]+"/', Str::between($page, 'data-chat-form', '</form>'));
         $this->assertStringContainsString('data-chat-open="'.$report->public_id.'"', $page);
-        $board = $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->getContent();
+        $board = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->getContent();
         $this->assertStringContainsString('data-chat-open="'.$report->public_id.'"', $board);
         $this->get(route('feedback.reports.show', [$this->project, $report]))
             ->assertOk()
@@ -400,7 +400,7 @@ class FeedbackConversationPanelTest extends TestCase
             ->assertSee('在對話面板開啟');
 
         $this->actingAsClient();
-        $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+        $page = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringContainsString('data-viewer="client"', $page);
         // 客戶端：老師自己的留言不算未讀，調整重點更新也不算，不顯示紅色數字，改顯示「重點已更新」標籤。
         $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言）/', $page);
@@ -418,7 +418,7 @@ class FeedbackConversationPanelTest extends TestCase
 
         foreach (['owner', 'client'] as $side) {
             $side === 'owner' ? $this->actingAsOwner() : $this->actingAsClient();
-            $page = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
+            $page = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
             $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
 
             $this->assertStringContainsString('已調整好', $dialog);

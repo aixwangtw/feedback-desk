@@ -167,11 +167,11 @@ class FeedbackCreateCommandAttachTest extends TestCase
 
         $this->actingAsClient();
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('對照確認')
             ->assertSee('data-new-reply-badge', false);
-        $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->assertOk()->assertSee('對照確認');
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->assertOk()->assertSee('對照確認');
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))
             ->assertOk()

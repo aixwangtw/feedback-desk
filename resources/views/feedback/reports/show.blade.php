@@ -183,7 +183,7 @@
                         @csrf
                         @method('PATCH')
                         <label for="status" class="sr-only">處理狀態</label>
-                        <x-feedback.status-select id="status" :status="$report->status" class="w-full" />
+                        <x-feedback.status-select id="status" :status="$report->status" :allow-complete="! $isOwner" class="w-full" />
                         <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">儲存狀態</button>
                     </form>
                 </section>

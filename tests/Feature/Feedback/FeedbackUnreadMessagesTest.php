@@ -166,13 +166,13 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->message($report, FeedbackAuthorType::Owner, now()->subMinutes(5));
         $this->actingAsClient();
 
-        $this->get(route('feedback.portal', $this->project))->assertSee($this->messageButtonLabel($report, 1, 1), false)->assertSee('data-new-reply-badge', false);
-        $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->assertSee($this->messageButtonLabel($report, 1, 1), false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertSee($this->messageButtonLabel($report, 1, 1), false)->assertSee('data-new-reply-badge', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->assertSee($this->messageButtonLabel($report, 1, 1), false);
 
         $this->travel(1)->minutes();
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
 
-        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-new-reply-badge', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertDontSee('data-new-reply-badge', false);
         // 客戶開啟不會動到開發者的已讀時間。
         $this->assertTrue($report->refresh()->owner_last_read_at->lessThan(now()->subMinutes(30)));
     }
@@ -195,7 +195,7 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->actingAsClient();
         // 沒有留言、只有調整重點更新時：不出現留言按鈕與紅色數字，改顯示低調的「重點已更新」標籤。
         foreach (['list', 'board'] as $view) {
-            $html = $this->get(route('feedback.portal', [$this->project, 'view' => $view]))
+            $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => $view]))
                 ->assertOk()
                 ->assertDontSee('data-unread-badge', false)
                 ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false)
@@ -209,11 +209,11 @@ class FeedbackUnreadMessagesTest extends TestCase
         // 開啟這張單後標籤消失。
         $this->travel(1)->minutes();
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
-        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-adjustment-updated', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertDontSee('data-adjustment-updated', false);
 
         // 開發者端看不到這個標籤。
         $this->actingAsOwner();
-        $this->get(route('feedback.portal', $this->project))->assertDontSee('data-adjustment-updated', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertDontSee('data-adjustment-updated', false);
     }
 
     public function test_adjustment_update_does_not_add_to_the_red_count_of_new_messages(): void
@@ -223,7 +223,7 @@ class FeedbackUnreadMessagesTest extends TestCase
         $report->update(['adjustment_note' => '已調整', 'adjustment_updated_at' => now()->subMinutes(4)]);
         $this->actingAsClient();
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertSee($this->messageButtonLabel($report, 1, 1), false)
             ->assertSee('data-adjustment-updated="'.$report->public_id.'"', false);
         $this->assertSame(1, $this->getJson(route('feedback.conversations.index', $this->project))->json('items.0.unread'));
@@ -236,7 +236,7 @@ class FeedbackUnreadMessagesTest extends TestCase
         $this->reportReadAt(now(), now(), title: '另一張單');
         $this->actingAsClient();
 
-        $this->get(route('feedback.portal', [$this->project, 'unread' => 1, 'sort' => 'latest_message_at']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'unread' => 1, 'sort' => 'latest_message_at']))
             ->assertOk()
             ->assertSee('另一張單')
             ->assertDontSee('data-unread-badge', false)

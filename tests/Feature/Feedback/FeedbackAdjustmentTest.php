@@ -57,7 +57,7 @@ class FeedbackAdjustmentTest extends TestCase
             '調整重點應在回饋單內容下方。',
         );
 
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-adjustment-note', false)
             ->assertSee("已修正排版\n第二行");
@@ -374,7 +374,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->actingAsTeacher();
 
-        $html = $this->get(route('feedback.portal', $this->project))
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('<th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>', false)
             ->assertSee('清單可見的調整重點')
@@ -395,7 +395,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->actingAsTeacher();
 
-        $this->get(route('feedback.portal', $this->project).'?view=board')
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&view=board')
             ->assertOk()
             ->assertSee('data-adjustment-card', false)
             ->assertSee('看板可見的調整重點')
@@ -422,7 +422,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $this->actingAsTeacher();
 
-        foreach ([route('feedback.portal', $this->project), route('feedback.portal', $this->project).'?view=board'] as $url) {
+        foreach ([route('feedback.portal', [$this->project, 'tab' => 'all']), route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board'])] as $url) {
             $html = $this->get($url)->assertOk()->getContent();
 
             $this->assertStringContainsString('data-dialog-open="'.$dialogId.'" data-adjustment-preview', $html);

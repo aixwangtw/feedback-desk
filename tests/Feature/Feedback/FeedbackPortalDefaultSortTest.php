@@ -71,7 +71,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
 
         // 調整重點更新不算未讀，沒留言的單照建立時間排在最後段。
         $expected = ['開發者剛回覆', '老師自己問過', '剛建立還沒留言', '更早建立還沒留言', '調整重點更新但沒留言'];
-        $this->assertSame($expected, $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()));
+        $this->assertSame($expected, $this->listTitles($this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent()));
         $this->assertSame($expected, array_column($this->getJson(route('feedback.conversations.index', $this->project))->json('items'), 'title'));
     }
 
@@ -87,7 +87,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
         $this->message($needsInput, FeedbackAuthorType::Owner, now()->subDays(2));
         $this->actingAsOwner();
 
-        $html = $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->assertOk()->getContent();
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->assertOk()->getContent();
 
         $this->assertSame(['待處理有未讀', '待處理已讀', '待處理沒留言'], $this->boardTitles($html, FeedbackReportStatus::New));
         $this->assertSame(['待審核已讀', '待審核沒留言'], $this->boardTitles($html, FeedbackReportStatus::NeedsInput));
@@ -170,7 +170,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
 
         $this->assertSame(
             ['待處理新', '待處理舊', '待審核新', '待審核舊', '已完成新'],
-            $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()),
+            $this->listTitles($this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent()),
         );
     }
 
@@ -181,7 +181,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
 
         $this->assertSame(
             ['待審核新', '待審核舊', '待處理新', '待處理舊', '已完成新'],
-            $this->listTitles($this->get(route('feedback.portal', $this->project))->assertOk()->getContent()),
+            $this->listTitles($this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent()),
         );
     }
 
@@ -192,7 +192,7 @@ class FeedbackPortalDefaultSortTest extends TestCase
 
         $this->assertSame(
             ['已完成新', '待審核新', '待處理新', '待審核舊', '待處理舊'],
-            $this->listTitles($this->get(route('feedback.portal', [$this->project, 'sort' => 'created_at', 'direction' => 'desc']))->getContent()),
+            $this->listTitles($this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'sort' => 'created_at', 'direction' => 'desc']))->getContent()),
         );
     }
 

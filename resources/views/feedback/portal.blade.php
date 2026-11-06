@@ -4,6 +4,7 @@
             'view' => $viewMode,
             'q' => $keyword,
             'status' => $selectedStatus?->value,
+            'tab' => $selectedStatus === null ? $waitingTab : null,
             'category' => $selectedCategory !== '' ? $selectedCategory : null,
             'deleted' => $isOwner ? $deletedFilter : null,
             'creator' => $isOwner ? $creator : null,
@@ -70,7 +71,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if ($viewMode === 'board' || $keyword !== '' || $selectedStatus || $selectedCategory !== '' || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if (($waitingTab !== null && $waitingTab !== \App\Support\FeedbackWaitingOn::ALL) || $viewMode === 'board' || $keyword !== '' || $selectedStatus || $selectedCategory !== '' || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach (\App\Enums\FeedbackReportStatus::cases() as $summaryStatus)
                     @php
@@ -96,8 +97,31 @@
             </div>
         @endif
 
+        <nav class="flex items-end gap-1 border-b border-slate-200 bg-white px-4 pt-3" aria-label="依等誰處理分頁" data-waiting-tabs>
+            @foreach (\App\Support\FeedbackWaitingOn::TABS as $tab)
+                <a href="{{ $portalUrl(['tab' => $tab], ['status', 'page']) }}" @class([
+                    '-mb-px inline-flex min-h-10 items-center gap-1.5 rounded-t-lg border px-4 text-sm font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                    'border-slate-200 border-b-white bg-white text-teal-800' => $waitingTab === $tab,
+                    'border-transparent text-slate-500 hover:text-slate-900' => $waitingTab !== $tab,
+                ]) data-waiting-tab="{{ $tab }}" @if ($waitingTab === $tab) aria-current="page" @endif>{{ \App\Support\FeedbackWaitingOn::tabLabel($tab) }} <span data-waiting-tab-count>{{ $tabCounts[$tab] ?? 0 }}</span></a>
+            @endforeach
+            <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::COMPLETED], ['status', 'page']) }}" @class([
+                'mb-2 ml-auto rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED,
+                'text-slate-400 hover:text-slate-700' => $waitingTab !== \App\Support\FeedbackWaitingOn::COMPLETED,
+            ]) data-completed-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED) aria-current="page" @endif>已完成 {{ $tabCounts[\App\Support\FeedbackWaitingOn::COMPLETED] ?? 0 }}</a>
+            <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::ALL], ['status', 'page']) }}" @class([
+                'mb-2 rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::ALL,
+                'text-slate-400 hover:text-slate-700' => $waitingTab !== \App\Support\FeedbackWaitingOn::ALL,
+            ]) data-all-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::ALL) aria-current="page" @endif>全部 {{ count($waitingOn) }}</a>
+        </nav>
+
         <form method="GET" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
             <input type="hidden" name="view" value="{{ $viewMode }}">
+            @if ($waitingTab !== null)
+                <input type="hidden" name="tab" value="{{ $waitingTab }}">
+            @endif
             @if ($unreadOnly)
                 <input type="hidden" name="unread" value="1">
             @endif
@@ -108,14 +132,6 @@
                 @if ($keyword !== '')
                     <a href="{{ $portalUrl([], ['q', 'page']) }}" class="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="清除搜尋" title="清除搜尋">×</a>
                 @endif
-            </label>
-            <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">篩選狀態
-                <select name="status" data-auto-submit class="h-10 min-w-0 md:w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
-                    <option value="">全部</option>
-                    @foreach (\App\Enums\FeedbackReportStatus::cases() as $statusOption)
-                        <option value="{{ $statusOption->value }}" @selected($selectedStatus === $statusOption)>{{ $statusOption->label() }}</option>
-                    @endforeach
-                </select>
             </label>
             @if ($reportCategories !== [])
                 <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">分類
@@ -195,7 +211,7 @@
                                     <button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                     <x-feedback.message-badges :$report :is-owner="$isOwner" class="-my-1" />
                                 </div>
-                                <x-feedback.report-flags :$report :is-owner="$isOwner" class="mt-1" />
+                                <x-feedback.report-flags :$report :is-owner="$isOwner" :waiting-on="$waitingOn[$report->id] ?? null" class="mt-1" />
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
@@ -210,7 +226,7 @@
                                     <label for="status-{{ $report->public_id }}" class="sr-only">「{{ $report->title }}」的狀態</label>
                                     <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
                                         <span class="size-2.5 shrink-0 rounded-full {{ $report->status->dotClass() }}" aria-hidden="true" data-status-dot></span>
-                                        <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" data-status-select data-status-autosave />
+                                        <x-feedback.status-select id="status-{{ $report->public_id }}" :status="$report->status" :allow-complete="! $isOwner" class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" data-status-select data-status-autosave />
                                     </div>
                                     <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                                     <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
@@ -256,6 +272,7 @@
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
                             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
                                 <div class="flex flex-wrap gap-2 sm:justify-center">
+                                    <x-feedback.complete-button :$project :$report :is-owner="$isOwner" />
                                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
                                     @if ($isOwner && $report->isDeletedByClient())
                                         <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
@@ -302,11 +319,12 @@
                                         <div class="flex items-start gap-2">
                                             <div class="min-w-0 flex-1">
                                                 <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
-                                                <x-feedback.report-flags :$report :is-owner="$isOwner" class="mt-1" />
+                                                <x-feedback.report-flags :$report :is-owner="$isOwner" :waiting-on="$waitingOn[$report->id] ?? null" class="mt-1" />
                                                 <x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="mt-1" data-suffix="-card" data-card-action />
                                                 <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
+                                                <x-feedback.complete-button :$project :$report :is-owner="$isOwner" compact data-card-action />
                                                 <x-feedback.message-badges :$report :is-owner="$isOwner" />
                                                 <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
                                                     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -370,7 +388,7 @@
                                             @csrf
                                             @method('PATCH')
                                             <label for="board-status-{{ $report->public_id }}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>
-                                            <x-feedback.status-select id="board-status-{{ $report->public_id }}" :status="$report->status" class="w-full !px-2 !py-1.5 !text-xs" data-status-select data-status-autosave />
+                                            <x-feedback.status-select id="board-status-{{ $report->public_id }}" :status="$report->status" :allow-complete="! $isOwner" class="w-full !px-2 !py-1.5 !text-xs" data-status-select data-status-autosave />
                                             <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
                                             <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
                                         </form>

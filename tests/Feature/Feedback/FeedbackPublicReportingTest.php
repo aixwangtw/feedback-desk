@@ -486,19 +486,20 @@ class FeedbackPublicReportingTest extends TestCase
         FeedbackReport::factory()->for($this->project)->create(['title' => '客戶的單']);
 
         $this->actingAsOwner();
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('陌生人的單')
             ->assertSee('客戶的單')
             ->assertSee('公開回報（Mia）');
-        $this->get(route('feedback.portal', [$this->project, 'creator' => 'public']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'creator' => 'public']))
             ->assertSee('陌生人的單')
             ->assertDontSee('客戶的單');
-        $this->get(route('feedback.portal', [$this->project, 'creator' => 'client']))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'creator' => 'client']))
             ->assertDontSee('陌生人的單');
 
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertRedirect();
-        $this->assertSame(FeedbackReportStatus::Completed, $report->fresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->fresh()->status);
     }
 
     public function test_existing_clients_cannot_see_public_reports(): void
@@ -508,7 +509,7 @@ class FeedbackPublicReportingTest extends TestCase
 
         $this->expireSession();
         $this->actingAsClient();
-        $this->get(route('feedback.portal', $this->project))
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('客戶的單')
             ->assertDontSee('陌生人的單');

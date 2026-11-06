@@ -87,7 +87,7 @@ class FeedbackClientAccountsTest extends TestCase
         $this->post(route('feedback.logout', $this->project));
         $this->mei->forceFill(['name' => '林美美'])->save();
         $this->login('ben', 'ben-password');
-        $this->get(route('feedback.portal', $this->project))->assertOk()->assertSee('林美美')->assertSee('data-report-creator', false);
+        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->assertSee('林美美')->assertSee('data-report-creator', false);
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk()
             ->assertSee('建立者：林美美')
             ->assertSeeInOrder(['data-chat-author', '林美美'], false);

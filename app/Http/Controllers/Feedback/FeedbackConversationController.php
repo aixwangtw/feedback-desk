@@ -13,6 +13,7 @@ use App\Support\FeedbackAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Str;
 
 /**
@@ -82,7 +83,6 @@ class FeedbackConversationController extends Controller
 
         $isOwner = $access->isOwner($feedbackProject);
         $viewer = $access->clientViewer($feedbackProject);
-        $adjustmentWasNew = ! $isOwner && $feedbackReport->adjustmentIsNewForClient($viewer);
 
         // 開啟對話（與面板開著時的定時刷新）就算讀過，與回饋單頁的留言刷新一致。
         // 例外：客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
@@ -103,14 +103,22 @@ class FeedbackConversationController extends Controller
             'number' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $isOwner),
             'title' => $feedbackReport->title,
             'status' => $feedbackReport->status->label(),
+            'status_value' => $feedbackReport->status->value,
             'deleted' => $feedbackReport->isDeletedByClient(),
+            // 詳情視窗右側窄欄（狀態、時間、完成鈕）與清單上的狀態標籤，隨對話一起更新。
+            'side_html' => view('feedback.reports._detail-side', [
+                'project' => $feedbackProject,
+                'report' => $feedbackReport,
+                'isOwner' => $isOwner,
+                'context' => 'dialog',
+            ])->render(),
+            'status_badge_html' => Blade::render('<x-feedback.status-badge :status="$status" data-report-status-badge="{{ $id }}" />', ['status' => $feedbackReport->status, 'id' => $feedbackReport->public_id]),
             'page_url' => route('feedback.reports.show', [$feedbackProject, $feedbackReport]),
             'post_url' => route('feedback.messages.store', [$feedbackProject, $feedbackReport]),
             'html' => view('feedback.reports._conversation', [
                 'project' => $feedbackProject,
                 'report' => $feedbackReport,
                 'viewerIsOwner' => $isOwner,
-                'adjustmentWasNew' => $adjustmentWasNew,
             ])->render(),
         ]);
     }

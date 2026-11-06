@@ -1,7 +1,9 @@
-// 清單／看板的單張詳情視窗：開啟時直接載入這張單的留言串（伺服器 Blade 已跳脫的 HTML），可在視窗內留言。
-// 載入即算已讀（與對話面板同一個端點），並通知對話面板同步紅色未讀數字。
+// 清單／看板的單張詳情視窗（右側滑出）：開啟時直接載入這張單的相簿＋活動時間軸（伺服器 Blade 已跳脫的 HTML），可在視窗內留言。
+// 載入即算已讀（與對話面板同一個端點），並通知對話面板同步紅色未讀數字；右側窄欄與清單上的狀態標籤跟著對話端點更新。
 
-import { renderMessageDrafts } from './message-drafts';
+import { renderMessageDrafts, draftsSignature } from './message-drafts';
+import { clearReportUnread } from './report-read';
+import { replaceKeepingOpen } from './thread-details';
 
 const POLL_MS = 5000;
 
@@ -37,8 +39,29 @@ const setupThread = (section) => {
         errorBox.hidden = false;
     };
 
+    const sideBox = dialog.querySelector('[data-detail-side-box]');
+    let lastSide = '';
+
+    // 右側窄欄（狀態、時間、完成鈕）與清單上這張單的狀態標籤：留言可能讓狀態改變，跟著伺服器的最新結果更新。
+    const applySide = (data) => {
+        if (sideBox && typeof data.side_html === 'string' && draftsSignature(data.side_html) !== lastSide) {
+            lastSide = draftsSignature(data.side_html);
+            sideBox.innerHTML = data.side_html;
+        }
+        if (typeof data.status_badge_html === 'string') {
+            document.querySelectorAll(`[data-report-status-badge="${CSS.escape(reportId)}"]`).forEach((badge) => {
+                if (badge.dataset.statusValue === data.status_value || sideBox?.contains(badge)) {
+                    return;
+                }
+                const template = document.createElement('template');
+                template.innerHTML = data.status_badge_html.trim();
+                badge.replaceWith(template.content);
+            });
+        }
+    };
+
     const markRead = () => {
-        document.querySelectorAll(`[data-chat-open="${CSS.escape(reportId)}"] [data-unread-badge], [data-adjustment-updated="${CSS.escape(reportId)}"]`).forEach((badge) => badge.remove());
+        clearReportUnread(reportId);
         document.dispatchEvent(new CustomEvent('feedback:report-read', { detail: { id: reportId } }));
     };
 
@@ -50,13 +73,14 @@ const setupThread = (section) => {
                 template.innerHTML = data.html;
                 // 調整重點已在視窗上方顯示，這裡只放留言串。
                 template.content.querySelectorAll('[data-chat-adjustment]').forEach((node) => node.remove());
-                const nearEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
-                body.replaceChildren(template.content);
+                replaceKeepingOpen(body, () => body.replaceChildren(template.content));
                 lastHtml = data.html;
-                if (scrollToEnd || nearEnd) {
-                    body.scrollTop = body.scrollHeight;
+                if (scrollToEnd) {
+                    // 送出留言後，把輸入框帶回畫面內，看得到剛送出的那則。
+                    form.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
             }
+            applySide(data);
             if (draftsBox && typeof data.drafts_html === 'string') {
                 renderMessageDrafts(draftsBox, data.drafts_html, { onChanged: () => load({ scrollToEnd: true }) });
             }
@@ -125,7 +149,7 @@ const setupThread = (section) => {
     });
 
     const start = () => {
-        load({ scrollToEnd: true });
+        load();
         window.clearInterval(timer);
         timer = window.setInterval(() => {
             if (!document.hidden && dialog.open) {

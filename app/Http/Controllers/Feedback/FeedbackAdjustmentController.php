@@ -2,34 +2,23 @@
 
 namespace App\Http\Controllers\Feedback;
 
-use App\Actions\UpdateFeedbackReportAdjustmentAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\UpdateFeedbackAdjustmentRequest;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
-use App\Support\FeedbackAccess;
-use Illuminate\Http\RedirectResponse;
+use App\Support\FeedbackCompletionRequest;
+use Illuminate\Http\JsonResponse;
 
+/**
+ * 調整重點已停用：網頁不能再編輯，一律回 410。舊內容照舊在詳情裡唯讀顯示（過去的處理說明）。
+ * 巡檢 API、artisan、MCP 的寫入入口暫時保留（照常寫入並附警告），見 FeedbackCompletionRequest::ADJUSTMENT_DEPRECATED。
+ */
 class FeedbackAdjustmentController extends Controller
 {
-    public function update(
-        UpdateFeedbackAdjustmentRequest $request,
-        FeedbackProject $feedbackProject,
-        FeedbackReport $feedbackReport,
-        UpdateFeedbackReportAdjustmentAction $updateAdjustment,
-        FeedbackAccess $access,
-    ): RedirectResponse {
+    public function update(UpdateFeedbackAdjustmentRequest $request, FeedbackProject $feedbackProject, FeedbackReport $feedbackReport): JsonResponse
+    {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
 
-        $updateAdjustment->handle($feedbackReport, [
-            'note' => $request->validated('adjustment_note'),
-            'images' => $request->file('adjustment_images', []),
-            'remove_attachments' => $request->validated('remove_adjustment_attachments', []),
-        ], $access->actor($feedbackProject));
-        $feedbackReport->markReadByOwner();
-
-        return redirect()
-            ->to(route('feedback.reports.show', [$feedbackProject, $feedbackReport]).'#adjustment')
-            ->with('success', '已更新調整重點。');
+        return response()->json(['message' => FeedbackCompletionRequest::ADJUSTMENT_WEB_DISABLED, 'error' => 'adjustment_disabled'], 410);
     }
 }

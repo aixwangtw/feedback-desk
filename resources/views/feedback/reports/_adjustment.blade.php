@@ -1,4 +1,4 @@
-{{-- 回饋單「調整重點」唯讀區塊；老師與開發者共用。 --}}
+{{-- 「過去的處理說明」（舊的調整重點）唯讀區塊；老師與開發者共用，只有有內容時才會被放進頁面。調整重點已停用，之後改用留言。 --}}
 @php
     $compact = $compact ?? false;
     $showHeading = $showHeading ?? true;
@@ -6,13 +6,11 @@
 
 <div data-adjustment>
     @if ($showHeading)
-        <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">調整重點</h2>
-        <p class="mt-0.5 text-xs text-slate-400">留言重點整理，會隨時更新</p>
+        <h2 class="{{ $compact ? 'text-sm' : 'text-base' }} font-semibold text-slate-950">過去的處理說明</h2>
+        <p class="mt-0.5 text-xs text-slate-400">舊的調整重點，已停用、只能查看；之後的處理說明請看留言</p>
     @endif
     @if (filled($report->adjustment_note))
         <div class="mt-2" data-adjustment-note>{{ \App\Support\FeedbackRichText::render($report->adjustment_note, $compact) }}</div>
-    @elseif ($report->adjustmentAttachments->isEmpty())
-        <p class="mt-2 text-sm text-slate-400">尚未填寫。</p>
     @endif
 
     @if ($report->adjustmentAttachments->isNotEmpty())

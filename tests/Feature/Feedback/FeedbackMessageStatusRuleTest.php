@@ -71,7 +71,7 @@ class FeedbackMessageStatusRuleTest extends TestCase
 
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '已修正'])
             ->assertRedirect()
-            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, PostFeedbackMessageAction::adjustmentReminder()));
+            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, PostFeedbackMessageAction::statusChangeNotice()));
 
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
         $this->assertSame('new>needs_input', FeedbackReportEvent::where('kind', 'status')->sole()->detail);
@@ -97,7 +97,7 @@ class FeedbackMessageStatusRuleTest extends TestCase
         $this->actingAsTeam();
         $this->post(route('feedback.drafts.send', [$this->project, $report, FeedbackMessageDraft::sole()]))
             ->assertRedirect()
-            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, '記得更新調整重點'));
+            ->assertSessionHas('success', fn (string $text): bool => str_contains($text, '狀態已改為'));
 
         $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
@@ -106,7 +106,7 @@ class FeedbackMessageStatusRuleTest extends TestCase
     {
         $viaCommand = $this->report(FeedbackReportStatus::New);
         $this->artisan('feedback:message', ['project' => 'site', 'report' => $viaCommand->public_id, '--text' => '已修正'])
-            ->expectsOutputToContain('記得更新調整重點')
+            ->expectsOutputToContain('狀態已改為')
             ->assertSuccessful();
         $this->assertSame(FeedbackReportStatus::NeedsInput, $viaCommand->refresh()->status);
 

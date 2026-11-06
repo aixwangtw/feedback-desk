@@ -48,11 +48,15 @@ class FeedbackUnreadIndicatorsTest extends TestCase
 
         foreach ([[], ['view' => 'board'], ['sort' => 'created_at']] as $query) {
             $html = $this->get(route('feedback.portal', [$this->project, ...$query]))->assertOk()->getContent();
-            $this->assertStringContainsString('data-unread-flag="'.$waiting->public_id.'"', $html);
-            $this->assertStringContainsString('3 則未讀', $html);
+            // 未讀是標題右邊的小圓點數字，不是標題旁的標籤或按鈕。
+            $slot = Str::between($html, 'data-unread-slot="'.$waiting->public_id.'"', '</span></span>');
+            $this->assertStringContainsString('data-unread-dot', $slot);
+            $this->assertStringContainsString('>3</span', $slot.'</span');
+            $this->assertStringNotContainsString('data-unread-flag', $html);
+            $this->assertStringNotContainsString('3 則未讀</button>', $html);
             // 不新增「待回覆」標示：狀態只有待處理、待審核、已完成。
             $this->assertStringNotContainsString('待回覆', $html);
-            $this->assertStringNotContainsString('data-unread-flag="'.$answered->public_id.'"', $html);
+            $this->assertStringNotContainsString('data-unread-slot="'.$answered->public_id.'"><span', $html);
         }
     }
 
@@ -66,8 +70,9 @@ class FeedbackUnreadIndicatorsTest extends TestCase
         $this->actingAsClient();
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
-        $this->assertStringContainsString('data-unread-flag="'.$report->public_id.'"', $html);
-        $this->assertStringContainsString('2 則未讀', $html);
+        $slot = Str::between($html, 'data-unread-slot="'.$report->public_id.'"', '</span></span>');
+        $this->assertStringContainsString('data-unread-dot', $slot);
+        $this->assertStringContainsString('>2</span', $slot.'</span');
         $this->assertStringNotContainsString('待回覆', $html);
     }
 

@@ -19,7 +19,7 @@ use Illuminate\Http\Request;
 
 /**
  * 排程（雲端例行巡檢）專用 REST API。用 Authorization: Bearer fdp_... 驗證，以 token 綁定的團隊個人帳號身分操作。
- * 只能：列專案、列要處理的單、讀單、留言、寫待審留言（草稿）、寫調整重點、改成等客戶（needs_input）。不能改成已完成、不能刪除。
+ * 只能：列專案、列要處理的單、讀單、留言、寫待審留言（草稿）、請客戶確認完成、改成等客戶（needs_input）；寫調整重點已停用（照常寫入，回應附 warning）。不能改成已完成、不能刪除。
  * 讀單與寫入共用 MCP 工具的邏輯；寫入動作另記在 feedback_patrol_logs。
  */
 class FeedbackPatrolController extends Controller
@@ -203,6 +203,9 @@ class FeedbackPatrolController extends Controller
         return response()->json($result['body'], $result['status']);
     }
 
+    /**
+     * 已停用（改用留言）：照常寫入，MCP 工具的回應已附 warning。
+     */
     public function adjustment(Request $request, string $project, string $report, FeedbackMcpTools $tools): JsonResponse
     {
         return $this->write($request, 'adjustment', $project, $report, $tools, 'write_adjustment', fn (): array => [
@@ -212,7 +215,17 @@ class FeedbackPatrolController extends Controller
     }
 
     /**
-     * 只能改成等客戶（needs_input）；已完成由客戶在網頁上按「完成」。
+     * 請客戶確認完成：只發一則附「通過」按鈕的確認留言，單維持等客戶；不能直接結案。body 省略時用預設文字。
+     * 只在已修好且驗過畫面時使用（巡檢 prompt 規定）。
+     */
+    public function requestCompletion(Request $request, string $project, string $report, FeedbackMcpTools $tools): JsonResponse
+    {
+        return $this->write($request, 'request_completion', $project, $report, $tools, 'request_completion', fn (): array => array_filter(['body' => $request->input('body')], fn ($value) => $value !== null),
+            fn (): array => ['body_length' => mb_strlen((string) $request->input('body', ''))]);
+    }
+
+    /**
+     * 只能改成等客戶（needs_input）；已完成由客戶在網頁上按「完成」或「通過」。
      */
     public function needsInput(Request $request, string $project, string $report, FeedbackMcpTools $tools): JsonResponse
     {

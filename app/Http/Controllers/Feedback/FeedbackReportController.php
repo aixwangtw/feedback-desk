@@ -166,7 +166,7 @@ class FeedbackReportController extends Controller
 
         $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper']);
 
-        return view('feedback.reports._activity', [
+        return view('feedback.reports._thread', [
             'project' => $feedbackProject,
             'report' => $feedbackReport,
         ]);

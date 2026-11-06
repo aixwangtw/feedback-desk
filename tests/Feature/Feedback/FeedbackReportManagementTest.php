@@ -79,13 +79,19 @@ class FeedbackReportManagementTest extends TestCase
 
         $row = Str::between($html, 'data-report-row="'.$report->public_id.'"', '</tr>');
         $this->assertStringNotContainsString('第一行說明', $row);
+        // 編號與標題是藍色連結（沒有 JS 時照連結去單頁），點了開詳情視窗；整列也能點。
         $this->assertStringContainsString('data-dialog-open="detail-report-'.$report->public_id.'"', $row);
-        $this->assertStringNotContainsString('href="'.route('feedback.reports.show', [$project, $report]).'"', $row);
+        $this->assertStringContainsString('href="'.route('feedback.reports.show', [$project, $report]).'"', $row);
+        $this->assertStringContainsString('text-blue-700', $row);
+        $this->assertStringContainsString('hover:underline', $row);
+        $this->assertStringContainsString('cursor-pointer', $row);
+        $this->assertStringContainsString('data-row-link="detail-report-'.$report->public_id.'"', $html);
 
         $dialog = Str::between($html, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
         $this->assertStringContainsString("第一行說明\n第二行說明", $dialog);
         $this->assertStringContainsString('清單標題', $dialog);
-        $this->assertStringContainsString('查看留言紀錄', $dialog);
+        $this->assertStringContainsString('完整頁', $dialog);
+        $this->assertStringContainsString('detail-panel', $dialog);
         $this->assertStringContainsString(route('feedback.reports.show', [$project, $report]), $dialog);
     }
 
@@ -101,7 +107,10 @@ class FeedbackReportManagementTest extends TestCase
             ->assertViewIs('feedback.portal')
             ->assertSee('新增問題')
             ->assertSee('共用頁面的問題')
-            ->assertSeeInOrder(['標題', '狀態', '附件', '建立日期', '操作'])
+            ->assertSeeInOrder(['編號', '標題', '狀態', '建立者', '最後更新'])
+            ->assertDontSee('>附件</th>', false)
+            ->assertDontSee('>操作</th>', false)
+            ->assertDontSee('建立日期')
             ->assertSee(route('feedback.attachments.show', [$project, $report, $attachment]), false)
             ->assertSee('data-lightbox-trigger', false)
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)
@@ -184,8 +193,10 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertStringNotContainsString('data-kanban-status-form', $html);
         $this->assertStringNotContainsString('data-status-autosave', $html);
         $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//select')->length);
-        $this->assertStringContainsString('aria-label="編輯「', $html);
-        $this->assertStringContainsString('aria-label="刪除「', $html);
+        // 卡片整張可點開詳情（編輯、刪除在詳情裡），卡片上不放操作鈕。
+        $this->assertSame($xpath->query('//*[@data-kanban-card]')->length, $xpath->query('//*[@data-kanban-card and @data-row-link]')->length);
+        $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//button')->length);
+        $this->assertStringContainsString('hover:shadow-lg', $html);
         $this->assertStringContainsString('data-kanban-total-count="new">1</span>', $html);
         $this->assertStringNotContainsString('此狀態由自動化設定；卡片可拖出但不能拖入。', $html);
     }

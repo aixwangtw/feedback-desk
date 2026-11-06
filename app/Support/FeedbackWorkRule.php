@@ -8,8 +8,8 @@ namespace App\Support;
  */
 final class FeedbackWorkRule
 {
-    public const TEXT = '工作規則：使用者只給回饋看板網址並說「修」，就代表授權直接處理：逐張修好、自己檢查確認 OK 後，把狀態改成等客戶（needs_input）。不可以直接改成已完成（completed），已完成要等提出的人或負責人確認。驗證沒過或需要人決定的單，不要改狀態，寫交接紀錄或留言說明原因。';
+    public const TEXT = '工作規則：使用者只給回饋看板網址並說「修」，就代表授權直接處理：逐張修好、自己檢查確認 OK 後，把狀態改成等客戶（needs_input）。不可以直接改成已完成（completed），已完成要等提出的人或負責人確認；確實修好且驗過畫面時，用「請客戶確認完成」發一則確認留言（單仍維持等客戶）。驗證沒過或需要人決定的單，不要改狀態，寫交接紀錄或留言說明原因。';
 
     /** 開發團隊（含 AI、CLI、MCP、API）改成已完成時的拒絕說明。 */
-    public const COMPLETED_BY_CLIENT_ONLY = '已完成只由客戶按完成：請改成 needs_input（等客戶），由客戶在網頁上按「完成」結單。';
+    public const COMPLETED_BY_CLIENT_ONLY = '已完成只由客戶按完成：請改成 needs_input（等客戶），由客戶在網頁上按「完成」或留言上的「通過」結單；要請客戶確認請用 request_completion（feedback:request-completion）。';
 }

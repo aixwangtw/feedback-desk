@@ -35,7 +35,7 @@ class FeedbackAdjustmentTest extends TestCase
         ]);
     }
 
-    public function test_teacher_sees_the_adjustment_note_and_images_below_the_report(): void
+    public function test_teacher_sees_old_adjustment_as_read_only_past_notes_below_the_report(): void
     {
         $this->report->update(['adjustment_note' => "已修正排版\n第二行"]);
         $image = $this->adjustmentImage();
@@ -44,7 +44,7 @@ class FeedbackAdjustmentTest extends TestCase
 
         $html = $this->get(route('feedback.reports.show', [$this->project, $this->report]))
             ->assertOk()
-            ->assertSee('調整重點')
+            ->assertSee('過去的處理說明')
             ->assertSee("已修正排版\n第二行")
             ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
             ->assertDontSee('編輯調整重點')
@@ -54,12 +54,12 @@ class FeedbackAdjustmentTest extends TestCase
         $this->assertLessThan(
             strpos($html, 'data-adjustment'),
             strpos($html, e($this->report->description)),
-            '調整重點應在回饋單內容下方。',
+            '過去的處理說明應在回饋單內容下方。',
         );
 
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
-            ->assertSee('data-adjustment-note', false)
+            ->assertSee('data-past-notes', false)
             ->assertSee("已修正排版\n第二行");
     }
 
@@ -76,16 +76,16 @@ class FeedbackAdjustmentTest extends TestCase
             ->assertDontSee('data-adjustment', false);
     }
 
-    public function test_owner_sees_the_editor_even_when_empty(): void
+    public function test_owner_has_no_adjustment_editor_and_no_empty_section(): void
     {
         $this->actingAsEngineer();
 
         $this->get(route('feedback.reports.show', [$this->project, $this->report]))
             ->assertOk()
-            ->assertSee('調整重點')
-            ->assertSee('尚未填寫')
-            ->assertSee('編輯調整重點')
-            ->assertSee(route('feedback.reports.adjustment.update', [$this->project, $this->report]));
+            ->assertDontSee('data-adjustment', false)
+            ->assertDontSee('編輯調整重點')
+            ->assertDontSee('尚未填寫')
+            ->assertDontSee(route('feedback.reports.adjustment.update', [$this->project, $this->report]));
     }
 
     public function test_teacher_cannot_edit_the_adjustment(): void
@@ -140,57 +140,27 @@ class FeedbackAdjustmentTest extends TestCase
         $this->assertModelExists($adjustment);
     }
 
-    public function test_owner_can_write_add_and_remove_adjustment_images(): void
+    public function test_owner_cannot_write_the_adjustment_from_the_web_any_more(): void
     {
         $old = $this->adjustmentImage();
         Storage::disk('local')->put($old->path, 'old');
+        $this->report->update(['adjustment_note' => '原說明']);
         $this->actingAsEngineer();
 
-        $this->put(route('feedback.reports.adjustment.update', [$this->project, $this->report]), [
+        $route = route('feedback.reports.adjustment.update', [$this->project, $this->report]);
+        $this->put($route, [
             'adjustment_note' => '已調整按鈕顏色',
-            'adjustment_images' => [$this->fakePng('after-1.png'), $this->fakePng('after-2.png')],
+            'adjustment_images' => [$this->fakePng('after-1.png')],
             'remove_adjustment_attachments' => [$old->id],
-        ])->assertRedirect(route('feedback.reports.show', [$this->project, $this->report]).'#adjustment');
+        ])->assertStatus(410);
+        $this->putJson($route, ['adjustment_note' => '再試一次'])
+            ->assertStatus(410)
+            ->assertJsonPath('error', 'adjustment_disabled');
 
         $this->report->refresh();
-        $this->assertSame('已調整按鈕顏色', $this->report->adjustment_note);
-        $this->assertSame(FeedbackReportStatus::New, $this->report->status);
-        $this->assertModelMissing($old);
-        Storage::disk('local')->assertMissing($old->path);
-
-        $images = $this->report->adjustmentAttachments()->get();
-        $this->assertSame(['after-1.png', 'after-2.png'], $images->pluck('original_name')->sort()->values()->all());
-        $images->each(fn (FeedbackAttachment $image) => Storage::disk('local')->assertExists($image->path));
-
-        $this->put(route('feedback.reports.adjustment.update', [$this->project, $this->report]), [
-            'adjustment_note' => "已調整按鈕顏色\n\n第二次：補上手機版",
-        ])->assertRedirect();
-        $this->assertSame("已調整按鈕顏色\n\n第二次：補上手機版", $this->report->refresh()->adjustment_note);
-        $this->assertSame(2, $this->report->adjustmentAttachments()->count());
-    }
-
-    public function test_owner_cannot_remove_ordinary_screenshots_through_the_adjustment_form(): void
-    {
-        $screenshot = FeedbackAttachment::factory()->for($this->report)->create();
-        $this->actingAsEngineer();
-
-        $this->put(route('feedback.reports.adjustment.update', [$this->project, $this->report]), [
-            'adjustment_note' => '說明',
-            'remove_adjustment_attachments' => [$screenshot->id],
-        ])->assertSessionHasErrorsIn('adjustment', 'remove_adjustment_attachments.0');
-
-        $this->assertModelExists($screenshot);
-    }
-
-    public function test_owner_adjustment_rejects_non_images(): void
-    {
-        $this->actingAsEngineer();
-
-        $this->put(route('feedback.reports.adjustment.update', [$this->project, $this->report]), [
-            'adjustment_images' => [UploadedFile::fake()->create('notes.pdf', 10, 'application/pdf')],
-        ])->assertSessionHasErrorsIn('adjustment', 'adjustment_images.0');
-
-        $this->assertSame(0, $this->report->adjustmentAttachments()->count());
+        $this->assertSame('原說明', $this->report->adjustment_note);
+        $this->assertModelExists($old);
+        $this->assertSame(1, $this->report->adjustmentAttachments()->count());
     }
 
     public function test_adjustment_images_are_private_and_do_not_mix_with_report_screenshots(): void
@@ -244,6 +214,17 @@ class FeedbackAdjustmentTest extends TestCase
             '--note' => '',
         ])->assertSuccessful();
         $this->assertNull($this->report->refresh()->adjustment_note);
+    }
+
+    public function test_command_still_writes_but_warns_that_adjustment_is_deprecated(): void
+    {
+        $this->artisan('feedback:adjust', [
+            'project' => $this->project->slug,
+            'report' => $this->report->public_id,
+            '--note' => '照常寫入',
+        ])->expectsOutputToContain('調整重點已停用')->assertSuccessful();
+
+        $this->assertSame('照常寫入', $this->report->refresh()->adjustment_note);
     }
 
     public function test_command_appends_after_a_blank_line(): void
@@ -351,6 +332,7 @@ class FeedbackAdjustmentTest extends TestCase
         $this->assertStringContainsString('--append', $command->getHelp());
         $this->assertStringContainsString('--image=/tmp/a.png --image=/tmp/b.png', $command->getHelp());
         $this->assertStringContainsString('不會改動回饋單狀態', $command->getHelp());
+        $this->assertStringContainsString('已停用', $command->getHelp());
         $this->assertTrue($command->getDefinition()->getOption('image')->isArray());
     }
 
@@ -366,41 +348,39 @@ class FeedbackAdjustmentTest extends TestCase
         Storage::disk('local')->assertMissing($adjustment->path);
     }
 
-    public function test_list_view_shows_the_adjustment_column_with_note_and_image(): void
+    public function test_list_view_has_no_adjustment_column_any_more(): void
     {
-        $this->report->update(['adjustment_note' => '清單可見的調整重點']);
-        $image = $this->adjustmentImage();
-        FeedbackReport::factory()->for($this->project)->create(['title' => '沒有調整的單']);
+        $this->report->update(['adjustment_note' => '清單不該出現的調整重點']);
+        $this->adjustmentImage();
 
         $this->actingAsTeacher();
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
-            ->assertSee('<th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>', false)
-            ->assertSee('清單可見的調整重點')
-            ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
+            ->assertDontSee('<th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>', false)
             ->getContent();
 
         $table = Str::between($html, 'data-report-table', '</table>');
-        $this->assertStringContainsString('清單可見的調整重點', $table);
-        $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $image]), $table);
-        $this->assertStringNotContainsString('data-adjustment-image', Str::before(Str::after($table, '沒有調整的單'), '</tr>'));
+        $this->assertStringNotContainsString('清單不該出現的調整重點', $table);
+        $this->assertStringNotContainsString('data-adjustment', $table);
     }
 
-    public function test_board_view_shows_the_adjustment_note_and_image_count(): void
+    public function test_board_view_has_no_adjustment_block_even_when_the_report_has_one(): void
     {
-        $this->report->update(['adjustment_note' => '看板可見的調整重點', 'status' => FeedbackReportStatus::New]);
-        $image = $this->adjustmentImage();
+        $this->report->update(['adjustment_note' => '看板不該出現的調整重點', 'status' => FeedbackReportStatus::New]);
         $this->adjustmentImage();
 
         $this->actingAsTeacher();
 
-        $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&view=board')
+        $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']).'&view=board')
             ->assertOk()
-            ->assertSee('data-adjustment-card', false)
-            ->assertSee('看板可見的調整重點')
-            ->assertSee(route('feedback.attachments.show', [$this->project, $this->report, $image]))
-            ->assertSee('2 張調整圖');
+            ->assertDontSee('data-adjustment-card', false)
+            ->assertDontSee('張調整圖')
+            ->getContent();
+
+        $board = Str::between($html, 'data-kanban-board', '</section>');
+        $this->assertStringNotContainsString('看板不該出現的調整重點', Str::before($html, '<dialog'));
+        $this->assertNotEmpty($board);
     }
 
     public function test_board_view_hides_the_adjustment_block_when_empty(): void
@@ -413,7 +393,7 @@ class FeedbackAdjustmentTest extends TestCase
             ->assertDontSee('data-adjustment', false);
     }
 
-    public function test_adjustment_note_opens_the_detail_preview_with_full_text_and_all_images(): void
+    public function test_detail_shows_full_past_notes_with_all_images_read_only(): void
     {
         $this->report->update(['adjustment_note' => "完整第一行\n完整第二行", 'status' => FeedbackReportStatus::New]);
         $first = $this->adjustmentImage();
@@ -425,14 +405,16 @@ class FeedbackAdjustmentTest extends TestCase
         foreach ([route('feedback.portal', [$this->project, 'tab' => 'all']), route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board'])] as $url) {
             $html = $this->get($url)->assertOk()->getContent();
 
-            $this->assertStringContainsString('data-dialog-open="'.$dialogId.'" data-adjustment-preview', $html);
+            $this->assertStringNotContainsString('data-adjustment-preview', $html);
 
             $dialog = Str::between($html, 'id="'.$dialogId.'"', '</dialog>');
+            $this->assertStringContainsString('過去的處理說明', $dialog);
             $this->assertStringContainsString("完整第一行\n完整第二行", $dialog);
             $this->assertStringContainsString('whitespace-pre-wrap', $dialog);
             $this->assertSame(2, substr_count($dialog, 'data-adjustment-image'));
             $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $first]), $dialog);
             $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $second]), $dialog);
+            $this->assertStringNotContainsString('<textarea name="adjustment_note"', $dialog);
         }
     }
 

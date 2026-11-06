@@ -56,13 +56,13 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">{{ config('feedback.portal_title') }}</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」；{{ config('feedback.labels.client') }}確認沒問題後按操作欄的「完成」。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」；{{ config('feedback.labels.client') }}確認沒問題後，在詳情裡按「完成」或留言上的「通過」；開發團隊按「完成」只會發確認留言請{{ config('feedback.labels.client') }}確認，不會直接結案。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label() }}</span><span>{{ config('feedback.labels.client') }}開了單或又留言，等{{ config('feedback.labels.owner') }}處理、回覆。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並寫了調整重點，請{{ config('feedback.labels.client') }}確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並留言說明，請{{ config('feedback.labels.client') }}確認。</span></li>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label() }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
             </ul>
-            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{{ $viewMode === 'board' ? '卡片標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整圖（「N 張調整圖」）。' : '標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整附圖。' }}</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與「完成」都在詳情裡。標題右邊的紅色數字是未讀留言數。</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
@@ -185,33 +185,25 @@
 
         @if ($viewMode === 'list')
         <div class="sm:overflow-x-auto" data-list-view>
-            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[64rem]" data-report-table>
+            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[40rem]" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
-                        <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
-                        <th class="whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap min-w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
-                        @if ($reportCategories !== [])
-                            <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
-                        @endif
-                        <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
-                        <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
-                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
-                        <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
+                        <th class="whitespace-nowrap min-w-16 w-20 px-4 text-center py-3.5">編號</th>
+                        <th class="whitespace-nowrap px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-32 px-4 py-3.5 text-center">建立者</th>
+                        <th class="whitespace-nowrap w-32 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
                     </tr>
                 </thead>
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
-                        <tr class="block space-y-2 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}">
-                            <td class="block text-xs font-bold text-slate-500 sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-2 sm:align-middle"><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></td>
-                            <td class="block sm:table-cell sm:px-4 sm:py-2 sm:align-middle">
-                                <div class="flex items-start gap-2">
-                                    <button type="button" class="min-w-0 flex-1 text-left font-semibold text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
-                                    <x-feedback.message-badges :$report :is-owner="$isOwner" class="-my-1" />
+                        <tr class="block cursor-pointer space-y-1 p-3 transition hover:bg-slate-100/70 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}" data-row-link="detail-report-{{ $report->public_id }}">
+                            <td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-3 sm:align-middle"><x-feedback.report-link :$project :$report><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></x-feedback.report-link></td>
+                            <td class="block sm:table-cell sm:px-4 sm:py-3 sm:align-middle">
+                                <div class="flex items-center gap-2">
+                                    <x-feedback.report-link :$project :$report class="min-w-0 break-words font-semibold" data-report-title>{{ $report->title }}</x-feedback.report-link>
+                                    <x-feedback.unread-dot :$report :is-owner="$isOwner" />
                                 </div>
-                                <x-feedback.report-flags :$report :is-owner="$isOwner" :waiting-on="$waitingOn[$report->id] ?? null" class="mt-1" />
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
                                         <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
@@ -219,68 +211,14 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
-                                <x-feedback.status-badge :status="$report->status" />
+                            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">
+                                <x-feedback.status-badge :status="$report->status" data-report-status-badge="{{ $report->public_id }}" />
                             </td>
-                            @if ($reportCategories !== [])
-                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
-                            @endif
-                            <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">
-                                @if ($report->feedbackAttachments->isNotEmpty())
-                                    <div class="flex flex-wrap gap-1 sm:justify-center">
-                                        @foreach ($report->feedbackAttachments as $attachment)
-                                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                                            </a>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <span class="text-xs text-slate-400">—</span>
-                                @endif
-                            </td>
-                            <td class="block sm:max-w-64 sm:table-cell sm:px-3 sm:py-2 sm:align-middle">
-                                <span class="text-xs font-semibold text-slate-500 sm:hidden">調整重點：</span>
-                                @if ($report->hasAdjustment())
-                                    @if (filled($report->adjustment_note))
-                                        <button type="button" class="block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整重點" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-3 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
-                                    @endif
-                                    @if ($report->adjustmentAttachments->isNotEmpty())
-                                        <div class="mt-1 flex flex-wrap gap-1">
-                                            @foreach ($report->adjustmentAttachments as $attachment)
-                                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-teal-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" data-adjustment-image title="放大預覽">
-                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                                                </a>
-                                            @endforeach
-                                        </div>
-                                    @endif
-                                @else
-                                    <span class="text-xs text-slate-400">—</span>
-                                @endif
-                            </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
-                            <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
-                                <div class="flex flex-wrap gap-2 sm:justify-center">
-                                    <x-feedback.complete-button :$project :$report :is-owner="$isOwner" />
-                                    <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
-                                    @if ($isOwner && $report->isDeletedByClient())
-                                        <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
-                                            @csrf
-                                            @method('PATCH')
-                                            <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
-                                        </form>
-                                    @endif
-                                    @if ($isOwner)
-                                        <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>刪除</button>
-                                    @else
-                                        <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open="client-delete-report-{{ $report->public_id }}" data-client-delete-report>刪除</button>
-                                    @endif
-                                </div>
-                            </td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
                         </tr>
                     @empty
-                        <tr class="block sm:table-row"><td colspan="{{ $reportCategories !== [] ? 10 : 9 }}" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">{{ $unreadOnly ? '沒有未讀留言的單。' : '目前沒有問題，請按「新增問題」登記第一筆。' }}</td></tr>
+                        <tr class="block sm:table-row"><td colspan="5" class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">{{ $unreadOnly ? '沒有未讀留言的單。' : '目前沒有問題，請按「新增問題」登記第一筆。' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -305,73 +243,15 @@
                             </header>
                             <div class="grid min-h-36 content-start gap-3 p-3" data-kanban-list data-status="{{ $boardStatus->value }}">
                                 @foreach ($columnReports as $report)
-                                    <article class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}">
-                                        <div class="flex items-start gap-2">
-                                            <div class="min-w-0 flex-1">
-                                                <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></p>
-                                                <x-feedback.report-flags :$report :is-owner="$isOwner" :waiting-on="$waitingOn[$report->id] ?? null" class="mt-1" />
-                                                <x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="mt-1" data-suffix="-card" data-card-action />
-                                                <button type="button" class="mt-1 block w-full break-words text-left text-sm font-semibold leading-5 text-slate-950 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="detail-report-{{ $report->public_id }}" data-report-detail-open>{{ $report->title }}</button>
-                                            </div>
-                                            <div class="flex shrink-0 items-center gap-1" data-card-actions>
-                                                <x-feedback.complete-button :$project :$report :is-owner="$isOwner" compact data-card-action />
-                                                <x-feedback.message-badges :$report :is-owner="$isOwner" />
-                                                <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
-                                                    <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                                </button>
-                                                @if ($isOwner && $report->isDeletedByClient())
-                                                    <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
-                                                        @csrf
-                                                        @method('PATCH')
-                                                        <button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「{{ $report->title }}」" title="還原" data-card-action data-restore-report>
-                                                            <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-                                                        </button>
-                                                    </form>
-                                                @endif
-                                                @if ($isOwner)
-                                                    <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「{{ $report->title }}」" title="刪除" data-card-action data-dialog-open="delete-report-{{ $report->public_id }}" data-delete-report>
-                                                        <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
-                                                    </button>
-                                                @else
-                                                    <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「{{ $report->title }}」" title="刪除" data-card-action data-dialog-open="client-delete-report-{{ $report->public_id }}" data-client-delete-report>
-                                                        <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>
-                                                    </button>
-                                                @endif
-                                            </div>
+                                    <article class="cursor-pointer rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition duration-150 hover:-translate-y-0.5 hover:shadow-lg @if ($report->isDeletedByClient()) opacity-70 @endif" data-kanban-card data-report-id="{{ $report->public_id }}" data-row-link="detail-report-{{ $report->public_id }}" data-status="{{ $report->status->value }}" data-board-order="{{ $reports->getCollection()->search(fn ($item) => $item->is($report)) }}">
+                                        <p class="text-[11px] font-bold">編號 <x-feedback.report-link :$project :$report><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></x-feedback.report-link></p>
+                                        <div class="mt-1 flex items-start gap-2">
+                                            <x-feedback.report-link :$project :$report class="min-w-0 flex-1 break-words text-sm font-semibold leading-5" data-report-title>{{ $report->title }}</x-feedback.report-link>
+                                            <x-feedback.unread-dot :$report :is-owner="$isOwner" class="mt-0.5" />
                                         </div>
-
                                         @if ($isOwner && $report->isDeletedByClient())
                                             <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{{ config('feedback.labels.client') }}已刪除</span>
                                         @endif
-
-                                        @if ($report->feedbackAttachments->isNotEmpty())
-                                            <div class="mt-3 flex items-center gap-2">
-                                                @php $attachment = $report->feedbackAttachments->first(); @endphp
-                                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                                                </a>
-                                                <span class="text-xs font-medium text-slate-500">{{ $report->feedbackAttachments->count() }} 張附件</span>
-                                            </div>
-                                        @endif
-
-                                        @if ($report->hasAdjustment())
-                                            <div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card>
-                                                <p class="text-[11px] font-bold text-teal-800">調整重點</p>
-                                                @if (filled($report->adjustment_note))
-                                                    <button type="button" class="mt-1 block w-full rounded text-left hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" title="{{ $report->adjustment_note }}" aria-label="預覽「{{ $report->title }}」的調整重點" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview><span class="line-clamp-2 whitespace-pre-line break-words text-xs leading-5 text-slate-700" data-adjustment-note>{{ $report->adjustment_note }}</span></button>
-                                                @endif
-                                                @if ($report->adjustmentAttachments->isNotEmpty())
-                                                    @php $adjustmentImage = $report->adjustmentAttachments->first(); @endphp
-                                                    <div class="mt-2 flex items-center gap-2">
-                                                        <a href="{{ route('feedback.attachments.show', [$project, $report, $adjustmentImage]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $adjustmentImage->original_name }}" data-adjustment-image title="放大預覽">
-                                                            <img src="{{ route('feedback.attachments.show', [$project, $report, $adjustmentImage]) }}" alt="{{ $adjustmentImage->original_name }}" class="size-full object-cover" loading="lazy">
-                                                        </a>
-                                                        <button type="button" class="rounded text-xs font-medium text-slate-500 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="預覽全部調整圖" data-dialog-open="detail-report-{{ $report->public_id }}" data-adjustment-preview>{{ $report->adjustmentAttachments->count() }} 張調整圖</button>
-                                                    </div>
-                                                @endif
-                                            </div>
-                                        @endif
-
                                         <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                                         <p class="mt-1 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
                                     </article>
@@ -394,60 +274,10 @@
             $isEditing = $editingReport === $report->public_id;
             $editErrors = $isEditing ? $errors->getBag('editReport') : null;
         @endphp
-        <dialog id="detail-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="detail-report-title-{{ $report->public_id }}" data-report-detail>
-            <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <p class="text-xs font-bold text-slate-500">編號 {{ $sequenceNumbers[$report->id] }} · {{ $report->status->label() }}</p>
-                        <h2 id="detail-report-title-{{ $report->public_id }}" class="mt-1 break-words text-lg font-bold text-slate-950">{{ $report->title }}</h2>
-                    </div>
-                    <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
-                </div>
-                <x-feedback.category-select :$project :$report :categories="$reportCategories" />
-                <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
-                @if ($report->feedbackAttachments->isNotEmpty())
-                    <div class="flex flex-wrap gap-2">
-                        @foreach ($report->feedbackAttachments as $attachment)
-                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
-                @if ($report->hasAdjustment())
-                    <div class="rounded-xl border border-teal-100 bg-teal-50/40 p-4">
-                        @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report, 'compact' => true])
-                    </div>
-                @endif
-                <p class="text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
-                <p class="text-xs text-slate-500">建立：<x-feedback.time :at="$report->created_at" />　最後更新：<x-feedback.time :at="$report->latest_activity_at" /></p>
-                <section class="grid gap-3 border-t border-slate-100 pt-4" aria-label="留言" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $report->public_id }}">
-                    <h3 class="text-sm font-bold text-slate-900">留言</h3>
-                    <div class="max-h-[50dvh] overflow-y-auto rounded-xl bg-slate-50/70 px-3 py-3" aria-live="polite" data-dialog-thread-body><p class="py-4 text-center text-sm text-slate-500">留言載入中…</p></div>
-                    @if ($isOwner)
-                        <div class="empty:hidden" data-dialog-thread-drafts></div>
-                    @endif
-                    <form action="{{ route('feedback.messages.store', [$project, $report]) }}" method="POST" enctype="multipart/form-data" class="grid gap-2" data-dialog-thread-form novalidate>
-                        @csrf
-                        <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
-                        <div id="dialog-preview-{{ $report->public_id }}" class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
-                        <label for="dialog-body-{{ $report->public_id }}" class="sr-only">留言內容</label>
-                        <textarea id="dialog-body-{{ $report->public_id }}" name="body" rows="2" maxlength="10000" placeholder="輸入留言…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-dialog-thread-input></textarea>
-                        <div class="flex items-center justify-between gap-2">
-                            <label for="dialog-screenshots-{{ $report->public_id }}" class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                {{ \App\Support\FeedbackAttachmentRules::MESSAGE_BUTTON }}
-                                <input id="dialog-screenshots-{{ $report->public_id }}" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-attachment-rules="{{ \App\Support\FeedbackAttachmentRules::browserRulesJson() }}" data-preview-target="dialog-preview-{{ $report->public_id }}">
-                            </label>
-                            <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500">{{ \App\Support\FeedbackAttachmentRules::messageHint() }}</span>
-                            <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-dialog-thread-send>送出留言</button>
-                        </div>
-                    </form>
-                </section>
-                <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                    <a href="{{ route('feedback.reports.show', [$project, $report]) }}" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">查看留言紀錄（完整頁）</a>
-                </div>
-            </div>
-        </dialog>
+        @include('feedback.reports._detail-dialog', ['project' => $project, 'report' => $report, 'isOwner' => $isOwner, 'sequenceNumbers' => $sequenceNumbers, 'reportCategories' => $reportCategories])
+        @if ($isOwner)
+            @include('feedback.reports._completion-dialog', ['project' => $project, 'report' => $report])
+        @endif
 
         <dialog id="edit-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="edit-report-title-{{ $report->public_id }}" @if ($editErrors?->any()) data-open-on-load @endif>
             <form method="POST" action="{{ route('feedback.reports.update', [$project, $report]) }}" enctype="multipart/form-data" class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-5 overflow-y-auto p-5 sm:p-7">

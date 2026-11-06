@@ -1,4 +1,5 @@
 import Sortable from 'sortablejs';
+import { replaceKeepingOpen } from './thread-details';
 
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;
@@ -134,6 +135,8 @@ if (imageLightbox) {
     const scaleOutput = imageLightbox.querySelector('[data-lightbox-scale]');
     const openOriginal = imageLightbox.querySelector('[data-lightbox-original]');
     const stage = imageLightbox.querySelector('[data-lightbox-stage]');
+    const video = imageLightbox.querySelector('[data-lightbox-video]');
+    const zoomGroup = imageLightbox.querySelector('[data-lightbox-zoom-group]');
     let activeTrigger = null;
     let scale = 1;
 
@@ -152,8 +155,9 @@ if (imageLightbox) {
 
     document.addEventListener('click', (event) => {
         const trigger = event.target.closest('[data-lightbox-trigger]');
-        // 影片縮圖不進圖片燈箱：照連結在新分頁開影片。
-        if (trigger?.querySelector('[data-attachment-video]')) {
+        const isVideo = Boolean(trigger?.querySelector('[data-attachment-video]'));
+        // 影片縮圖不進圖片燈箱：照連結在新分頁開影片；只有相簿（data-lightbox-play）在燈箱裡直接播放。
+        if (isVideo && trigger && !('lightboxPlay' in trigger.dataset)) {
             return;
         }
         if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
@@ -163,10 +167,19 @@ if (imageLightbox) {
         event.preventDefault();
         activeTrigger = trigger;
         scale = 1;
-        image.src = trigger.href;
+        image.hidden = isVideo;
+        video.hidden = !isVideo;
+        zoomGroup.hidden = isVideo;
+        if (isVideo) {
+            video.src = trigger.href;
+            video.play?.().catch(() => {});
+        } else {
+            image.src = trigger.href;
+        }
         image.alt = trigger.dataset.lightboxAlt || '截圖預覽';
-        title.textContent = image.alt;
+        title.textContent = trigger.dataset.lightboxAlt || (isVideo ? '影片' : '截圖預覽');
         openOriginal.href = trigger.href;
+        openOriginal.textContent = isVideo ? '開啟原檔' : '開啟原圖';
         applyScale();
         imageLightbox.showModal();
         document.body.classList.add('overflow-hidden');
@@ -188,6 +201,9 @@ if (imageLightbox) {
     imageLightbox.addEventListener('close', () => {
         document.body.classList.remove('overflow-hidden');
         image.removeAttribute('src');
+        video.pause?.();
+        video.removeAttribute('src');
+        video.load?.();
         activeTrigger?.focus();
         activeTrigger = null;
     });
@@ -219,7 +235,10 @@ if (activity) {
             });
 
             if (response.ok) {
-                activity.innerHTML = await response.text();
+                const html = await response.text();
+                replaceKeepingOpen(activity, () => {
+                    activity.innerHTML = html;
+                });
             }
         } catch {
             // A temporary polling failure should not interrupt the conversation form.
@@ -232,7 +251,15 @@ if (activity) {
 document.addEventListener('click', (event) => {
     const opener = event.target.closest('[data-dialog-open]');
     if (opener) {
-        document.getElementById(opener.dataset.dialogOpen)?.showModal();
+        // 連結（清單的編號、標題）按住修飾鍵或用滑鼠中鍵時照瀏覽器預設開新分頁；一般點擊開視窗。
+        if (opener.tagName === 'A' && (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) {
+            return;
+        }
+        event.preventDefault();
+        const dialog = document.getElementById(opener.dataset.dialogOpen);
+        if (dialog && !dialog.open) {
+            dialog.showModal();
+        }
 
         return;
     }

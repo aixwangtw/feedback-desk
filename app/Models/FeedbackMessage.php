@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['feedback_report_id', 'author_type', 'author_name', 'author_client_account_id', 'author_developer_id', 'author_agent', 'body'])]
+#[Fillable(['feedback_report_id', 'author_type', 'author_name', 'author_client_account_id', 'author_developer_id', 'author_agent', 'body', 'is_completion_request'])]
 class FeedbackMessage extends Model
 {
     /** @use HasFactory<FeedbackMessageFactory> */
@@ -65,6 +65,7 @@ class FeedbackMessage extends Model
     {
         return [
             'author_type' => FeedbackAuthorType::class,
+            'is_completion_request' => 'boolean',
         ];
     }
 }

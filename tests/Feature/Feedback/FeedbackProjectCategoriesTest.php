@@ -7,6 +7,7 @@ use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -161,15 +162,17 @@ class FeedbackProjectCategoriesTest extends TestCase
         $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版']);
         $this->loginDeveloper();
 
+        // 清單與看板精簡後不放分類下拉；分類在詳情視窗（右側滑出）裡改。
         $list = $this->get(route('feedback.portal', $this->project))->getContent();
-        $row = substr($list, strpos($list, 'data-report-category-cell'));
-        $row = substr($row, 0, strpos($row, '</td>'));
-        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-row"', $row);
-        $this->assertStringContainsString('<option value="經典排版" selected>', $row);
-        $this->assertStringContainsString('未分類', $row);
+        $this->assertStringNotContainsString('data-report-category-cell', $list);
+        $this->assertStringNotContainsString('id="quick-category-'.$report->public_id.'-row"', $list);
+        $dialog = Str::between($list, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
+        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'"', $dialog);
+        $this->assertStringContainsString('<option value="經典排版" selected>', $dialog);
+        $this->assertStringContainsString('未分類', $dialog);
 
         $board = $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->getContent();
-        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-card"', $board);
+        $this->assertStringNotContainsString('id="quick-category-'.$report->public_id.'-card"', $board);
         $card = substr($board, strpos($board, 'data-report-id="'.$report->public_id.'"'));
         $card = substr($card, 0, strpos($card, '</article>'));
         $this->assertLessThan(strpos($card, 'data-report-creator'), strpos($card, 'data-report-number'));

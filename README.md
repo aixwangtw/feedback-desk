@@ -44,9 +44,10 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 - 多專案：每個專案內容、截圖彼此隔離，各自有獨立入口。
 - 問題清單：新增問題（標題、說明、頁面網址、多張截圖）、搜尋、依狀態與建立者篩選、欄位排序、列表／看板兩種檢視。
 - 三種狀態，名稱直接寫出在等誰：等工程師（new）、等客戶（needs_input，客戶稱呼照 `FEEDBACK_LABEL_CLIENT`，例如等老師、等業主）、已完成（completed，客戶按「完成」）。狀態會自己切換：客戶留言變等工程師，團隊留言或送出待審留言變等客戶；網頁上沒有改狀態的下拉選單。名稱可用 `FEEDBACK_STATUS_LABEL_NEW`／`FEEDBACK_STATUS_LABEL_NEEDS_INPUT`／`FEEDBACK_STATUS_LABEL_COMPLETED` 改。
-- 留言串與附圖；開發團隊可寫「調整重點」並附調整圖片。
+- 留言串與附圖；單的詳情是 Jira 版面（電腦版右側滑出、手機整頁）：左邊說明、附件、相簿（集中看這張單所有附件）、活動時間軸（留言＋狀態變更）、輸入框；右邊窄欄是狀態、建立者、時間、「完成」。「調整重點」已停用，改成直接寫留言；舊內容在詳情裡唯讀顯示為「過去的處理說明」。
+- 「完成」：客戶按了直接結案；開發團隊（網頁、artisan、MCP、巡檢 API）按「完成」只會發一則可改字的確認留言（`feedback:request-completion`、MCP `request_completion`、巡檢 `POST .../request-completion`），單維持等客戶，留言上附「通過」按鈕，客戶按「通過」才變已完成。
 - 客戶刪除的問題只是隱藏，開發團隊仍看得到並可還原。
-- 未讀提示與右下角留言對話面板：面板關著時每 60 秒更新一次未讀數；開著時清單每 10 秒、對話每 5 秒更新。紅色未讀數字只算對方的新留言；調整重點有更新時，客戶端在單旁顯示「重點已更新」小標籤，開啟該單後消失。
+- 未讀提示與右下角留言對話面板：面板關著時每 60 秒更新一次未讀數；開著時清單每 10 秒、對話每 5 秒更新。清單標題右邊的紅色小圓點數字是未讀留言數，只算對方的新留言，開啟該單後消失。
 - 每人一個帳號：同一個專案可以開多個客戶帳號，單、留言、附件都記錄是誰寫的，清單、單頁與對話面板顯示建立者名字，未讀也是每位客戶各自計算。每個人（團隊個人帳號與客戶帳號）都能在右上角「我的帳號」改自己的顯示名稱與密碼。
 - 多人、多個 AI 接手：開單、留言、調整重點、改狀態都記錄帳號與 AI 工具，畫面顯示「王小明（Codex）」。一張單可以「認領」，讓其他人知道誰在處理；做到一半可以寫「交接紀錄」，下一個人或 AI 讀單時會先看到。
 - 首頁公開回報（選用）：陌生人不用登入就能對單一專案回報問題，拿到私密網址追蹤，見下方。
@@ -173,7 +174,8 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | `feedback:developer {username} {--name=} {--password=}` | 建立開發團隊個人帳號，或重設既有帳號系統產生的密碼（本人自設的密碼不能重設）；個人帳號可建立問題並顯示為建立者。 |
 | `feedback:account-recover {username} {--project=}` | 忘記密碼：由能進主機的管理者救回任何團隊或客戶帳號（含本人自設的密碼），產生新的隨機密碼；客戶帳號名稱在多個專案重複時加 `--project`。 |
 | `feedback:account-password owner {--password=}` | 重設共用 owner 帳號密碼，雜湊寫入 `.env`，明文只顯示一次。 |
-| `feedback:adjust {project} {report} {--by-id} {--note=} {--append} {--image=*} {--as=} {--agent=} {--force}` | 用指令寫入問題的調整重點與圖片，不改動狀態。別人認領中要加 `--force`（記錄為接手）。 |
+| `feedback:adjust {project} {report} {--by-id} {--note=} {--append} {--image=*} {--as=} {--agent=} {--force}` | 【已停用，改用 `feedback:message` 留言】照常寫入調整重點與圖片但附警告，不改動狀態。別人認領中要加 `--force`（記錄為接手）。 |
+| `feedback:request-completion {project} {report} {--text=} {--as=} {--agent=} {--force}` | 請客戶確認完成：只發一則附「通過」按鈕的確認留言（沒給文字用預設），單維持等客戶，不會直接結案；已完成的單會被拒絕。 |
 | `feedback:message {project} {report} {--text=} {--attach=*} {--as=} {--agent=}` | 以開發團隊身分在問題留言（可附圖；等工程師的單會自動改成等客戶），完成後輸出留言 id；未給 `--text` 時從標準輸入讀取，客戶端會出現紅色未讀數字。 |
 | `feedback:draft {project} {report} {--text=} {--replace-message=} {--attach=*} {--as=} {--agent=}` | 新增待審留言（草稿）：只有開發團隊看得到、不算客戶未讀；團隊在單頁或右下角對話面板審過按「送出」才發出。`--replace-message` 指定要改寫的團隊留言 id。排程可用 `POST /api/patrol/projects/{slug}/reports/{public_id}/drafts`（JSON `body`、`replace_message_id`）。 |
 | `feedback:reports {project} {--status=*} {--creator=} {--include-deleted} {--unread} {--json}` | 列出專案的問題，最新在前；可依狀態、建立者（`client`、`client:<id>`、`public`、`shared`、`developer:<id>`）篩選，並顯示誰認領中。 |

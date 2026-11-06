@@ -4,18 +4,21 @@
 import { orderConversations } from './chat-order';
 import { renderMessageDrafts } from './message-drafts';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, rememberDismissed, shouldAutoOpen, tabCounts, visibleItems } from './chat-tabs';
+import { clearReportUnread } from './report-read';
+import { replaceKeepingOpen } from './thread-details';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
 const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 60000;
 // 附件的檢查規則（張數、大小、格式）由 attachment-composer.js 依伺服器帶來的 data-attachment-rules 處理。
-// 與 portal.blade.php、message-badges.blade.php 相同的樣式。
+// 與 portal.blade.php、message-badges.blade.php、unread-dot.blade.php 相同的樣式。
 const SUMMARY_TONES = {
     alert: ['border-rose-200', 'bg-rose-50', 'text-rose-900'],
     calm: ['border-slate-200', 'bg-white', 'text-slate-600'],
 };
 const UNREAD_FILTER_CLASS = 'rounded-lg bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2';
+const DOT_CLASS = 'grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white';
 const ITEM_BADGE_CLASS = 'absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white';
 
 const root = document.querySelector('[data-chat-root]');
@@ -166,6 +169,30 @@ if (root) {
         });
     };
 
+    // 標題右邊的未讀小圓點數字（清單、看板，純指示不能點）：依面板的未讀資料補上、更新或拿掉。
+    const syncUnreadDots = (unread) => {
+        document.querySelectorAll('[data-unread-slot]').forEach((slot) => {
+            const count = unread.get(slot.dataset.unreadSlot);
+            if (count === undefined) {
+                return;
+            }
+            let dot = slot.querySelector('[data-unread-dot]');
+            if (count <= 0) {
+                dot?.remove();
+
+                return;
+            }
+            if (!dot) {
+                dot = el('span', DOT_CLASS);
+                dot.dataset.unreadDot = '';
+                slot.append(dot);
+            }
+            dot.textContent = badgeText(count);
+            dot.title = `${count} 則未讀留言`;
+            dot.setAttribute('aria-label', `${count} 則未讀留言`);
+        });
+    };
+
     // 客戶端清單／看板上的「重點已更新」標籤：這張單已讀過（面板資料不再標示更新）就拿掉。
     const syncAdjustmentTags = () => {
         document.querySelectorAll('[data-adjustment-updated]').forEach((tag) => {
@@ -212,6 +239,7 @@ if (root) {
             return;
         }
         syncPageBadges(unreadById(state.items));
+        syncUnreadDots(unreadById(state.items));
         syncAdjustmentTags();
         if (isOwnerViewer) {
             syncUnreadSummary(countUnreadReports(state.items));
@@ -378,13 +406,10 @@ if (root) {
                     time.textContent = freshTimes[index]?.textContent ?? time.textContent;
                 });
             } else {
-                const previousAdjustment = state.lastThreadHtml === '' ? null : thread.querySelector('[data-chat-adjustment]');
-                thread.innerHTML = data.html;
-                // 刷新時保留使用者展開／收合的調整重點。
-                const adjustment = thread.querySelector('[data-chat-adjustment]');
-                if (previousAdjustment && adjustment) {
-                    adjustment.open = previousAdjustment.open;
-                }
+                // 刷新時保留使用者展開的相簿與過去的處理說明。
+                replaceKeepingOpen(thread, () => {
+                    thread.innerHTML = data.html;
+                });
             }
             state.lastThreadHtml = data.html;
             if (stickToBottom) {
@@ -395,7 +420,7 @@ if (root) {
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
         // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
         if (!state.peek) {
-            document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge], [data-adjustment-updated="${CSS.escape(data.id)}"]`).forEach((badge) => badge.remove());
+            clearReportUnread(data.id);
         }
 
         const item = state.items.find((candidate) => candidate.id === data.id);

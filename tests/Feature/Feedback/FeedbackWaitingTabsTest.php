@@ -66,7 +66,8 @@ class FeedbackWaitingTabsTest extends TestCase
         foreach (['waitingClient', 'legacy', 'done'] as $key) {
             $this->assertStringNotContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
         }
-        $this->assertSame(2, substr_count($html, 'data-waiting-on="developer">'.$newLabel.'<'));
+        // 標題旁不再有「等開發者／等老師」標籤：等誰處理只看頁籤。
+        $this->assertStringNotContainsString('data-waiting-on', $html);
         // 不再有狀態下拉篩選。
         $this->assertStringNotContainsString('篩選狀態', $html);
     }
@@ -83,11 +84,11 @@ class FeedbackWaitingTabsTest extends TestCase
             $this->assertStringContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
         }
         $this->assertStringNotContainsString('data-report-row="'.$this->reports['fresh']->public_id.'"', $html);
-        $this->assertSame(2, substr_count($html, 'data-waiting-on="client">'.FeedbackReportStatus::NeedsInput->label().'<'));
+        $this->assertStringNotContainsString('data-waiting-on', $html);
 
         $developerTab = $this->get(route('feedback.portal', [$this->project, 'tab' => 'developer']))->assertOk()->getContent();
         $this->assertStringContainsString('data-report-row="'.$this->reports['fresh']->public_id.'"', $developerTab);
-        $this->assertSame(2, substr_count($developerTab, 'data-waiting-on="developer">'.FeedbackReportStatus::New->label().'<'));
+        $this->assertStringNotContainsString('data-waiting-on', $developerTab);
     }
 
     public function test_tab_is_kept_in_the_url_and_completed_reports_live_behind_the_completed_link(): void

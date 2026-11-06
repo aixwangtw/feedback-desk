@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Storage;
  * 在回饋單留言（可附圖）；網頁、MCP 共用。記下留言者的帳號與 AI 工具，並把這張單標成留言者那一方讀過。
  *
  * 留言自動切狀態（applyStatusRule）：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；
- * 團隊在等工程師的單留言 → 等客戶（記得更新調整重點）。已完成的單不因留言改狀態。
+ * 團隊在等工程師的單留言 → 等客戶。已完成的單不因留言改狀態。
  */
 class PostFeedbackMessageAction
 {
@@ -25,9 +25,9 @@ class PostFeedbackMessageAction
     /**
      * 團隊留言把單切成等客戶後，給人看的提醒（狀態名稱照站台設定）。
      */
-    public static function adjustmentReminder(): string
+    public static function statusChangeNotice(): string
     {
-        return '狀態已改為「'.FeedbackReportStatus::NeedsInput->label().'」，記得更新調整重點。';
+        return '狀態已改為「'.FeedbackReportStatus::NeedsInput->label().'」。';
     }
 
     public function __construct(private ChangeFeedbackReportStatusAction $changeStatus) {}
@@ -36,13 +36,13 @@ class PostFeedbackMessageAction
      * @param  list<UploadedFile>  $screenshots
      * @param  list<array{disk: string, path: string, original_name: string, mime_type: string, size: int}>  $storedFiles  已經存好的檔案（待審留言送出時用）
      */
-    public function handle(FeedbackReport $report, FeedbackActor $actor, string $body, array $screenshots = [], array $storedFiles = [], bool $applyStatusRule = true): FeedbackMessage
+    public function handle(FeedbackReport $report, FeedbackActor $actor, string $body, array $screenshots = [], array $storedFiles = [], bool $applyStatusRule = true, bool $isCompletionRequest = false): FeedbackMessage
     {
         $disk = config('feedback.disk');
         $storedPaths = [];
 
         try {
-            $message = DB::transaction(function () use ($report, $actor, $body, $screenshots, $storedFiles, $disk, &$storedPaths): FeedbackMessage {
+            $message = DB::transaction(function () use ($report, $actor, $body, $screenshots, $storedFiles, $disk, $isCompletionRequest, &$storedPaths): FeedbackMessage {
                 $message = $report->feedbackMessages()->create([
                     'author_type' => $actor->isTeam ? FeedbackAuthorType::Owner : FeedbackAuthorType::Reporter,
                     'author_name' => $this->authorName($report, $actor),
@@ -50,6 +50,7 @@ class PostFeedbackMessageAction
                     'author_developer_id' => $actor->developer?->id,
                     'author_agent' => $actor->agent,
                     'body' => $body,
+                    'is_completion_request' => $isCompletionRequest,
                 ]);
 
                 foreach ($screenshots as $screenshot) {

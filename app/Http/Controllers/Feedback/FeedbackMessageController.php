@@ -33,7 +33,7 @@ class FeedbackMessageController extends Controller
 
         $previous = $feedbackReport->status;
         $postMessage->handle($feedbackReport, $actor, $validated['body'], $validated['screenshots'] ?? []);
-        $notice = '訊息已送出。'.($actor->isTeam && $feedbackReport->status !== $previous ? PostFeedbackMessageAction::adjustmentReminder() : '');
+        $notice = '訊息已送出。'.($actor->isTeam && $feedbackReport->status !== $previous ? PostFeedbackMessageAction::statusChangeNotice() : '');
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $notice, 'status' => $feedbackReport->status->value], 201);

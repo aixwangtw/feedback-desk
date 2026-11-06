@@ -56,63 +56,14 @@
                 @endif
             </section>
 
-            @if ($isOwner || $report->hasAdjustment())
-                <section id="adjustment" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            @if ($report->hasAdjustment())
+                {{-- 調整重點已停用：舊內容只在這裡唯讀顯示（過去的處理說明），沒有內容就不顯示，網頁上不能編輯。 --}}
+                <section id="adjustment" class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm sm:p-7" data-past-notes>
                     @include('feedback.reports._adjustment', ['project' => $project, 'report' => $report])
-
-                    @if (! $isOwner && $canPostMessage)
-                        <p class="mt-4 rounded-lg bg-teal-50 px-3 py-2 text-sm font-medium text-teal-900" data-adjustment-message-hint>看完有問題，可直接在下方留言</p>
-                    @endif
-
-                    @if ($isOwner)
-                        @php $adjustmentErrors = $errors->getBag('adjustment'); @endphp
-                        <details class="mt-5 border-t border-slate-100 pt-4" @if ($adjustmentErrors->any()) open @endif data-adjustment-editor>
-                            <summary class="cursor-pointer text-sm font-semibold text-teal-800">編輯調整重點（僅{{ config('feedback.labels.owner') }}）</summary>
-                            <form method="POST" action="{{ route('feedback.reports.adjustment.update', [$project, $report]) }}" enctype="multipart/form-data" class="mt-4 grid gap-4">
-                                @csrf
-                                @method('PUT')
-                                @if ($adjustmentErrors->any())
-                                    <div role="alert" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-                                        <ul class="list-disc space-y-1 pl-5">@foreach ($adjustmentErrors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-                                    </div>
-                                @endif
-                                <div>
-                                    <label for="adjustment_note" class="mb-2 block text-xs font-semibold text-slate-600">說明文字（再次調整時請接在原內容後面補寫）</label>
-                                    <textarea id="adjustment_note" name="adjustment_note" maxlength="{{ \App\Actions\UpdateFeedbackReportAdjustmentAction::MAX_NOTE_LENGTH }}" rows="6" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ $adjustmentErrors->any() ? old('adjustment_note') : $report->adjustment_note }}</textarea>
-                                </div>
-
-                                @if ($report->adjustmentAttachments->isNotEmpty())
-                                    <fieldset>
-                                        <legend class="mb-2 text-xs font-semibold text-slate-600">目前調整圖片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
-                                        <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
-                                            @foreach ($report->adjustmentAttachments as $attachment)
-                                                <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover" />
-                                                    <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
-                                                        <input type="checkbox" name="remove_adjustment_attachments[]" value="{{ $attachment->id }}" class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">
-                                                        刪除
-                                                    </span>
-                                                </label>
-                                            @endforeach
-                                        </div>
-                                    </fieldset>
-                                @endif
-
-                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <label for="adjustment-images" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
-                                        加入調整圖片
-                                        <input id="adjustment-images" name="adjustment_images[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="adjustment-preview">
-                                    </label>
-                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">儲存調整重點</button>
-                                </div>
-                                <div id="adjustment-preview" class="grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
-                            </form>
-                        </details>
-                    @endif
                 </section>
             @endif
 
-            @unless ($isPublicReporter)
+            @unless ($isPublicReporter || $canManage)
                 <p class="-mt-3 px-1 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
             @endunless
 
@@ -120,7 +71,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
                     <div class="min-w-0">
                         @if ($isOwner || ! $canPostMessage)
-                            <h2 class="text-base font-semibold text-slate-950">留言</h2>
+                            <h2 class="text-base font-semibold text-slate-950">活動</h2>
                         @else
                             <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
                             <p class="mt-1 text-sm leading-6 text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
@@ -135,7 +86,7 @@
                 </div>
 
                 <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url="{{ route('feedback.reports.activity', [$project, $report]) }}">
-                    @include('feedback.reports._activity', ['project' => $project, 'report' => $report, 'viewerIsOwner' => $isOwner])
+                    @include('feedback.reports._thread', ['project' => $project, 'report' => $report, 'viewerIsOwner' => $isOwner])
                 </div>
 
                 @if ($isOwner && $drafts->isNotEmpty())
@@ -177,24 +128,23 @@
                 @include('feedback.reports._work', ['project' => $project, 'report' => $report, 'work' => $work, 'canClaim' => $canClaim])
             @endif
             @if ($canManage)
-                {{-- 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」。 --}}
+                {{-- 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」或留言上的「通過」，開發團隊按「完成」只會請客戶確認。 --}}
                 <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel>
-                    <h2 class="text-sm font-semibold text-slate-950">狀態</h2>
-                    <div class="mt-3"><x-feedback.status-badge :status="$report->status" /></div>
-                    <p class="mt-3 text-xs leading-5 text-slate-500">{{ config('feedback.labels.client') }}留言會變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆會變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」。</p>
-                    @if (! $isOwner)
-                        <div class="mt-3"><x-feedback.complete-button :$project :$report :is-owner="$isOwner" /></div>
-                    @endif
+                    @include('feedback.reports._detail-side', ['project' => $project, 'report' => $report, 'isOwner' => $isOwner, 'context' => 'page'])
+                </section>
+            @else
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h2 class="text-sm font-semibold text-slate-950">回報資訊</h2>
+                    <dl class="mt-4 grid gap-4 text-xs">
+                        <div><dt class="text-slate-500">建立時間</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->created_at" /></dd></div>
+                        <div><dt class="text-slate-500">最後更新</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->latest_activity_at" relative /></dd></div>
+                    </dl>
                 </section>
             @endif
-
-            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="text-sm font-semibold text-slate-950">回報資訊</h2>
-                <dl class="mt-4 grid gap-4 text-xs">
-                    <div><dt class="text-slate-500">建立時間</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->created_at" /></dd></div>
-                    <div><dt class="text-slate-500">最後更新</dt><dd class="mt-1 font-medium text-slate-800"><x-feedback.time :at="$report->latest_activity_at" relative /></dd></div>
-                </dl>
-            </section>
         </aside>
     </div>
+
+    @if ($isOwner)
+        @include('feedback.reports._completion-dialog', ['project' => $project, 'report' => $report])
+    @endif
 </x-feedback.layout>

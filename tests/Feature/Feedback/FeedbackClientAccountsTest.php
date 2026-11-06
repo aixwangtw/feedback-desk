@@ -89,7 +89,7 @@ class FeedbackClientAccountsTest extends TestCase
         $this->login('ben', 'ben-password');
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->assertSee('林美美')->assertSee('data-report-creator', false);
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk()
-            ->assertSee('建立者：林美美')
+            ->assertSee('data-report-creator>林美美', false)
             ->assertSeeInOrder(['data-chat-author', '林美美'], false);
     }
 

@@ -35,3 +35,32 @@
 .kanban-card-saving {
     @apply pointer-events-none opacity-60;
 }
+
+/* 單張詳情（清單、看板點開）：電腦版從右側滑出，手機版整頁（尺寸在 _detail-dialog 的 class），開啟時淡入滑入。 */
+dialog.detail-panel[open] {
+    animation: detail-panel-in 220ms ease-out;
+}
+
+dialog.detail-panel[open]::backdrop {
+    animation: detail-backdrop-in 220ms ease-out;
+}
+
+@keyframes detail-panel-in {
+    from {
+        opacity: 0;
+        transform: translateX(2.5rem);
+    }
+}
+
+@keyframes detail-backdrop-in {
+    from {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    dialog.detail-panel[open],
+    dialog.detail-panel[open]::backdrop {
+        animation: none;
+    }
+}

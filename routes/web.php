@@ -5,6 +5,7 @@ use App\Http\Controllers\Feedback\FeedbackAdjustmentController;
 use App\Http\Controllers\Feedback\FeedbackAttachmentController;
 use App\Http\Controllers\Feedback\FeedbackClaimController;
 use App\Http\Controllers\Feedback\FeedbackClientController;
+use App\Http\Controllers\Feedback\FeedbackCompletionRequestController;
 use App\Http\Controllers\Feedback\FeedbackConversationController;
 use App\Http\Controllers\Feedback\FeedbackLoginController;
 use App\Http\Controllers\Feedback\FeedbackMcpController;
@@ -88,6 +89,10 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
         ->name('feedback.reports.restore');
     Route::patch('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/status', [FeedbackStatusController::class, 'update'])
         ->name('feedback.reports.status.update');
+    // 開發團隊的「完成」：只發確認留言請老師確認，不會直接結案。
+    Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/completion-request', [FeedbackCompletionRequestController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.reports.completion-request');
     Route::get('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/activity', [FeedbackReportController::class, 'activity'])
         ->name('feedback.reports.activity');
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
@@ -112,6 +117,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/handoff', [FeedbackClaimController::class, 'handoff'])
         ->middleware('throttle:30,1')
         ->name('feedback.reports.handoff');
+    // 調整重點已停用：網頁不能再寫入，這條路由只回 410（舊內容在詳情裡唯讀顯示）。
     Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/adjustment', [FeedbackAdjustmentController::class, 'update'])
         ->middleware('throttle:30,1')
         ->name('feedback.reports.adjustment.update');
@@ -131,7 +137,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::match(['get', 'delete'], '/mcp', [FeedbackMcpController::class, 'methodNotAllowed'])
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware]);
 
-    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫待審留言、寫調整重點、改成等客戶（needs_input）。
+    // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫待審留言、請客戶確認完成、改成等客戶（needs_input）；寫調整重點已停用（照常寫入但回 warning）。
     Route::prefix('/api/patrol')
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware])
         ->middleware('throttle:feedback-patrol')
@@ -142,7 +148,9 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
             Route::get('/projects/{project}/reports/{report}', [FeedbackPatrolController::class, 'show'])->name('show');
             Route::post('/projects/{project}/reports/{report}/messages', [FeedbackPatrolController::class, 'message'])->name('message');
             Route::post('/projects/{project}/reports/{report}/drafts', [FeedbackPatrolController::class, 'draft'])->name('draft');
+            // 已停用（改用留言）：照常寫入，回應附 warning。
             Route::put('/projects/{project}/reports/{report}/adjustment', [FeedbackPatrolController::class, 'adjustment'])->name('adjustment');
+            Route::post('/projects/{project}/reports/{report}/request-completion', [FeedbackPatrolController::class, 'requestCompletion'])->name('request-completion');
             Route::post('/projects/{project}/reports/{report}/needs-input', [FeedbackPatrolController::class, 'needsInput'])->name('needs-input');
         });
 

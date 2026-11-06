@@ -167,7 +167,7 @@ class FeedbackChatPanelDraftTest extends TestCase
         $this->postJson(route('feedback.drafts.send', [$this->project, $this->report, $draft]), ['body' => '  面板裡改過的文字  '])
             ->assertOk()
             ->assertJsonPath('status', 'needs_input')
-            ->assertJsonPath('message', '留言已送出。'.PostFeedbackMessageAction::adjustmentReminder());
+            ->assertJsonPath('message', '留言已送出。'.PostFeedbackMessageAction::statusChangeNotice());
 
         $this->assertModelMissing($draft);
         $message = FeedbackMessage::sole();

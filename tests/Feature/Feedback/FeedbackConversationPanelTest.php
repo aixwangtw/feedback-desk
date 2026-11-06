@@ -284,8 +284,10 @@ class FeedbackConversationPanelTest extends TestCase
         $html = $this->getJson(route('feedback.conversations.show', [$this->project, $report]))->assertOk()->json('html');
         $this->assertMatchesRegularExpression('/data-author="reporter" data-side="mine"/', $html);
         $this->assertMatchesRegularExpression('/data-author="owner" data-side="theirs"/', $html);
-        $this->assertStringContainsString('有更新', $html);
-        $this->assertMatchesRegularExpression('/<details[^>]*open[^>]*data-chat-adjustment/', $html);
+        // 調整重點已停用：舊內容收合在「過去的處理說明」，不再有「有更新」標示。
+        $this->assertStringNotContainsString('有更新', $html);
+        $this->assertStringContainsString('過去的處理說明', $html);
+        $this->assertDoesNotMatchRegularExpression('/<details[^>]*open[^>]*data-chat-adjustment/', $html);
     }
 
     public function test_reply_from_the_panel_returns_json_and_stores_images(): void
@@ -298,7 +300,7 @@ class FeedbackConversationPanelTest extends TestCase
         $this->postJson(route('feedback.messages.store', [$this->project, $report]), [
             'body' => '已處理，附圖給你看',
             'screenshots' => [$this->image('fixed.png')],
-        ])->assertCreated()->assertJsonPath('message', '訊息已送出。'.PostFeedbackMessageAction::adjustmentReminder())->assertJsonPath('status', 'needs_input');
+        ])->assertCreated()->assertJsonPath('message', '訊息已送出。'.PostFeedbackMessageAction::statusChangeNotice())->assertJsonPath('status', 'needs_input');
 
         $message = $report->feedbackMessages()->latest('id')->first();
         $this->assertSame(FeedbackAuthorType::Owner, $message->author_type);
@@ -423,9 +425,12 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertStringContainsString('data-viewer="owner"', $page);
         $this->assertStringContainsString(route('feedback.conversations.index', $this->project), $page);
         $this->assertMatchesRegularExpression('/name="_token" value="[^"]+"/', Str::between($page, 'data-chat-form', '</form>'));
-        $this->assertStringContainsString('data-chat-open="'.$report->public_id.'"', $page);
+        // 清單、看板不再有每列的留言按鈕；未讀改成標題右邊的小圓點數字。
+        $this->assertStringContainsString('data-unread-slot="'.$report->public_id.'"', $page);
+        $this->assertStringContainsString('data-unread-dot', $page);
         $board = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->getContent();
-        $this->assertStringContainsString('data-chat-open="'.$report->public_id.'"', $board);
+        $this->assertStringContainsString('data-unread-slot="'.$report->public_id.'"', $board);
+        $this->assertStringNotContainsString('data-message-count=', $page.$board);
         $this->get(route('feedback.reports.show', [$this->project, $report]))
             ->assertOk()
             ->assertSee('data-chat-root', false)
@@ -434,10 +439,10 @@ class FeedbackConversationPanelTest extends TestCase
         $this->actingAsClient();
         $page = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringContainsString('data-viewer="client"', $page);
-        // 客戶端：老師自己的留言不算未讀，調整重點更新也不算，不顯示紅色數字，改顯示「重點已更新」標籤。
-        $this->assertMatchesRegularExpression('/data-chat-open="'.$report->public_id.'"[^>]*aria-label="[^"]*共 1 則留言）/', $page);
-        $this->assertStringNotContainsString('data-unread-badge', $page);
-        $this->assertStringContainsString('data-adjustment-updated="'.$report->public_id.'"', $page);
+        // 客戶端：老師自己的留言不算未讀，調整重點更新也不算，標題旁沒有未讀圓點，也沒有「重點已更新」標籤。
+        $this->assertStringContainsString('data-unread-slot="'.$report->public_id.'"', $page);
+        $this->assertStringNotContainsString('data-unread-dot', $page);
+        $this->assertStringNotContainsString('data-adjustment-updated', $page);
         $this->assertStringNotContainsString('有新回覆', $page);
         $dialog = Str::between($page, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
         $this->assertStringContainsString('data-dialog-thread', $dialog);
@@ -468,14 +473,14 @@ class FeedbackConversationPanelTest extends TestCase
         $this->message($report, FeedbackAuthorType::Reporter, now()->subMinutes(5), '老師留言');
         $this->actingAsOwner();
 
-        $this->assertStringContainsString('data-unread-badge', $this->get(route('feedback.portal', $this->project))->getContent());
+        $this->assertStringContainsString('data-unread-dot', $this->get(route('feedback.portal', $this->project))->getContent());
 
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $report]))
             ->assertOk()
             ->assertJsonPath('id', $report->public_id);
         $this->assertStringContainsString('老師留言', $thread->json('html'));
 
-        $this->assertStringNotContainsString('data-unread-badge', $this->get(route('feedback.portal', $this->project))->getContent());
+        $this->assertStringNotContainsString('data-unread-dot', $this->get(route('feedback.portal', $this->project))->getContent());
         $this->assertSame(0, $this->getJson(route('feedback.conversations.index', $this->project))->json('unread_total'));
     }
 

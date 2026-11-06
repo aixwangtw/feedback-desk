@@ -38,7 +38,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 說明：
   - report 只接受 public_id；純數字會被拒絕，避免和畫面上的「編號」搞混。
   - 留言前後的空白會去掉；空白留言會被拒絕。
-  - 等工程師（new）的單留言後會自動改成等客戶（needs_input，記得更新調整重點）；已完成、等客戶的單狀態不變。其他狀態用 php artisan feedback:status。
+  - 等工程師（new）的單留言後會自動改成等客戶（needs_input）；已完成、等客戶的單狀態不變。其他狀態用 php artisan feedback:status。
 HELP)]
 class PostFeedbackMessageCommand extends Command
 {
@@ -99,7 +99,7 @@ class PostFeedbackMessageCommand extends Command
         $this->components->twoColumnDetail('留言 id', (string) $message->id);
         $this->components->twoColumnDetail('附圖', (string) count($images));
         if ($report->status !== $previous) {
-            $this->components->warn(PostFeedbackMessageAction::adjustmentReminder());
+            $this->components->warn(PostFeedbackMessageAction::statusChangeNotice());
         }
         $this->line(route('feedback.reports.show', [$project, $report]));
 

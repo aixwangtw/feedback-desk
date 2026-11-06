@@ -170,7 +170,7 @@ class FeedbackCreateCommandAttachTest extends TestCase
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('對照確認')
-            ->assertSee('data-new-reply-badge', false);
+            ->assertSee('data-unread-dot', false);
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->assertOk()->assertSee('對照確認');
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))
@@ -198,7 +198,7 @@ class FeedbackCreateCommandAttachTest extends TestCase
 
         $this->get(route('feedback.portal', $this->project))
             ->assertOk()
-            ->assertSee('data-new-reply-badge', false);
+            ->assertSee('data-unread-dot', false);
     }
 
     /**

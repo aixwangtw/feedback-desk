@@ -6,6 +6,7 @@ use App\Actions\UpdateFeedbackReportAdjustmentAction;
 use App\Console\Commands\Concerns\ResolvesFeedbackActor;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackCompletionRequest;
 use App\Support\FeedbackReportWork;
 use App\Support\FeedbackServiceException;
 use Illuminate\Console\Attributes\Description;
@@ -25,9 +26,10 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {--as= : 以這個團隊個人帳號記錄（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}
     {--force : 別人認領中仍要做（記錄為接手）}')]
-#[Description('寫入回饋單的「調整重點」文字與圖片（不改動回饋單狀態）')]
+#[Description('【已停用，改用留言】寫入回饋單的「調整重點」文字與圖片（不改動回饋單狀態）')]
 #[Help(<<<'HELP'
-寫入回饋單的「調整重點」，客戶與開發團隊都會在回饋單內容下方看到。
+【已停用，改用 feedback:message 留言】調整重點網頁上已不能編輯，只當成「過去的處理說明」唯讀顯示；
+這個指令暫時保留，照常寫入但會附警告。
 
   覆寫文字：
     php artisan feedback:adjust my-project 0199c3a1-... --note="已修正登入頁排版"
@@ -137,6 +139,7 @@ class UpdateFeedbackAdjustmentCommand extends Command
         }
         $this->components->twoColumnDetail('新增圖片', (string) count($images));
         $this->components->twoColumnDetail('目前圖片總數', (string) $report->adjustmentAttachments()->count());
+        $this->components->warn(FeedbackCompletionRequest::ADJUSTMENT_DEPRECATED);
         $this->line(route('feedback.reports.show', [$project, $report]).'#adjustment');
 
         return self::SUCCESS;

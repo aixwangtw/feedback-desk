@@ -247,24 +247,30 @@ class FeedbackGuestClientTest extends TestCase
         $this->assertSame('舊分類', $report->fresh()->category);
     }
 
-    public function test_creator_is_shown_after_the_adjustment_note_in_list_dialog_and_page(): void
+    public function test_creator_is_shown_in_list_dialog_side_column_and_page_without_adjustment_text(): void
     {
         $report = FeedbackReport::factory()->for($this->project)->create([
             'description' => '說明內文XYZ', 'adjustment_note' => '調整內文QRS', 'creator_client_account_id' => $this->account->id,
         ]);
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
-        $header = substr($html, strpos($html, '<thead'));
-        $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>調整重點</th>'));
-        $this->assertLessThan(strpos($header, '建立日期'), strpos($header, '>建立者</th>'));
+        $header = substr($html, strpos($html, '<thead'), strpos($html, '</thead>') - strpos($html, '<thead'));
+        $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>狀態'));
+        $this->assertLessThan(strpos($header, '最後更新'), strpos($header, '>建立者</th>'));
+        $this->assertStringNotContainsString('調整重點', $header);
+        $this->assertStringNotContainsString('建立日期', $header);
         $row = substr($html, strpos($html, '<tbody'));
-        $this->assertLessThan(strpos($row, 'data-report-creator'), strpos($row, '調整內文QRS'));
+        $row = substr($row, 0, strpos($row, '</tbody>'));
+        $this->assertStringNotContainsString('調整內文QRS', $row);
+        $this->assertStringContainsString('data-report-creator', $row);
 
         $dialog = substr($html, strpos($html, 'id="detail-report-'.$report->public_id.'"'));
-        $this->assertLessThan(strpos($dialog, '建立者：'), strpos($dialog, '說明內文XYZ'));
-        $this->assertLessThan(strpos($dialog, '建立者：'), strpos($dialog, '調整內文QRS'));
+        $this->assertStringContainsString('說明內文XYZ', $dialog);
+        $this->assertStringContainsString('data-report-creator', $dialog);
+        $this->assertStringContainsString('調整內文QRS', $dialog);
+        $this->assertStringContainsString('過去的處理說明', $dialog);
 
         $page = $this->get(route('feedback.reports.show', [$this->project, $report]))->getContent();
-        $this->assertLessThan(strpos($page, '建立者：'), strpos($page, '調整內文QRS'));
+        $this->assertStringContainsString('data-report-creator', $page);
     }
 }

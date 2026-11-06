@@ -173,7 +173,7 @@ export const NotificationBell: FC<{ v: ViewContext; bell: Notifications }> = ({ 
             </summary>
             <div class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5">
                 <p class="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">{bell.isOwner ? `${labels.client}的新留言` : `${labels.owner}的新留言`}</p>
-                <div class="max-h-96 overflow-y-auto">
+                <div class="max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain">
                     {bell.items.length === 0 ? (
                         <p class="px-4 py-6 text-center text-sm text-slate-500">目前沒有新留言</p>
                     ) : (
@@ -229,7 +229,7 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogou
         <body class="min-h-screen bg-slate-50 font-sans text-slate-950 antialiased">
             <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-teal-50 to-transparent"></div>
 
-            <header class="relative border-b border-slate-200/80 bg-white/80 backdrop-blur">
+            <header class="relative z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur">
                 <div class={`mx-auto flex ${maxWidth} items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8`}>
                     <div class="flex min-w-0 items-center gap-3">
                         <a href={project ? paths.portal(project.slug) : '/'} class="flex shrink-0 items-center gap-3 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">

@@ -37,6 +37,12 @@ describe('headers and redirects', () => {
         expect(csp).toContain("style-src 'self'");
         expect(csp).not.toContain('unsafe-inline');
         expect(csp).toContain("frame-ancestors 'self'");
+        expect(csp).toContain("media-src 'self' blob:");
+    });
+
+    it('keeps the header above the page body so the bell dropdown is never covered', async () => {
+        const html = await (await new Browser().get('/')).text();
+        expect(html).toMatch(/<header class="relative z-30 /);
     });
 
     it('accepts only plain same-site paths as return targets', () => {

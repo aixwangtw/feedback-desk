@@ -15,6 +15,7 @@ export const CONTENT_SECURITY_POLICY = [
     'frame-src https://challenges.cloudflare.com',
     "style-src 'self'",
     "img-src 'self' blob: data:",
+    "media-src 'self' blob:",
     "connect-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'self'",

@@ -97,7 +97,7 @@
             </div>
         @endif
 
-        <nav class="flex items-end gap-1 border-b border-slate-200 bg-white px-4 pt-3" aria-label="依等誰處理分頁" data-waiting-tabs>
+        <nav class="flex items-end gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 pt-3" aria-label="依等誰處理分頁" data-waiting-tabs>
             @foreach (\App\Support\FeedbackWaitingOn::TABS as $tab)
                 <a href="{{ $portalUrl(['tab' => $tab], ['status', 'page']) }}" @class([
                     '-mb-px inline-flex min-h-10 items-center gap-1.5 rounded-t-lg border px-4 text-sm font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',

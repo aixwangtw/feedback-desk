@@ -13,6 +13,8 @@
     button,
     summary,
     [role='tab'],
+    nav a,
+    a[class*='rounded'],
     .inline-flex {
         white-space: nowrap;
     }

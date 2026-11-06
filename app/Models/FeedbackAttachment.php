@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FeedbackAttachmentKind;
+use App\Support\FeedbackAttachmentRules;
 use Database\Factories\FeedbackAttachmentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -58,5 +59,13 @@ class FeedbackAttachment extends Model
         return [
             'kind' => FeedbackAttachmentKind::class,
         ];
+    }
+
+    /**
+     * mp4 影片：留言裡用 <video> 直接播放。
+     */
+    public function isVideo(): bool
+    {
+        return FeedbackAttachmentRules::isVideoMime($this->mime_type);
     }
 }

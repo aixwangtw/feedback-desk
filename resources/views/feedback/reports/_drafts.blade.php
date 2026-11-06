@@ -22,6 +22,10 @@
                 @if ($draft->attachmentList() !== [])
                     <div class="mt-2 flex flex-wrap gap-2">
                         @foreach ($draft->attachmentList() as $index => $file)
+                            @if (\App\Support\FeedbackAttachmentRules::isVideoMime($file['mime_type']))
+                                <video controls playsinline preload="metadata" src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" class="max-h-60 w-full max-w-md rounded-lg border border-slate-200 bg-black" title="{{ $file['original_name'] }}"></video>
+                                @continue
+                            @endif
                             <a href="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt="{{ $file['original_name'] }}">
                                 <img src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" alt="{{ $file['original_name'] }}" class="size-full object-cover" loading="lazy">
                             </a>

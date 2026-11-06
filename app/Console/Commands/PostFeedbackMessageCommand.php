@@ -17,7 +17,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）}
     {--text= : 留言內容；未給時從標準輸入讀取}
-    {--attach=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內，與 --file 合計最多 5 張）}
+    {--attach=* : 要附上的圖片或影片路徑，可重複多次（jpg/png/webp 每張 10 MB、mp4 每支 50 MB，與 --file 合計最多 5 個）}
     {--file=* : 同 --attach（舊名稱，保留相容）}
     {--as= : 以這個團隊個人帳號留言（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}')]
@@ -81,7 +81,7 @@ class PostFeedbackMessageCommand extends Command
             return self::FAILURE;
         }
 
-        $images = $this->validatedImageFiles([...(array) $this->option('attach'), ...(array) $this->option('file')]);
+        $images = $this->validatedImageFiles([...(array) $this->option('attach'), ...(array) $this->option('file')], allowVideo: true);
         if ($images === null) {
             return self::FAILURE;
         }

@@ -12,8 +12,21 @@ const renderImagePreviews = (input) => {
 
     Array.from(input.files).slice(0, 5).forEach((file) => {
         const figure = document.createElement('figure');
-        const image = document.createElement('img');
         const caption = document.createElement('figcaption');
+        caption.className = 'truncate px-2 py-1.5 text-[11px] text-slate-600';
+        caption.textContent = file.name;
+        if (file.type.startsWith('video/')) {
+            // 影片不產生縮圖，只顯示檔名與標示。
+            const label = document.createElement('div');
+            label.className = 'grid aspect-video w-full place-items-center bg-slate-900 text-xs font-semibold text-white';
+            label.textContent = '影片';
+            figure.className = 'min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white';
+            figure.append(label, caption);
+            target.append(figure);
+
+            return;
+        }
+        const image = document.createElement('img');
         const objectUrl = URL.createObjectURL(file);
 
         figure.className = 'min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white';
@@ -21,8 +34,6 @@ const renderImagePreviews = (input) => {
         image.alt = '';
         image.src = objectUrl;
         image.addEventListener('load', () => URL.revokeObjectURL(objectUrl), { once: true });
-        caption.className = 'truncate px-2 py-1.5 text-[11px] text-slate-600';
-        caption.textContent = file.name;
         figure.append(image, caption);
         target.append(figure);
     });

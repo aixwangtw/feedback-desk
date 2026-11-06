@@ -7,6 +7,7 @@ use App\Models\FeedbackMessage;
 use App\Models\FeedbackMessageDraft;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
+use App\Support\FeedbackAttachmentRules;
 use App\Support\FeedbackServiceException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class ManageFeedbackMessageDraftAction
                     'disk' => $disk,
                     'path' => $path,
                     'original_name' => $image->getClientOriginalName(),
-                    'mime_type' => $image->getMimeType() ?? 'application/octet-stream',
+                    'mime_type' => FeedbackAttachmentRules::storedMime($image->getMimeType()),
                     'size' => (int) $image->getSize(),
                 ];
             }

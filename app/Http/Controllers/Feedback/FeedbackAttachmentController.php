@@ -8,6 +8,8 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\Local\LocalFilesystemAdapter;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FeedbackAttachmentController extends Controller
@@ -17,7 +19,7 @@ class FeedbackAttachmentController extends Controller
         FeedbackReport $feedbackReport,
         FeedbackAttachment $feedbackAttachment,
         FeedbackAccess $access,
-    ): StreamedResponse {
+    ): StreamedResponse|BinaryFileResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         abort_unless($feedbackAttachment->feedback_report_id === $feedbackReport->id, 404);
         if (! $access->canView($feedbackReport)) {
@@ -35,16 +37,26 @@ class FeedbackAttachmentController extends Controller
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackAttachment $feedbackAttachment,
-    ): StreamedResponse {
+    ): StreamedResponse|BinaryFileResponse {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         abort_unless($feedbackAttachment->feedback_report_id === $feedbackReport->id, 404);
 
         return $this->stream($feedbackAttachment);
     }
 
-    private function stream(FeedbackAttachment $feedbackAttachment): StreamedResponse
+    private function stream(FeedbackAttachment $feedbackAttachment): StreamedResponse|BinaryFileResponse
     {
-        return Storage::disk($feedbackAttachment->disk)->response(
+        // 影片要支援 Range（拖拉播放進度、Safari 播放）；本機磁碟用 BinaryFileResponse，它會處理 Range 請求。
+        $disk = Storage::disk($feedbackAttachment->disk);
+        if ($feedbackAttachment->isVideo() && $disk->getAdapter() instanceof LocalFilesystemAdapter) {
+            return response()->file($disk->path($feedbackAttachment->path), [
+                'Content-Type' => $feedbackAttachment->mime_type,
+                'Content-Disposition' => 'inline',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        return $disk->response(
             $feedbackAttachment->path,
             $feedbackAttachment->original_name,
             [

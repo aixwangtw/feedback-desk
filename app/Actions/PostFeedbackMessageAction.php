@@ -7,6 +7,7 @@ use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackMessage;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
+use App\Support\FeedbackAttachmentRules;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -59,7 +60,7 @@ class PostFeedbackMessageAction
                         'disk' => $disk,
                         'path' => $path,
                         'original_name' => $screenshot->getClientOriginalName(),
-                        'mime_type' => $screenshot->getMimeType() ?? 'application/octet-stream',
+                        'mime_type' => FeedbackAttachmentRules::storedMime($screenshot->getMimeType()),
                         'size' => $screenshot->getSize(),
                         'uploader_client_account_id' => $actor->clientAccount?->id,
                         'uploader_developer_id' => $actor->developer?->id,

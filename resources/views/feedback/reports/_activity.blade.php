@@ -27,6 +27,10 @@
                     @if ($message->feedbackAttachments->isNotEmpty())
                         <div class="mt-2 flex flex-wrap gap-2">
                             @foreach ($message->feedbackAttachments as $attachment)
+                                @if ($attachment->isVideo())
+                                    <video controls playsinline preload="metadata" src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" class="{{ $compact ? 'max-h-48' : 'max-h-72' }} w-full max-w-md rounded-lg border border-white bg-black shadow-sm" data-chat-video title="{{ $attachment->original_name }}"></video>
+                                    @continue
+                                @endif
                                 <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block {{ $compact ? 'size-20' : 'size-24 sm:size-28' }} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽" data-chat-attachment>
                                     <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
                                 </a>

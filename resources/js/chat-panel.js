@@ -10,8 +10,11 @@ const THREAD_POLL_MS = 5000;
 const LIST_POLL_OPEN_MS = 10000;
 const LIST_POLL_CLOSED_MS = 60000;
 const MAX_FILES = 5;
+// 與伺服器 FeedbackAttachmentRules 相同：圖片每張 10 MB、mp4 影片每支 50 MB。
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const VIDEO_TYPES = ['video/mp4'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', ...VIDEO_TYPES];
 // 與 portal.blade.php、message-badges.blade.php 相同的樣式。
 const SUMMARY_TONES = {
     alert: ['border-rose-200', 'bg-rose-50', 'text-rose-900'],
@@ -640,10 +643,13 @@ if (root) {
             return `附圖最多 ${MAX_FILES} 張。`;
         }
         if (files.some((file) => !ALLOWED_TYPES.includes(file.type))) {
-            return '附圖只接受 JPG、PNG、WebP。';
+            return '附件只接受 JPG、PNG、WebP 圖片或 MP4 影片。';
         }
-        if (files.some((file) => file.size > MAX_FILE_BYTES)) {
-            return '每張附圖不可超過 10 MB。';
+        if (files.some((file) => VIDEO_TYPES.includes(file.type) && file.size > MAX_VIDEO_BYTES)) {
+            return '每支影片不可超過 50 MB。';
+        }
+        if (files.some((file) => !VIDEO_TYPES.includes(file.type) && file.size > MAX_FILE_BYTES)) {
+            return '每張圖片不可超過 10 MB。';
         }
 
         return null;

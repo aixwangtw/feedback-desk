@@ -15,7 +15,7 @@
             <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg text-xl text-slate-500 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close aria-label="關閉">×</button>
         </header>
 
-        <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-x-8 gap-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_16rem]" data-detail-scroll>
+        <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-x-8 gap-y-5 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_16rem]" data-detail-scroll>
             <div class="min-w-0 lg:col-start-1 lg:row-start-1">
                 <h2 id="detail-report-title-{{ $reportId }}" class="break-words text-xl font-bold leading-snug text-slate-950">{{ $report->title }}</h2>
                 <x-feedback.category-select :$project :$report :categories="$reportCategories" class="mt-2" />
@@ -25,7 +25,7 @@
                 @include('feedback.reports._detail-side', ['project' => $project, 'report' => $report, 'isOwner' => $isOwner, 'context' => 'dialog'])
             </aside>
 
-            <div class="grid min-w-0 content-start gap-5 lg:col-start-1 lg:row-start-2">
+            <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5 lg:col-start-1 lg:row-start-2">
                 <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
                 @if ($attachments->isNotEmpty())
                     <div class="flex flex-wrap gap-2" data-detail-attachments>
@@ -45,7 +45,7 @@
                     </details>
                 @endif
 
-                <section class="grid gap-3 border-t border-slate-100 pt-4" aria-label="活動" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $reportId }}">
+                <section class="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-slate-100 pt-4" aria-label="活動" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $reportId }}">
                     <h3 class="text-sm font-bold text-slate-900">活動</h3>
                     <div aria-live="polite" data-dialog-thread-body><p class="py-4 text-center text-sm text-slate-500">留言載入中…</p></div>
                     @if ($isOwner)

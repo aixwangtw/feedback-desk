@@ -14,7 +14,7 @@
     $canApprove = ! $viewerIsOwner && $access->canManage($project) && $report->status !== FeedbackReportStatus::Completed;
 @endphp
 
-<ol class="grid gap-4" data-chat-messages>
+<ol class="grid grid-cols-[minmax(0,1fr)] gap-4" data-chat-messages>
     @forelse ($timeline as $entry)
         @if ($entry['type'] === 'status')
             @php

@@ -430,7 +430,7 @@
                     <form action="{{ route('feedback.messages.store', [$project, $report]) }}" method="POST" enctype="multipart/form-data" class="grid gap-2" data-dialog-thread-form novalidate>
                         @csrf
                         <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-dialog-thread-error data-attachment-error hidden></p>
-                        <div id="dialog-preview-{{ $report->public_id }}" class="flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
+                        <div id="dialog-preview-{{ $report->public_id }}" class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
                         <label for="dialog-body-{{ $report->public_id }}" class="sr-only">留言內容</label>
                         <textarea id="dialog-body-{{ $report->public_id }}" name="body" rows="2" maxlength="10000" placeholder="輸入留言…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-dialog-thread-input></textarea>
                         <div class="flex items-center justify-between gap-2">

@@ -60,7 +60,7 @@
                     <form class="shrink-0 border-t border-slate-200 bg-white p-3" enctype="multipart/form-data" data-chat-form novalidate>
                         @csrf
                         <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error data-attachment-error hidden></p>
-                        <div id="chat-preview" class="mb-2 flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
+                        <div id="chat-preview" class="mb-2 flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite"></div>
                         <label for="chat-body" class="sr-only">回覆內容</label>
                         <textarea id="chat-body" name="body" rows="2" maxlength="10000" placeholder="輸入回覆…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-body-input></textarea>
                         <div class="mt-2 flex items-center justify-between gap-2">

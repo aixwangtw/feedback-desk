@@ -101,7 +101,7 @@ class FeedbackReportManagementTest extends TestCase
             ->assertViewIs('feedback.portal')
             ->assertSee('新增問題')
             ->assertSee('共用頁面的問題')
-            ->assertSeeInOrder(['標題', '狀態', '圖片', '建立日期', '操作'])
+            ->assertSeeInOrder(['標題', '狀態', '附件', '建立日期', '操作'])
             ->assertSee(route('feedback.attachments.show', [$project, $report, $attachment]), false)
             ->assertSee('data-lightbox-trigger', false)
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)

@@ -1264,7 +1264,10 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             viewerIsOwner={isOwner}
         />
     ).toString();
-    await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
+    // 客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
+    if (isOwner || c.req.query('peek') !== '1') {
+        await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
+    }
     return c.json(
         {
             // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。

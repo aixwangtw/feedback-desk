@@ -4,7 +4,7 @@
 
 import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from '../src/shared/conversation';
 import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
-import { chatTabCounts, filterByTab, rememberDismissed, sessionStorageOrNull, shouldAutoOpen } from '../src/shared/chat-tabs';
+import { EMPTY_THREAD_TEXT, autoSelectTarget, chatTabCounts, rememberDismissed, sessionStorageOrNull, shouldAutoOpen, visibleItems } from '../src/shared/chat-tabs';
 import { fileProblem, MAX_FILES as DEFAULT_MAX_FILES_RULE } from '../src/shared/attachment-rules';
 import { draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../src/shared/chat-drafts';
 
@@ -77,6 +77,8 @@ if (root) {
         // 「未回覆／已回覆」頁籤，預設未回覆。
         tab: 'awaiting',
         autoOpenChecked: false,
+        // 客戶端頁面載入時自動彈出的面板：先「偷看」第一張，不標已讀，等使用者真的操作才標（見 confirmRead）。
+        peek: false,
         // 這張單的待審留言（團隊端）、目前帶入的是第幾則、是否在草稿模式、上次帶入輸入框的原文、
         // 使用者按「改寫一般回覆」的那張單（輪詢時不再自動帶回）。
         drafts: [],
@@ -225,10 +227,8 @@ if (root) {
 
     const renderList = () => {
         const keyword = search.value.trim().toLowerCase();
-        const inTab = filterByTab(state.items, state.tab);
-        const items = keyword === ''
-            ? inTab
-            : inTab.filter((item) => item.title.toLowerCase().includes(keyword) || String(item.number) === keyword.replace(/^#/, ''));
+        const inTab = visibleItems(state.items, state.tab);
+        const items = visibleItems(state.items, state.tab, keyword);
         renderTabs();
 
         list.replaceChildren(...items.map((item) => {
@@ -301,7 +301,7 @@ if (root) {
             if (requestId !== state.listRequest) {
                 return;
             }
-            const openId = isOpen() ? openConversationId() : null;
+            const openId = isOpen() && !state.peek ? openConversationId() : null;
             state.items = reorder(data.items);
             state.loaded = true;
             // 正在看的那張每次刷新都會標為已讀；清單若比它早一步取回，仍當作已讀。
@@ -321,16 +321,23 @@ if (root) {
                 if (!isOpen() && shouldAutoOpen(data.awaiting_total ?? 0, sessionStorageOrNull())) {
                     state.tab = 'awaiting';
                     setView('list');
-                    openPanel();
+                    openPanel({ autoSelect: false });
                     // 團隊端有沒送出的待審留言時，直接打開第一張有草稿的單（草稿已帶進輸入框）。
                     const firstDraft = state.items.find((item) => (item.drafts_count ?? 0) > 0);
                     if (firstDraft) {
                         openThread(firstDraft.id);
+                    } else {
+                        // 沒人操作就彈出來的面板，客戶端只偷看第一張、不標已讀，避免漏看新留言。
+                        state.peek = !isOwnerViewer;
+                        selectFirst();
                     }
                 }
             }
             if (isOpen()) {
                 renderList();
+                if (state.currentId === null) {
+                    selectFirst();
+                }
             }
         } catch {
             if (isOpen() && !state.loaded) {
@@ -492,11 +499,15 @@ if (root) {
 
         // 開啟對話即標為已讀，清單與徽章先在本地歸零，下次刷新再以伺服器為準。
         // 同頁清單／看板上這張單的紅色未讀數字與上方未讀提示一併更新。
-        document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
-        document.querySelectorAll(`[data-unread-flag="${CSS.escape(data.id)}"]`).forEach((flag) => flag.remove());
+        if (!state.peek) {
+            document.querySelectorAll(`[data-chat-open="${CSS.escape(data.id)}"] [data-unread-badge]`).forEach((badge) => badge.remove());
+            document.querySelectorAll(`[data-unread-flag="${CSS.escape(data.id)}"]`).forEach((flag) => flag.remove());
+        }
 
         const item = state.items.find((candidate) => candidate.id === data.id);
-        if (item) {
+        if (item && state.peek) {
+            renderList();
+        } else if (item) {
             item.unread = 0;
             item.adjustment_updated = false;
             item.has_update = false;
@@ -506,8 +517,12 @@ if (root) {
         syncPage();
     };
 
-    const threadUrl = (id) => state.items.find((item) => item.id === id)?.thread_url
-        ?? root.dataset.threadUrlTemplate.replace('__REPORT__', encodeURIComponent(id));
+    const threadUrl = (id) => {
+        const url = state.items.find((item) => item.id === id)?.thread_url
+            ?? root.dataset.threadUrlTemplate.replace('__REPORT__', encodeURIComponent(id));
+
+        return state.peek ? `${url}${url.includes('?') ? '&' : '?'}peek=1` : url;
+    };
 
     const loadThread = async (id, { forceScroll = false } = {}) => {
         const requestId = ++state.threadRequest;
@@ -563,6 +578,45 @@ if (root) {
         loadThread(id, { forceScroll: true });
     };
 
+    // 右側不留空白：兩欄並排時自動選第一張，清單空了就顯示「目前沒有回饋單」；手機一次只看一欄，不自動選（會在使用者沒看到時標已讀）。
+    const selectFirst = ({ force = false } = {}) => {
+        if (!isOpen() || !state.loaded || !window.matchMedia('(min-width: 640px)').matches) {
+            return;
+        }
+        const target = autoSelectTarget(visibleItems(state.items, state.tab, search.value), {
+            currentId: state.currentId,
+            viewing: !threadView.hidden,
+            force,
+        });
+        if (target.action === 'open') {
+            openThread(target.id);
+        } else if (target.action === 'empty') {
+            clearComposer();
+            state.currentId = null;
+            state.lastThreadHtml = '';
+            state.threadRequest += 1;
+            threadView.hidden = true;
+            placeholder.textContent = EMPTY_THREAD_TEXT;
+            placeholder.hidden = false;
+            renderList();
+        }
+    };
+
+    // 偷看中的對話：使用者在右側對話區真的操作（滾輪、點擊、按鍵、聚焦）才標已讀。
+    const confirmRead = () => {
+        if (!state.peek) {
+            return;
+        }
+        state.peek = false;
+        if (state.currentId !== null && !threadView.hidden) {
+            loadThread(state.currentId);
+        }
+    };
+
+    ['wheel', 'touchmove', 'pointerdown', 'keydown', 'focusin'].forEach((type) => {
+        threadPane.addEventListener(type, confirmRead, { passive: true });
+    });
+
     const showList = () => {
         setView('list');
         if (window.matchMedia('(max-width: 639px)').matches) {
@@ -576,7 +630,7 @@ if (root) {
         search.focus({ preventScroll: true });
     };
 
-    const openPanel = () => {
+    const openPanel = ({ autoSelect = true } = {}) => {
         if (isOpen()) {
             return;
         }
@@ -585,6 +639,9 @@ if (root) {
         document.body.classList.add('max-sm:overflow-hidden');
         state.items = reorder(state.items, null);
         renderList();
+        if (autoSelect) {
+            selectFirst();
+        }
         loadList();
         // 關掉前開著的那張對話：重開時立刻刷新並標為已讀，不等下一次輪詢。
         if (state.currentId !== null && !threadView.hidden) {
@@ -607,8 +664,10 @@ if (root) {
 
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => {
+            state.peek = false;
             state.tab = button.dataset.chatTab === 'replied' ? 'replied' : 'awaiting';
             renderList();
+            selectFirst({ force: true });
         });
     });
 
@@ -618,6 +677,7 @@ if (root) {
 
             return;
         }
+        state.peek = false;
         openPanel();
         if (state.currentId === null) {
             setView('list');
@@ -627,11 +687,16 @@ if (root) {
 
     $('[data-chat-close]').addEventListener('click', dismissPanel);
     $('[data-chat-back]').addEventListener('click', showList);
-    search.addEventListener('input', renderList);
+    search.addEventListener('input', () => {
+        state.peek = false;
+        renderList();
+        selectFirst({ force: true });
+    });
 
     list.addEventListener('click', (event) => {
         const button = event.target.closest('[data-chat-item]');
         if (button) {
+            state.peek = false;
             openThread(button.dataset.chatItem);
         }
     });
@@ -650,7 +715,8 @@ if (root) {
         }
         event.preventDefault();
         opener.closest('dialog')?.close();
-        openPanel();
+        state.peek = false;
+        openPanel({ autoSelect: false });
         openThread(opener.dataset.chatOpen);
     });
 

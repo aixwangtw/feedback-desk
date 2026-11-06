@@ -64,3 +64,31 @@ export function sessionStorageOrNull(): StorageLike | null {
         return null;
     }
 }
+
+/** 目前頁籤＋搜尋關鍵字篩出來的清單（面板畫出來的就是這份，自動選第一張也看這份）。 */
+export function visibleItems<T extends { awaiting_reply?: boolean; title: string; number: number }>(items: T[], tab: ChatTab, keyword = ''): T[] {
+    const needle = keyword.trim().toLowerCase();
+    const tabItems = filterByTab(items, tab);
+    if (needle === '') {
+        return tabItems;
+    }
+    return tabItems.filter((item) => item.title.toLowerCase().includes(needle) || String(item.number) === needle.replace(/^#/, ''));
+}
+
+export type AutoSelect = { action: 'keep' } | { action: 'open'; id: string } | { action: 'empty' };
+
+/**
+ * 面板兩欄並排時右側不留空白：清單是空的就顯示「目前沒有回饋單」，否則選中第一張。
+ * force＝使用者剛切頁籤或改搜尋，一律改選第一張；否則已經在看某張對話就不動它。
+ */
+export function autoSelectTarget(items: Array<{ id: string }>, { currentId = null, viewing = false, force = false }: { currentId?: string | null; viewing?: boolean; force?: boolean } = {}): AutoSelect {
+    if (items.length === 0) {
+        return { action: 'empty' };
+    }
+    if (viewing && currentId !== null && (!force || items[0].id === currentId)) {
+        return { action: 'keep' };
+    }
+    return { action: 'open', id: items[0].id };
+}
+
+export const EMPTY_THREAD_TEXT = '目前沒有回饋單';

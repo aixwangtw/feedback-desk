@@ -6,6 +6,8 @@ import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSu
 import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, chatTabCounts, rememberDismissed, sessionStorageOrNull, shouldAutoOpen, visibleItems } from '../src/shared/chat-tabs';
 import { fileProblem, MAX_FILES as DEFAULT_MAX_FILES_RULE } from '../src/shared/attachment-rules';
+import { bindAttachmentComposer } from './attachment-composer.js';
+import { attachmentTitle } from '../src/shared/attachment-list';
 import { draftAttachmentViews, draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../src/shared/chat-drafts';
 
 const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
@@ -47,7 +49,6 @@ if (root) {
     const form = $('[data-chat-form]');
     const bodyInput = $('[data-chat-body-input]');
     const fileInput = $('[data-chat-files]');
-    const preview = document.getElementById('chat-preview');
     const sendButton = $('[data-chat-send]');
     const errorBox = $('[data-chat-error]');
     // 待審留言區塊只在開發團隊的頁面輸出；客戶端這些都是 null。
@@ -371,6 +372,16 @@ if (root) {
             return;
         }
         draftFiles.dataset.signature = signature;
+        const captioned = (media, view, widthClass) => {
+            const wrap = document.createElement('div');
+            wrap.className = `min-w-0 ${widthClass}`;
+            const caption = el('span', 'mt-0.5 block truncate text-[11px] leading-4 text-amber-900', attachmentTitle(view.name));
+            caption.title = view.name;
+            caption.dataset.attachmentTitle = '';
+            wrap.append(media, caption);
+
+            return wrap;
+        };
         draftFiles.replaceChildren(...views.map((view) => {
             if (view.kind === 'video') {
                 const video = document.createElement('video');
@@ -380,7 +391,7 @@ if (root) {
                 video.src = view.url;
                 video.title = view.name;
                 video.className = 'max-h-40 w-full rounded-lg border border-amber-200 bg-black';
-                return video;
+                return captioned(video, view, 'w-full');
             }
             const link = document.createElement('a');
             link.href = view.url;
@@ -395,7 +406,7 @@ if (root) {
             img.loading = 'lazy';
             img.className = 'size-full object-cover';
             link.append(img);
-            return link;
+            return captioned(link, view, 'w-16');
         }));
     };
 
@@ -590,7 +601,6 @@ if (root) {
         state.draftDismissedFor = null;
         form.reset();
         renderDraftUi();
-        preview.replaceChildren();
         errorBox.hidden = true;
         errorBox.textContent = '';
     };
@@ -788,14 +798,8 @@ if (root) {
     // 與伺服器同一份規則（src/shared/attachment-rules.ts）：圖片每張 10 MB、mp4 影片每支 50 MB、最多 5 個檔。
     const validateFiles = () => fileProblem(Array.from(fileInput.files), { maxFiles: state.maxFiles, maxImageBytes: state.maxFileBytes, allowVideo: state.allowVideo === true });
 
-    fileInput.addEventListener('change', () => {
-        const problem = validateFiles();
-        if (problem) {
-            showError(problem);
-        } else {
-            errorBox.hidden = true;
-        }
-    });
+    // 按「附件」選檔與拖進輸入區走同一套檢查與預覽（client/attachment-composer.js）；上限等伺服器回應才知道，所以每次檢查才取。
+    bindAttachmentComposer(fileInput, () => ({ maxFiles: state.maxFiles, maxImageBytes: state.maxFileBytes, allowVideo: state.allowVideo === true }));
 
     const send = async () => {
         if (!state.postUrl || sendButton.disabled) {

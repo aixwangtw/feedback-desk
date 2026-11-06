@@ -8,6 +8,7 @@ import type { Notifications } from '../lib/notifications';
 import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
+import { attachmentTitle } from '../../shared/attachment-list';
 import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_BUTTON_LABELLED, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
 
@@ -76,6 +77,11 @@ export const AttachmentMedia: FC<{ src: string; name: string; mime: string | nul
     ) : (
         <img src={src} alt={name} class={className} loading="lazy" />
     );
+
+/** 附件的一行短標題：檔名去掉副檔名，太長截斷加省略號，滑鼠移上去看完整檔名（留言、待審留言共用）。 */
+export const AttachmentCaption: FC<{ name: string; class?: string }> = ({ name, class: className }) => (
+    <span class={cx('block truncate text-[11px] leading-4 text-slate-600', className)} title={name} data-attachment-title>{attachmentTitle(name)}</span>
+);
 
 /** 附件縮圖連結的 title：圖片放大預覽、影片開新分頁播放。 */
 export function attachmentLinkTitle(mime: string | null | undefined): string {
@@ -440,14 +446,14 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
 
                         <form class="shrink-0 border-t border-slate-200 bg-white p-3" data-chat-form novalidate>
                             {viewer === 'owner' ? <ChatDraftBox clientLabel={v.cfg.labels.client} /> : null}
-                            <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error hidden></p>
-                            <div id="chat-preview" class="mb-2 grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                            <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error data-attachment-error hidden></p>
+                            <div id="chat-preview" class="mb-2 flex flex-wrap gap-2 empty:hidden" aria-live="polite"></div>
                             <label for="chat-body" class="sr-only">回覆內容</label>
                             <textarea id="chat-body" name="body" rows={2} maxlength={10000} placeholder="輸入回覆…（Ctrl＋Enter 送出）" class="block max-h-40 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-chat-body-input></textarea>
                             <div class="mt-2 flex items-center justify-between gap-2">
                                 <label for="chat-screenshots" class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                                     {MESSAGE_UPLOAD_LABEL}
-                                    <input id="chat-screenshots" type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target="chat-preview" data-chat-files />
+                                    <input id="chat-screenshots" type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-attachment-composer data-preview-target="chat-preview" data-chat-files />
                                 </label>
                                 <span class="min-w-0 flex-1 truncate text-[11px] text-slate-500" title={MESSAGE_HINT}>{MESSAGE_HINT}</span>
                                 <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 disabled:opacity-60" data-chat-send>送出</button>

@@ -65,6 +65,9 @@ describe('留言附 mp4 影片', () => {
             expect(page).toContain(`${VIDEO_TAG} src="${url}"`);
             const thread = (await (await browser.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { accept: 'application/json' })).json()) as { html: string };
             expect(thread.html).toContain(VIDEO_TAG);
+            // 每個附件下方有一行短標題：檔名去掉副檔名，完整檔名放 title。
+            expect(page).toContain('title="b.mp4" data-attachment-title="true">b</span>');
+            expect(thread.html).toContain('data-attachment-title="true">b</span>');
             const file = await browser.get(url);
             expect(file.status).toBe(200);
             expect(file.headers.get('content-type')).toBe('video/mp4');

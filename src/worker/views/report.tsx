@@ -7,7 +7,7 @@ import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
 import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { AttachmentMedia, attachmentLinkTitle, cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
@@ -115,11 +115,17 @@ export const Activity: FC<ActivityProps> = ({ v, report, messages, messageAttach
                                     <div class="mt-2 flex flex-wrap gap-2">
                                         {attachments.map((attachment) =>
                                             isVideoMime(attachment.mime_type) ? (
-                                                <video controls playsinline preload="metadata" src={attachmentUrl(attachment)} class={`${compact ? 'max-h-48' : 'max-h-72'} w-full max-w-md rounded-lg border border-white bg-black shadow-sm`} title={attachment.original_name} data-chat-video></video>
+                                                <div class="min-w-0 w-full max-w-md">
+                                                    <video controls playsinline preload="metadata" src={attachmentUrl(attachment)} class={`${compact ? 'max-h-48' : 'max-h-72'} w-full rounded-lg border border-white bg-black shadow-sm`} title={attachment.original_name} data-chat-video></video>
+                                                    <AttachmentCaption name={attachment.original_name} class="mt-0.5" />
+                                                </div>
                                             ) : (
+                                                <div class={`min-w-0 ${compact ? 'w-20' : 'w-24 sm:w-28'}`}>
                                                 <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`block ${compact ? 'size-20' : 'size-24 sm:size-28'} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
                                                     <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="size-full object-cover" loading="lazy" />
                                                 </a>
+                                                <AttachmentCaption name={attachment.original_name} class="mt-0.5" />
+                                                </div>
                                             ),
                                         )}
                                     </div>
@@ -222,11 +228,17 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                                 <div class="mt-2 flex flex-wrap gap-2">
                                     {draft.files.map((file, index) =>
                                         isVideoMime(file.mime_type) ? (
-                                            <video controls playsinline preload="metadata" src={`${base}/${draft.id}/files/${index}`} class="max-h-60 w-full max-w-md rounded-lg border border-slate-200 bg-black" title={file.original_name} data-draft-video></video>
+                                            <div class="min-w-0 w-full max-w-md">
+                                                <video controls playsinline preload="metadata" src={`${base}/${draft.id}/files/${index}`} class="max-h-60 w-full rounded-lg border border-slate-200 bg-black" title={file.original_name} data-draft-video></video>
+                                                <AttachmentCaption name={file.original_name} class="mt-0.5" />
+                                            </div>
                                         ) : (
+                                            <div class="min-w-0 w-24">
                                             <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
                                                 <img src={`${base}/${draft.id}/files/${index}`} alt={file.original_name} class="size-full object-cover" loading="lazy" />
                                             </a>
+                                            <AttachmentCaption name={file.original_name} class="mt-0.5" />
+                                            </div>
                                         ),
                                     )}
                                 </div>
@@ -543,12 +555,12 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                             <p class="mt-2 text-xs text-rose-700">{error}</p>
                                         ))}
                                     </div>
-                                    <div id="message-preview" class="grid grid-cols-3 gap-3 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
+                                    <div id="message-preview" class="flex flex-wrap gap-3 empty:hidden" aria-live="polite"></div>
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div class="flex flex-wrap items-center gap-3">
                                             <label for="message-screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
                                                 {isPublicReporter ? '加入截圖' : MESSAGE_UPLOAD_LABEL}
-                                                <input id="message-screenshots" type="file" accept={isPublicReporter ? IMAGE_ACCEPT : MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} data-upload-allow-video={isPublicReporter ? undefined : ''} />
+                                                <input id="message-screenshots" type="file" accept={isPublicReporter ? IMAGE_ACCEPT : MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-attachment-composer="page" data-preview-target="message-preview" data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`} data-upload-name="upload_ids[]" data-upload-max={String(isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : 5)} data-upload-max-bytes={String(maxMessageBytes)} data-upload-allow-video={isPublicReporter ? undefined : ''} />
                                             </label>
                                             <span class="text-xs text-slate-500">{isPublicReporter ? `截圖最多 ${PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB。` : `${MESSAGE_HINT}。`}</span>
                                         </div>

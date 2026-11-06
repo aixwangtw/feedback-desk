@@ -1,4 +1,5 @@
 import './chat-panel.js';
+import { bindPageAttachmentComposers } from './attachment-composer.js';
 import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
@@ -15,6 +16,9 @@ if (portalRowsData) {
         document.querySelector('[data-report-table] tbody')?.insertAdjacentHTML('afterbegin', listHtml(payload));
     }
 }
+
+// 留言區的附件（data-attachment-composer）由 attachment-composer.js 處理預覽、拖曳與檢查。
+bindPageAttachmentComposers();
 
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;
@@ -56,7 +60,7 @@ const renderImagePreviews = (input) => {
 };
 
 document.addEventListener('change', (event) => {
-    if (event.target.matches('[data-image-input]')) {
+    if (event.target.matches('[data-image-input]:not([data-attachment-composer])')) {
         renderImagePreviews(event.target);
     }
     if (event.target.matches('[data-project-switcher]')) {

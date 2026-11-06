@@ -3,6 +3,7 @@
 // 附圖跟其他表單一樣：每張圖各用一個 PUT 串流上傳，留言只帶回傳的 upload id（Workers 免費方案每請求 CPU 10 ms）。
 
 import { fileProblem } from '../src/shared/attachment-rules';
+import { bindAttachmentComposer } from './attachment-composer.js';
 
 const POLL_MS = 5000;
 const DEFAULT_MAX_FILES = 5;
@@ -101,14 +102,8 @@ const setupThread = (section) => {
     // 與伺服器同一份規則（src/shared/attachment-rules.ts）：圖片每張 10 MB、mp4 影片每支 50 MB、最多 5 個檔。
     const validateFiles = () => fileProblem(Array.from(fileInput.files), { maxFiles: state.maxFiles, maxImageBytes: state.maxBytes, allowVideo: state.allowVideo === true });
 
-    fileInput.addEventListener('change', () => {
-        const problem = validateFiles();
-        if (problem) {
-            showError(problem);
-        } else {
-            errorBox.hidden = true;
-        }
-    });
+    // 按「附件」選檔與拖進輸入區走同一套檢查與預覽（client/attachment-composer.js）。
+    bindAttachmentComposer(fileInput, () => ({ maxFiles: state.maxFiles, maxImageBytes: state.maxBytes, allowVideo: state.allowVideo === true }));
 
     const send = async () => {
         if (sendButton.disabled) {
@@ -165,7 +160,6 @@ const setupThread = (section) => {
             });
             if (response.ok) {
                 form.reset();
-                document.getElementById(`dialog-preview-${reportId}`)?.replaceChildren();
                 await load({ scrollToEnd: true });
 
                 return;

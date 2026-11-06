@@ -1,21 +1,20 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import { draftAttachmentViews, draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../../src/shared/chat-drafts';
 import { adjustmentReminder } from '../../src/worker/lib/reports';
 import type { Report } from '../../src/worker/lib/models';
 import { Browser, seedProject, seedReport, workerEnv, type SeededProject } from './helpers';
 
 /**
- * 右下角對話面板裡的待審留言：對應 Laravel 版 FeedbackChatPanelDraftTest 與 chat-drafts.test.js。
- * 團隊打開那張單時草稿帶進輸入框、按送出走與單頁相同的送出端點（可送出改過的文字、取代型改寫原留言）、
- * 清單標「有草稿」、有草稿的單算未回覆。客戶的面板完全拿不到草稿。
+ * 待審留言在單頁、詳情視窗、右下角對話面板三處共用同一份畫面（DraftsSection，經對話端點的 drafts_html 取得）：
+ * 對應 Laravel 版 FeedbackChatPanelDraftTest。送出一律走同一支送出端點（可送出改過的文字、取代型改寫原留言）、
+ * 清單標「有草稿」、有草稿的單算未回覆。客戶的三個地方都拿不到草稿。
  */
 const DRAFT_TEXT = '面板草稿：已修正第 3 題排版';
 const JSON_HEADERS = { accept: 'application/json' };
 
 interface ThreadJson {
     id: string;
-    drafts?: Array<{ id: number; body: string; author: string; replaces_message_id: number | null; replaces_body: string | null; attachments_count: number; attachments: Array<{ url: string; name: string; is_video: boolean }>; send_url: string; page_url: string }>;
+    drafts_html?: string;
 }
 interface ListJson {
     items: Array<{ id: string; awaiting_reply: boolean; drafts_count?: number }>;
@@ -78,28 +77,24 @@ describe('對話面板的待審留言', () => {
         const owner = await new Browser().asOwner(seeded);
 
         const data = await thread(owner, seeded, report);
-        expect(data.drafts).toEqual([
-            {
-                id: draftId,
-                body: DRAFT_TEXT,
-                author: '開發團隊',
-                replaces_message_id: originalId,
-                replaces_body: '原本的說明',
-                attachments_count: 0,
-                attachments: [],
-                send_url: sendUrl(seeded, report, draftId),
-                page_url: `/p/${seeded.project.slug}/reports/${report.public_id}#message-drafts`,
-            },
-        ]);
+        const html = data.drafts_html ?? '';
+        expect(html).toContain(`data-message-draft="${draftId}"`);
+        expect(html).toContain(DRAFT_TEXT);
+        expect(html).toContain(`data-draft-replaces="${originalId}"`);
+        expect(html).toContain('原本的說明');
+        expect(html).toContain(`data-draft-send-url="${sendUrl(seeded, report, draftId)}"`);
+        // 視窗與面板重複出現，不放單頁才有的錨點 id。
+        expect(html).not.toContain('id="message-drafts"');
 
         const listed = (await (await list(owner, seeded)).json()) as ListJson;
         expect(listed.items.find((item) => item.id === report.public_id)?.drafts_count).toBe(1);
         expect(listed.drafts_total).toBe(1);
 
-        const portal = await (await owner.get(`/p/${seeded.project.slug}`)).text();
-        expect(portal).toContain('data-chat-draft');
-        expect(portal).toContain('待審留言（還沒發出）');
-        expect(portal).toContain('data-chat-draft-resume');
+        const portal = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
+        expect(portal).toContain('data-chat-drafts');
+        // 詳情視窗（第一次開啟才由 /dialogs 載入）也有草稿容器。
+        const dialogs = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialogs).toContain('data-dialog-thread-drafts');
     });
 
     it('an unsent draft counts as awaiting for the team only', async () => {
@@ -137,15 +132,16 @@ describe('對話面板的待審留言', () => {
 
         const owner = await new Browser().asOwner(seeded);
         const data = await thread(owner, seeded, report);
-        expect(data.drafts?.[0].attachments_count).toBe(2);
-        expect(data.drafts?.[0].attachments).toEqual([
-            { url: `${base}/0`, name: '教學.mp4', is_video: true },
-            { url: `${base}/1`, name: '截圖.png', is_video: false },
-        ]);
+        const html = data.drafts_html ?? '';
+        expect(html).toContain(`<video controls="" playsinline="" preload="metadata" src="${base}/0"`);
+        expect(html).toContain(`src="${base}/1"`);
+        // 每個附件下方的短標題：檔名去掉副檔名，完整檔名放 title。
+        expect(html).toContain('title="教學.mp4" data-attachment-title="true">教學</span>');
+        expect(html).toContain('title="截圖.png" data-attachment-title="true">截圖</span>');
 
         const client = await new Browser().asClient(seeded);
         const text = await (await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS)).text();
-        expect(JSON.parse(text)).not.toHaveProperty('drafts');
+        expect(JSON.parse(text)).not.toHaveProperty('drafts_html');
         expect(text).not.toContain('drafts/a.mp4');
         expect(text).not.toContain('/files/0');
         expect((await client.get(`${base}/0`)).status).toBe(403);
@@ -158,7 +154,7 @@ describe('對話面板的待審留言', () => {
 
         const response = await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS);
         const text = await response.text();
-        expect(JSON.parse(text)).not.toHaveProperty('drafts');
+        expect(JSON.parse(text)).not.toHaveProperty('drafts_html');
         expect(text).not.toContain(DRAFT_TEXT);
 
         const listText = await (await list(client, seeded)).text();
@@ -169,7 +165,12 @@ describe('對話面板的待審留言', () => {
 
         const portal = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(portal).not.toContain(DRAFT_TEXT);
-        expect(portal).not.toContain('data-chat-draft');
+        // 三個地方（面板、詳情視窗、單頁）對客戶都不輸出草稿容器與按鈕。
+        expect(portal).not.toContain('data-chat-drafts');
+        expect(await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text()).not.toContain('data-dialog-thread-drafts');
+        const page = await (await client.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
+        expect(page).not.toContain(DRAFT_TEXT);
+        expect(page).not.toContain('data-message-drafts');
     });
 
     it('a new or changed draft refreshes the cached team list and thread (ETag), and leaves the client list cached', async () => {
@@ -191,12 +192,12 @@ describe('對話面板的待審留言', () => {
         const refreshed = await owner.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { ...JSON_HEADERS, 'if-none-match': threadTag });
         expect(refreshed.status).toBe(200);
         const newTag = refreshed.headers.get('etag') ?? '';
-        expect(((await refreshed.json()) as ThreadJson).drafts?.[0]?.body).toBe(DRAFT_TEXT);
+        expect(((await refreshed.json()) as ThreadJson).drafts_html).toContain(DRAFT_TEXT);
 
         await env.DB.prepare('UPDATE message_drafts SET body = ?, updated_at = ? WHERE id = ?').bind('改過的草稿', new Date(Date.now() + 1000).toISOString(), draftId).run();
         const edited = await owner.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { ...JSON_HEADERS, 'if-none-match': newTag });
         expect(edited.status).toBe(200);
-        expect(((await edited.json()) as ThreadJson).drafts?.[0]?.body).toBe('改過的草稿');
+        expect(((await edited.json()) as ThreadJson).drafts_html).toContain('改過的草稿');
     });
 
     it('sending from the panel uses the edited text and answers JSON', async () => {
@@ -262,6 +263,28 @@ describe('對話面板的待審留言', () => {
         expect(await messages(report)).toHaveLength(0);
     });
 
+    it('update and discard answer JSON for the shared panel and window scripts, and refuse the client', async () => {
+        const { seeded, report } = await setup();
+        const draftId = await draft(report);
+        const base = `/p/${seeded.project.slug}/reports/${report.public_id}/drafts/${draftId}`;
+        const owner = await new Browser().asOwner(seeded);
+
+        const updated = await owner.post(`${base}/update`, { body: '新的字' }, JSON_HEADERS);
+        expect(updated.status).toBe(200);
+        expect(((await updated.json()) as { message: string }).message).toBe('待審留言已更新，尚未送出。');
+        expect((await env.DB.prepare('SELECT body FROM message_drafts WHERE id = ?').bind(draftId).first<{ body: string }>())?.body).toBe('新的字');
+        expect((await owner.post(`${base}/update`, { body: '' }, JSON_HEADERS)).status).toBe(422);
+
+        const client = await new Browser().asClient(seeded);
+        expect((await client.post(`${base}/update`, { body: 'x' }, JSON_HEADERS)).status).toBe(403);
+        expect((await client.post(`${base}/discard`, {}, JSON_HEADERS)).status).toBe(403);
+        expect(await draftExists(draftId)).toBe(true);
+
+        const discarded = await owner.post(`${base}/discard`, {}, JSON_HEADERS);
+        expect(discarded.status).toBe(200);
+        expect(await draftExists(draftId)).toBe(false);
+    });
+
     it('the single-page send button (no body, form post) still redirects with the reminder', async () => {
         const { seeded, report } = await setup();
         const draftId = await draft(report);
@@ -270,38 +293,5 @@ describe('對話面板的待審留言', () => {
         expect(response.status).toBe(302);
         expect(response.headers.get('location')).toContain('#conversation');
         expect((await messages(report)).map((row) => row.body)).toEqual([DRAFT_TEXT]);
-    });
-});
-
-describe('對話面板待審留言的純邏輯', () => {
-    it('fills the composer only when it is blank or still the text loaded last time', () => {
-        expect(shouldFillComposer('', null)).toBe(true);
-        expect(shouldFillComposer('   ', '舊草稿')).toBe(true);
-        expect(shouldFillComposer('舊草稿', '舊草稿')).toBe(true);
-        expect(shouldFillComposer('我改過了', '舊草稿')).toBe(false);
-    });
-
-    it('cycles through several drafts', () => {
-        expect(nextDraftIndex(0, 3)).toBe(1);
-        expect(nextDraftIndex(2, 3)).toBe(0);
-        expect(nextDraftIndex(5, 0)).toBe(0);
-    });
-
-    it('describes the draft: author, which one, images', () => {
-        expect(draftMeta({ author: 'Alex（Claude Code）', attachments_count: 0 }, 0, 1)).toBe('Alex（Claude Code）寫的');
-        expect(draftMeta({ author: 'Alex', attachments_count: 2 }, 1, 3)).toBe('Alex寫的・第 2／3 則・附件 2 個會一起送出');
-    });
-
-    it('describes the draft attachments as video or image views', () => {
-        expect(draftAttachmentViews({})).toEqual([]);
-        expect(draftAttachmentViews({ attachments: [{ url: '/a', name: 'a.mp4', is_video: true }, { url: '/b', name: 'b.png', is_video: false }] })).toEqual([
-            { kind: 'video', url: '/a', name: 'a.mp4' },
-            { kind: 'image', url: '/b', name: 'b.png' },
-        ]);
-    });
-
-    it('sends only the composer text, never the panel images', () => {
-        expect(draftSendParams('  改過的文字  ').toString()).toBe(new URLSearchParams([['body', '  改過的文字  ']]).toString());
-        expect([...draftSendParams('x').keys()]).toEqual(['body']);
     });
 });

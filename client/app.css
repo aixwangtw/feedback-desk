@@ -3,10 +3,23 @@
 @source '../src/worker/views';
 @source './feedback.js';
 @source './chat-panel.js';
+@source './attachment-composer.js';
+@source './message-drafts.js';
+@source './report-dialog-thread.js';
 
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* 按鈕文字一律不換行：放不下就縮內距或改圖示，不要讓字斷成兩行（見 AGENTS.md）。要換行的地方明確加 whitespace-normal。 */
+@layer base {
+    button,
+    summary,
+    [role='tab'],
+    .inline-flex {
+        white-space: nowrap;
+    }
 }
 
 .kanban-card-chosen {

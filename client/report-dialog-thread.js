@@ -4,6 +4,7 @@
 
 import { fileProblem } from '../src/shared/attachment-rules';
 import { bindAttachmentComposer } from './attachment-composer.js';
+import { renderMessageDrafts } from './message-drafts.js';
 
 const POLL_MS = 5000;
 const DEFAULT_MAX_FILES = 5;
@@ -50,6 +51,8 @@ const setupThread = (section) => {
     const fileInput = section.querySelector('[data-dialog-thread-files]');
     const sendButton = section.querySelector('[data-dialog-thread-send]');
     const errorBox = section.querySelector('[data-dialog-thread-error]');
+    // 待審留言（只有開發團隊拿得到，客戶端這個容器不存在）：顯示在留言串最下面，與單頁、面板同一份。
+    const draftsBox = section.querySelector('[data-dialog-thread-drafts]');
     const reportId = section.dataset.reportId;
     const state = { lastHtml: '', timer: null, uploadUrl: null, maxFiles: DEFAULT_MAX_FILES, maxBytes: DEFAULT_MAX_FILE_BYTES, request: 0 };
 
@@ -87,6 +90,9 @@ const setupThread = (section) => {
                 if (scrollToEnd || nearEnd) {
                     body.scrollTop = body.scrollHeight;
                 }
+            }
+            if (draftsBox && typeof data.drafts_html === 'string') {
+                renderMessageDrafts(draftsBox, data.drafts_html, { onChanged: () => load({ scrollToEnd: true }) });
             }
             markRead();
         } catch (error) {

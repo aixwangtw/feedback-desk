@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared/status';
 import { charLength, charSlice } from '../../shared/text';
-import { isVideoMime } from '../../shared/attachment-rules';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
 import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
@@ -62,7 +61,7 @@ import { messagePreview, shortTime } from '../../shared/conversation';
 import { isAwaitingReply } from '../../shared/chat-tabs';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, editCategoryOptions, type PortalFormState, type PortalRow } from '../views/portal';
-import { Activity, ConversationFragment, ReportPage } from '../views/report';
+import { Activity, ConversationFragment, DraftsSection, ReportPage } from '../views/report';
 import { isSafeLocalPath } from '../lib/access';
 import { abort, backUrl, currentPathWithQuery, field, origin, readForm, viewContext, wantsJson, type AppContext, type AppEnv } from './context';
 import { paths } from './paths';
@@ -70,7 +69,7 @@ import { projectCategories } from '../../shared/categories';
 import { verifyTurnstile } from '../lib/turnstile';
 import { isDeveloperSideCreator, withAgent } from '../lib/agents';
 import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
-import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type DraftView, type MessageDraft } from '../lib/drafts';
+import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type MessageDraft } from '../lib/drafts';
 import { clientNotifications, teamNotifications, type Notifications } from '../lib/notifications';
 
 export const web = new Hono<AppEnv>();
@@ -1197,21 +1196,6 @@ async function draftsVersion(db: D1Database, reportId: number): Promise<string> 
     return row && row.total > 0 ? `${row.total}.${row.last_id}.${row.last_update}` : '';
 }
 
-/** A draft as the team's chat panel gets it: the text goes into the composer, send_url sends it. */
-function panelDraft(project: Project, report: Report, draft: DraftView) {
-    return {
-        id: draft.id,
-        body: draft.body,
-        author: withAgent(draft.display_author, draft.author_agent, true),
-        replaces_message_id: draft.replaces_message_id,
-        replaces_body: draft.replaces_body,
-        attachments_count: draft.files.length,
-        attachments: draft.files.map((file, index) => ({ url: paths.draftFile(project.slug, report.public_id, draft.id, index), name: file.original_name, is_video: isVideoMime(file.mime_type) })),
-        send_url: paths.draftSend(project.slug, report.public_id, draft.id),
-        page_url: `${paths.report(project.slug, report.public_id)}#message-drafts`,
-    };
-}
-
 /**
  * One conversation for the chat panel: the adjustment and the messages as server-rendered (escaped)
  * HTML. Opening it, and each refresh while it is open, marks it read for the viewer's side. An
@@ -1273,7 +1257,7 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     return c.json(
         {
             // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
-            ...(isOwner ? { drafts: drafts.map((draft) => panelDraft(project, report, draft)) } : {}),
+            ...(isOwner ? { drafts_html: drafts.length === 0 ? '' : await (<DraftsSection v={viewContext(c)} slug={project.slug} publicId={report.public_id} drafts={drafts} />).toString() } : {}),
             id: report.public_id,
             number,
             title: report.title,
@@ -1739,9 +1723,15 @@ web.post('/p/:slug/reports/:publicId/drafts/:draftId/update', async (c) => {
         await updateDraft(c.env, draft, form.get('body') ?? '', c.get('now'));
     } catch (error) {
         if (error instanceof ServiceError) {
+            if (wantsJson(c)) {
+                return c.json({ message: error.message, errors: { body: [error.message] } }, 422);
+            }
             return renderReport(c, project, report, { draftErrors: { id: draft.id, errors: [error.message], old: form.get('body') ?? '' } }, 422);
         }
         throw error;
+    }
+    if (wantsJson(c)) {
+        return c.json({ message: '待審留言已更新，尚未送出。' });
     }
     access.setFlash({ success: '待審留言已更新，尚未送出。' });
     return c.redirect(draftsAnchor(project, report), 302);
@@ -1751,6 +1741,9 @@ web.post('/p/:slug/reports/:publicId/drafts/:draftId/discard', async (c) => {
     await throttle(c, 'drafts', 30);
     const { project, report, draft } = await draftOr404(c);
     await discardDraft(c.env, draft);
+    if (wantsJson(c)) {
+        return c.json({ message: '已捨棄待審留言。' });
+    }
     c.get('access').setFlash({ success: '已捨棄待審留言。' });
     return c.redirect(`${paths.report(project.slug, report.public_id)}#conversation`, 302);
 });

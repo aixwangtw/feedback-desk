@@ -194,13 +194,18 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     bell?: Notifications | null;
 }
 
-/** 待審留言（草稿）：只在開發團隊的單頁出現；按「送出」才變成正式留言。 */
-export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string; drafts: DraftView[]; draftErrors?: { id: number; errors: string[]; old: string } }> = ({ v, slug, publicId, drafts, draftErrors }) => {
+/**
+ * 待審留言（草稿）的顯示與操作，單頁、清單／看板的詳情視窗、右下角對話面板三處共用這一份（伺服器端渲染）；
+ * 後兩者經對話端點的 drafts_html 取得，按鈕行為由 client/message-drafts.js 處理，送出一律走 paths.draftSend。
+ * 只有開發團隊拿得到；按「送出」才變成正式留言。
+ * anchor：只有單頁放 id="message-drafts"（通知與清單的連結要跳到這裡），視窗與面板重複出現，不放 id。
+ */
+export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string; drafts: DraftView[]; draftErrors?: { id: number; errors: string[]; old: string }; anchor?: boolean }> = ({ v, slug, publicId, drafts, draftErrors, anchor }) => {
     const labels = v.cfg.labels;
     const base = `${paths.report(slug, publicId)}/drafts`;
     const back = paths.report(slug, publicId);
     return (
-        <div id="message-drafts" class="border-t border-amber-200 bg-amber-50/70 px-5 py-4 sm:px-7" data-message-drafts>
+        <div id={anchor ? 'message-drafts' : undefined} class="border-t border-amber-200 bg-amber-50/70 px-5 py-4 sm:px-7" data-message-drafts>
             <h3 class="text-sm font-bold text-amber-900">
                 待審留言 {drafts.length}
                 <span class="ml-2 text-xs font-normal text-amber-800">只有{labels.owner}看得到，按「送出」才會發給{labels.client}</span>
@@ -209,7 +214,7 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                 {drafts.map((draft) => {
                     const errors = draftErrors?.id === draft.id ? draftErrors.errors : [];
                     return (
-                        <li class="rounded-xl border border-dashed border-amber-400 bg-white p-3.5 shadow-sm" data-message-draft={String(draft.id)}>
+                        <li class="rounded-xl border border-dashed border-amber-400 bg-white p-3.5 shadow-sm" data-message-draft={String(draft.id)} data-draft-send-url={paths.draftSend(slug, publicId, draft.id)}>
                             <div class="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
                                 <span class="font-semibold text-amber-900">{withAgent(draft.display_author, draft.author_agent, true)}</span>
                                 <Time v={v} at={draft.updated_at} relative />
@@ -244,25 +249,26 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                                 </div>
                             ) : null}
                             <div class="mt-3 flex flex-wrap items-center gap-2">
-                                <form method="post" action={paths.draftSend(slug, publicId, draft.id)}>
+                                <form method="post" action={paths.draftSend(slug, publicId, draft.id)} data-draft-form="send">
                                     <input type="hidden" name="_back" value={back} />
                                     <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-draft-send>送出</button>
                                 </form>
-                                <form method="post" action={`${base}/${draft.id}/discard`} data-confirm="確定捨棄這則待審留言？">
+                                <form method="post" action={`${base}/${draft.id}/discard`} data-confirm="確定捨棄這則待審留言？" data-draft-form="discard">
                                     <input type="hidden" name="_back" value={back} />
                                     <button type="submit" class="inline-flex min-h-9 items-center rounded-lg border border-rose-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-draft-discard>捨棄</button>
                                 </form>
+                                <p class="w-full rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-draft-error hidden></p>
                                 <details class="w-full" open={errors.length > 0} data-draft-editor>
                                     <summary class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">編輯</summary>
-                                    <form method="post" action={`${base}/${draft.id}/update`} class="mt-2 grid gap-2">
+                                    <form method="post" action={`${base}/${draft.id}/update`} class="mt-2 grid gap-2" data-draft-form="update">
                                         <input type="hidden" name="_back" value={back} />
-                                        <label for={`draft-body-${draft.id}`} class="sr-only">待審留言內容</label>
-                                        <textarea id={`draft-body-${draft.id}`} name="body" required maxlength={MAX_MESSAGE} rows={5} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{errors.length > 0 ? draftErrors?.old ?? '' : draft.body}</textarea>
+                                        <textarea name="body" aria-label="待審留言內容" data-draft-edit-body required maxlength={MAX_MESSAGE} rows={5} class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{errors.length > 0 ? draftErrors?.old ?? '' : draft.body}</textarea>
                                         {errors.map((error) => (
                                             <p class="text-xs text-rose-700">{error}</p>
                                         ))}
-                                        <div>
+                                        <div class="flex flex-wrap gap-2">
                                             <button type="submit" class="rounded-lg bg-slate-900 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-slate-800">儲存草稿（不送出）</button>
+                                            <button type="button" class="rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-teal-800" data-draft-save-send>照這樣直接送出</button>
                                         </div>
                                     </form>
                                 </details>
@@ -540,7 +546,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                             <Activity v={v} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} />
                         </div>
 
-                        {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} /> : null}
+                        {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} anchor /> : null}
 
                         {readOnly ? (
                             <p class="border-t border-slate-100 px-5 py-4 text-sm text-slate-600 sm:px-7" data-reporting-closed>已停止收件，這張單只能查看，不能再留言。</p>

@@ -1,5 +1,6 @@
 import './chat-panel.js';
 import { bindPageAttachmentComposers } from './attachment-composer.js';
+import { bindPageMessageDrafts } from './message-drafts.js';
 import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
@@ -19,6 +20,8 @@ if (portalRowsData) {
 
 // 留言區的附件（data-attachment-composer）由 attachment-composer.js 處理預覽、拖曳與檢查。
 bindPageAttachmentComposers();
+// 單頁的待審留言（與詳情視窗、對話面板同一份畫面與按鈕行為，見 message-drafts.js）。
+bindPageMessageDrafts();
 
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;

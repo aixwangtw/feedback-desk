@@ -8,7 +8,6 @@ use App\Models\FeedbackProject;
 use App\Support\FeedbackCompletionRequest;
 use App\Support\FeedbackReportWork;
 use App\Support\FeedbackServiceException;
-use App\Support\StandardInput;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -18,7 +17,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 #[Signature('feedback:request-completion
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id（網址 /reports/ 後面那段 UUID）}
-    {--text= : 確認留言內容；未給時從標準輸入讀取，都沒有就用預設文字}
+    {--text= : 確認留言內容；省略時用預設文字（不讀標準輸入，在沒有終端機的環境不會卡住）}
     {--as= : 以這個團隊個人帳號留言（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}
     {--force : 別人認領中仍要做（記錄為接手）}')]
@@ -42,7 +41,7 @@ class RequestFeedbackCompletionCommand extends Command
 {
     use ResolvesFeedbackActor;
 
-    public function handle(RequestFeedbackCompletionAction $requestCompletion, FeedbackReportWork $work, StandardInput $standardInput): int
+    public function handle(RequestFeedbackCompletionAction $requestCompletion, FeedbackReportWork $work): int
     {
         $project = FeedbackProject::where('slug', (string) $this->argument('project'))->first();
         if (! $project) {
@@ -70,8 +69,7 @@ class RequestFeedbackCompletionCommand extends Command
             return self::FAILURE;
         }
 
-        $text = $this->option('text');
-        $body = trim((string) ($text ?? $standardInput->read() ?? ''));
+        $body = trim((string) $this->option('text'));
 
         try {
             $takenOver = $work->guard($report, $actor, (bool) $this->option('force'));

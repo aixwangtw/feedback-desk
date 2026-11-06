@@ -5,6 +5,7 @@
  * Workers, above the free plan's 10 ms. The markup here is byte-for-byte the same as the JSX
  * reference components in rows-reference.tsx (a test compares the two).
  */
+import { isVideoMime } from '../../shared/attachment-rules';
 import { COMPLETE_CONFIRM, statusDotClass, statusLabel, WAITING_STATUS, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
@@ -60,8 +61,17 @@ function statusTextHtml(status: ReportStatus, labels: StatusLabels): string {
     return `<span class="flex items-center gap-2 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(status)}" aria-hidden="true" data-status-dot="true"></span><span class="text-xs font-semibold text-slate-700" data-status-text="${status}">${esc(statusLabel(status, labels))}</span></span>`;
 }
 
-function thumb(href: string, name: string, border = 'border-slate-200', adjustment = false): string {
-    return `<a href="${esc(href)}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border ${border} bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger="true" data-lightbox-alt="${esc(name)}"${adjustment ? ' data-adjustment-image=""' : ''} title="放大預覽"><img src="${esc(href)}" alt="${esc(name)}" class="size-full object-cover" loading="lazy"/></a>`;
+/** AttachmentMedia（components.tsx）的字串版：圖片 <img>；mp4 影片抓第一格畫面並疊播放三角形。 */
+export function attachmentMediaHtml(src: string, name: string, mime: string | null | undefined, className: string): string {
+    if (!isVideoMime(mime)) {
+        return `<img src="${esc(src)}" alt="${esc(name)}" class="${className}" loading="lazy"/>`;
+    }
+    return `<span class="relative block overflow-hidden bg-slate-900 ${className}" data-attachment-video="true"><video muted="" playsinline="" preload="metadata" src="${esc(`${src}#t=0.1`)}" class="pointer-events-none size-full object-cover" aria-hidden="true" tabindex="-1"></video><span class="pointer-events-none absolute inset-0 grid place-items-center"><span class="grid size-7 place-items-center rounded-full bg-black/60 text-white ring-2 ring-white/80"><svg class="ml-0.5 size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></span></span><span class="sr-only">影片：${esc(name)}</span></span>`;
+}
+
+function thumb(href: string, attachment: Pick<Attachment, 'original_name' | 'mime_type'>, border = 'border-slate-200', adjustment = false): string {
+    const name = attachment.original_name;
+    return `<a href="${esc(href)}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border ${border} bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger="true" data-lightbox-alt="${esc(name)}"${adjustment ? ' data-adjustment-image=""' : ''} title="${isVideoMime(attachment.mime_type) ? '開新分頁播放' : '放大預覽'}">${attachmentMediaHtml(href, name, attachment.mime_type, 'size-full object-cover')}</a>`;
 }
 
 function dialogsSrc(ctx: RowContext, publicId: string): string {
@@ -130,7 +140,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     html += '<td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-2 sm:align-middle">';
     if (row.attachments.length > 0) {
         html += '<div class="flex flex-wrap gap-1 sm:justify-center">';
-        for (const attachment of row.attachments) html += thumb(url(attachment), attachment.original_name);
+        for (const attachment of row.attachments) html += thumb(url(attachment), attachment);
         html += '</div>';
     } else {
         html += '<span class="text-xs text-slate-400">—</span>';
@@ -144,7 +154,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
         }
         if (row.adjustmentAttachments.length > 0) {
             html += '<div class="mt-1 flex flex-wrap gap-1">';
-            for (const attachment of row.adjustmentAttachments) html += thumb(url(attachment), attachment.original_name, 'border-teal-200', true);
+            for (const attachment of row.adjustmentAttachments) html += thumb(url(attachment), attachment, 'border-teal-200', true);
             html += '</div>';
         }
     } else {
@@ -200,7 +210,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     }
     const first = row.attachments[0];
     if (first) {
-        html += `<div class="mt-3 flex items-center gap-2">${thumb(url(first), first.original_name)}<span class="text-xs font-medium text-slate-500">${row.attachments.length} 張附件</span></div>`;
+        html += `<div class="mt-3 flex items-center gap-2">${thumb(url(first), first)}<span class="text-xs font-medium text-slate-500">${row.attachments.length} 張附件</span></div>`;
     }
     if (hasAdjustment) {
         html += '<div class="mt-3 rounded-lg border border-teal-100 bg-teal-50/60 p-2" data-adjustment-card="true"><p class="text-[11px] font-bold text-teal-800">調整重點</p>';
@@ -210,7 +220,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         }
         const firstAdjustment = row.adjustmentAttachments[0];
         if (firstAdjustment) {
-            html += `<div class="mt-2 flex items-center gap-2">${thumb(url(firstAdjustment), firstAdjustment.original_name, 'border-slate-200', true)}<button type="button" class="rounded text-xs font-medium text-slate-500 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="預覽全部調整圖" data-dialog-open="detail-report-${id}" data-adjustment-preview="true">${row.adjustmentAttachments.length} 張調整圖</button></div>`;
+            html += `<div class="mt-2 flex items-center gap-2">${thumb(url(firstAdjustment), firstAdjustment, 'border-slate-200', true)}<button type="button" class="rounded text-xs font-medium text-slate-500 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="預覽全部調整圖" data-dialog-open="detail-report-${id}" data-adjustment-preview="true">${row.adjustmentAttachments.length} 張調整圖</button></div>`;
         }
         html += '</div>';
     }

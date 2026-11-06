@@ -7,7 +7,7 @@ import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
 import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { AttachmentMedia, attachmentLinkTitle, cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
@@ -56,8 +56,8 @@ export const AdjustmentBlock: FC<{
         {adjustmentAttachments.length > 0 ? (
             <div class={`mt-3 ${compact ? 'flex flex-wrap gap-2' : 'grid grid-cols-2 gap-3 sm:grid-cols-3'}`}>
                 {adjustmentAttachments.map((attachment) => (
-                    <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`${compact ? 'block size-20' : 'group relative'} overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} data-adjustment-image title="放大預覽">
-                        <img src={attachmentUrl(attachment)} alt={attachment.original_name} class={`${compact ? 'size-full' : 'aspect-video w-full'} object-cover`} loading="lazy" />
+                    <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`${compact ? 'block size-20' : 'group relative'} overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} data-adjustment-image title={attachmentLinkTitle(attachment.mime_type)}>
+                        <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class={`${compact ? 'size-full' : 'aspect-video w-full'} object-cover`} />
                     </a>
                 ))}
             </div>
@@ -445,8 +445,8 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                             <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
                                 {props.attachments.map((attachment) => (
                                     <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt={attachment.original_name}>
-                                        <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" loading="lazy" />
-                                        <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">放大預覽</span>
+                                        <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" />
+                                        <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">{attachmentLinkTitle(attachment.mime_type)}</span>
                                     </a>
                                 ))}
                             </div>
@@ -474,7 +474,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                                 <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                                                     {props.adjustmentAttachments.map((attachment) => (
                                                         <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                                            <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="aspect-video w-full object-cover" loading="lazy" />
+                                                            <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover" />
                                                             <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                                                 <input type="checkbox" name="remove_adjustment_attachments[]" value={String(attachment.id)} class="rounded border-slate-300 text-rose-600 focus:ring-rose-600" />
                                                                 刪除

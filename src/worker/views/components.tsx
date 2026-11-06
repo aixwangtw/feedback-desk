@@ -8,7 +8,7 @@ import type { Notifications } from '../lib/notifications';
 import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
-import { MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
+import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { CHAT_BUTTON_BASE, CHAT_BUTTON_ICON, CHAT_BUTTON_LABELLED, CHAT_ICON_PATHS, CHAT_UNREAD_BADGE } from './chat-classes';
 
 /** Values every view needs: configuration and the current time. */
@@ -56,6 +56,31 @@ export const ChatButton: FC<{ publicId: string; title: string; total: number; un
         </button>
     );
 };
+
+/**
+ * 附件縮圖的內容：圖片照舊用 <img>；mp4 影片用 <video muted preload="metadata"> 抓第一格畫面（#t=0.1），
+ * 疊播放三角形，尺寸跟圖片縮圖一樣（class 同一組）。外層連結的 data-attachment-video 讓燈箱略過，影片直接在新分頁播放。
+ * rows.ts 的 attachmentMediaHtml 是同一份 HTML 的字串版。
+ */
+export const AttachmentMedia: FC<{ src: string; name: string; mime: string | null | undefined; class: string }> = ({ src, name, mime, class: className }) =>
+    isVideoMime(mime) ? (
+        <span class={`relative block overflow-hidden bg-slate-900 ${className}`} data-attachment-video>
+            <video muted playsinline preload="metadata" src={`${src}#t=0.1`} class="pointer-events-none size-full object-cover" aria-hidden="true" tabindex={-1}></video>
+            <span class="pointer-events-none absolute inset-0 grid place-items-center">
+                <span class="grid size-7 place-items-center rounded-full bg-black/60 text-white ring-2 ring-white/80">
+                    <svg class="ml-0.5 size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+                </span>
+            </span>
+            <span class="sr-only">影片：{name}</span>
+        </span>
+    ) : (
+        <img src={src} alt={name} class={className} loading="lazy" />
+    );
+
+/** 附件縮圖連結的 title：圖片放大預覽、影片開新分頁播放。 */
+export function attachmentLinkTitle(mime: string | null | undefined): string {
+    return isVideoMime(mime) ? '開新分頁播放' : '放大預覽';
+}
 
 export const StatusBadge: FC<{ status: ReportStatus; labels: StatusLabels }> = ({ status, labels }) => (
     <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`} data-status-badge={status}>{statusLabel(status, labels)}</span>

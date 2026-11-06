@@ -33,6 +33,7 @@ const cases: Array<[string, PortalRow]> = [
     ['unread and drafts', row({}, [], [], { unread: 3, messagesCount: 4, drafts: 1 })],
     ['waiting on the team', row({ status: 'new' }, [], [], { waiting: 'developer' })],
     ['waiting on the client, with unread', row({}, [], [], { waiting: 'client', unread: 1, messagesCount: 2 })],
+    ['video attachments: first-frame thumbnail with a play mark, no lightbox', row({ adjustment_note: '有影片' }, [{ ...attachment(9, 'feedback', '錄影 "a".mp4'), mime_type: 'video/mp4' }, attachment(10, 'feedback', 'b.png')], [{ ...attachment(11, 'adjustment', 'after.mp4'), mime_type: 'video/mp4' }])],
     ['completed (no waiting label; the status column shows text only)', row({ status: 'completed' }, [], [], { waiting: 'completed' })],
 ];
 

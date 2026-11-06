@@ -166,12 +166,12 @@ describe('guest client entry', () => {
         }
     });
 
-    it('orders list columns as title, status, category, images, adjustment, creator, dates, actions', async () => {
+    it('orders list columns as title, status, category, attachments, adjustment, creator, dates, actions', async () => {
         const { seeded, slug, browser } = await guestSetup();
         await seedReport(seeded.project);
         const html = await (await browser().get(`/p/${slug}?tab=all`)).text();
         const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-        const order = ['標題', '狀態', '分類', '圖片', '調整重點', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
+        const order = ['標題', '狀態', '分類', '附件', '調整重點', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
         expect(order.every((index) => index >= 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
         const row = html.slice(html.indexOf('data-report-row='));

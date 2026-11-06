@@ -229,3 +229,38 @@ describe('附件規則的純邏輯', () => {
         expect(fileProblem([video(1)], { ...message, allowVideo: false })).toBe('附圖只接受 JPG、PNG、WebP。');
     });
 });
+
+describe('附件縮圖支援影片', () => {
+    async function withReportVideo() {
+        const { seeded, report } = await setup();
+        const key = `p/${seeded.project.id}/${crypto.randomUUID()}`;
+        await env.FILES.put(key, MP4, { httpMetadata: { contentType: 'video/mp4' } });
+        const row = await env.DB.prepare("INSERT INTO attachments (report_id, message_id, kind, object_key, original_name, mime_type, size, created_at) VALUES (?, NULL, 'feedback', ?, '開單錄影.mp4', 'video/mp4', ?, ?) RETURNING id")
+            .bind(report.id, key, MP4.byteLength, new Date().toISOString())
+            .first<{ id: number }>();
+        return { seeded, report, url: `/p/${seeded.project.slug}/reports/${report.public_id}/attachments/${row!.id}` };
+    }
+
+    it('list, board, detail dialog and report page show the first frame with a play mark instead of an <img>', async () => {
+        const { seeded, report, url } = await withReportVideo();
+        const owner = await new Browser().asOwner(seeded);
+        const thumb = `<video muted="" playsinline="" preload="metadata" src="${url}#t=0.1"`;
+        const pages = {
+            list: await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text(),
+            board: await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text(),
+            dialogs: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text(),
+            page: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text(),
+        };
+        for (const [name, html] of Object.entries(pages)) {
+            expect(html, name).toContain(thumb);
+            expect(html, name).toContain('data-attachment-video');
+            expect(html, name).toContain('影片：開單錄影.mp4');
+            expect(html, name).not.toContain(`<img src="${url}"`);
+        }
+        expect(pages.list).toContain('>附件</th>');
+        expect(pages.list).not.toContain('>圖片</th>');
+        expect(pages.list).toContain('影片點了會開新分頁播放');
+        expect(pages.board).toContain('影片點了會開新分頁播放');
+    });
+});
+

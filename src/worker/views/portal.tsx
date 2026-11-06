@@ -4,12 +4,13 @@ import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
 import type { PortalTab, WaitingSide } from '../lib/reports';
 import { paths } from '../routes/paths';
-import { cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
+import { AttachmentMedia, cx, ErrorList, Layout, Pagination, Time, type ViewContext } from './components';
 import { AdjustmentBlock, CategoryAutosave, editCategoryOptions } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
+import { Thumb } from './rows-reference';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
 import { MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
@@ -93,11 +94,6 @@ function query(base: Record<string, string | number | null | undefined>): string
     return params.toString();
 }
 
-const Thumb: FC<{ href: string; name: string; size?: string; border?: string; adjustment?: boolean }> = ({ href, name, size = 'size-10', border = 'border-slate-200', adjustment }) => (
-    <a href={href} target="_blank" rel="noreferrer" class={`block ${size} overflow-hidden rounded-lg border ${border} bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={name} data-adjustment-image={adjustment ? '' : undefined} title="放大預覽">
-        <img src={href} alt={name} class="size-full object-cover" loading="lazy" />
-    </a>
-);
 
 /**
  * 清單與看板頂部的頁籤（取代狀態篩選下拉），直接對應狀態、文字＝狀態名稱：「等工程師 N」「等{客戶} N」，
@@ -200,7 +196,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{statusLabels.needs_input}</span><span>{labels.owner}已回覆或改好並寫了調整重點，請{labels.client}確認。</span></li>
                         <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>{statusLabels.completed}</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
                     </ul>
-                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。'}</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整圖（「N 張調整圖」）。' : '標題、附件縮圖（圖片或影片，影片點了會開新分頁播放）、調整重點、調整附圖。'}</p>
                 </div>
                 <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
             </div>
@@ -315,7 +311,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     {sortHeader('title', '標題', 'whitespace-nowrap min-min-w-48 w-64 max-w-64 px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
                                     {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
-                                    <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">圖片</th>
+                                    <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
                                     <th class="whitespace-nowrap min-w-48 w-64 max-w-64 px-4 text-left py-3.5">調整重點</th>
                                     <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
                                     {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
@@ -407,7 +403,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                     {row.attachments.length > 0 ? (
                         <div class="flex flex-wrap gap-2">
                             {row.attachments.map((attachment) => (
-                                <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} size="size-20" />
+                                <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} size="size-20" />
                             ))}
                         </div>
                     ) : null}
@@ -497,7 +493,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                             <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                                 {row.attachments.map((attachment) => (
                                     <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                        <img src={attachmentUrl(report, attachment)} alt={attachment.original_name} class="aspect-video w-full object-cover" loading="lazy" />
+                                        <AttachmentMedia src={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover" />
                                         <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                             <input type="checkbox" name="remove_attachments[]" value={String(attachment.id)} checked={editing ? editing.remove.includes(String(attachment.id)) : false} class="rounded border-slate-300 text-rose-600 focus:ring-rose-600" />
                                             刪除

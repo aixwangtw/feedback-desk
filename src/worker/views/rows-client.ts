@@ -14,7 +14,7 @@ export const SERVER_ROW_LIMIT = 20;
 
 export const PORTAL_ROWS_ELEMENT_ID = 'portal-rows-data';
 
-type CompactAttachment = Pick<Attachment, 'id' | 'original_name'>;
+type CompactAttachment = Pick<Attachment, 'id' | 'original_name' | 'mime_type'>;
 
 export interface PortalRowsPayload {
     view: 'list' | 'board';
@@ -42,7 +42,7 @@ export interface PortalRowsPayload {
 }
 
 export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: PortalRow[]): PortalRowsPayload {
-    const compact = (items: Attachment[]): CompactAttachment[] => items.map((item) => ({ id: item.id, original_name: item.original_name }));
+    const compact = (items: Attachment[]): CompactAttachment[] => items.map((item) => ({ id: item.id, original_name: item.original_name, mime_type: item.mime_type }));
     return {
         view,
         slug: ctx.slug,

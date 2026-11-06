@@ -320,6 +320,10 @@ if (imageLightbox) {
         if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
             return;
         }
+        // 影片縮圖不進圖片燈箱：照連結（target=_blank）在新分頁播放。
+        if (trigger.querySelector('[data-attachment-video]')) {
+            return;
+        }
 
         event.preventDefault();
         activeTrigger = trigger;

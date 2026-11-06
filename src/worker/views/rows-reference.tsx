@@ -7,7 +7,7 @@ import type { FC } from 'hono/jsx';
 import type { Attachment, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { badgeText } from '../../shared/conversation';
-import { ChatButton, cx, StatusText, Time, type ViewContext } from './components';
+import { AttachmentMedia, attachmentLinkTitle, ChatButton, cx, StatusText, Time, type ViewContext } from './components';
 
 import { COMPLETE_CONFIRM } from '../../shared/status';
 import type { PortalRow } from './portal';
@@ -18,9 +18,10 @@ const ICON_TRASH = (
     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></svg>
 );
 
-export const Thumb: FC<{ href: string; name: string; size?: string; border?: string; adjustment?: boolean }> = ({ href, name, size = 'size-10', border = 'border-slate-200', adjustment }) => (
-    <a href={href} target="_blank" rel="noreferrer" class={`block ${size} overflow-hidden rounded-lg border ${border} bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={name} data-adjustment-image={adjustment ? '' : undefined} title="放大預覽">
-        <img src={href} alt={name} class="size-full object-cover" loading="lazy" />
+/** 清單、看板、詳情視窗共用的附件縮圖；影片顯示第一格畫面＋播放三角形，點了在新分頁播放。 */
+export const Thumb: FC<{ href: string; name: string; mime: string | null | undefined; size?: string; border?: string; adjustment?: boolean }> = ({ href, name, mime, size = 'size-10', border = 'border-slate-200', adjustment }) => (
+    <a href={href} target="_blank" rel="noreferrer" class={`block ${size} overflow-hidden rounded-lg border ${border} bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={name} data-adjustment-image={adjustment ? '' : undefined} title={attachmentLinkTitle(mime)}>
+        <AttachmentMedia src={href} name={name} mime={mime} class="size-full object-cover" />
     </a>
 );
 
@@ -87,7 +88,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                 {row.attachments.length > 0 ? (
                     <div class="flex flex-wrap gap-1 sm:justify-center">
                         {row.attachments.map((attachment) => (
-                            <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} />
+                            <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} />
                         ))}
                     </div>
                 ) : (
@@ -104,7 +105,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                         {row.adjustmentAttachments.length > 0 ? (
                             <div class="mt-1 flex flex-wrap gap-1">
                                 {row.adjustmentAttachments.map((attachment) => (
-                                    <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} border="border-teal-200" adjustment />
+                                    <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} border="border-teal-200" adjustment />
                                 ))}
                             </div>
                         ) : null}
@@ -192,7 +193,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
 
             {firstAttachment ? (
                 <div class="mt-3 flex items-center gap-2">
-                    <Thumb href={attachmentUrl(report, firstAttachment)} name={firstAttachment.original_name} />
+                    <Thumb href={attachmentUrl(report, firstAttachment)} name={firstAttachment.original_name} mime={firstAttachment.mime_type} />
                     <span class="text-xs font-medium text-slate-500">{row.attachments.length} 張附件</span>
                 </div>
             ) : null}
@@ -205,7 +206,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
                     ) : null}
                     {firstAdjustment ? (
                         <div class="mt-2 flex items-center gap-2">
-                            <Thumb href={attachmentUrl(report, firstAdjustment)} name={firstAdjustment.original_name} adjustment />
+                            <Thumb href={attachmentUrl(report, firstAdjustment)} name={firstAdjustment.original_name} mime={firstAdjustment.mime_type} adjustment />
                             <button type="button" class="rounded text-xs font-medium text-slate-500 hover:text-teal-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="預覽全部調整圖" data-dialog-open={`detail-report-${report.public_id}`} data-adjustment-preview>{row.adjustmentAttachments.length} 張調整圖</button>
                         </div>
                     ) : null}

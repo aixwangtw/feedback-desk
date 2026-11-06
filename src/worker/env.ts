@@ -1,3 +1,4 @@
+import { statusLabelsFor, type StatusLabels } from '../shared/status';
 import { parseUtcOffset } from '../shared/time';
 
 export interface Env {
@@ -11,6 +12,8 @@ export interface Env {
 
 export interface FeedbackConfig {
     labels: { client: string; owner: string };
+    /** 狀態顯示名稱（等工程師／等{客戶稱呼}／已完成），跟著 labels.client。 */
+    statusLabels: StatusLabels;
     portalTitle: string;
     home: { title: string; eyebrow: string; heading: string; body: string };
     loginPrefill: { enabled: boolean; ownerEnabled: boolean; ownerUsername: string; ownerPassword: string };
@@ -76,6 +79,7 @@ export function config(env: Env): FeedbackConfig {
     const ownerLabel = str(env, 'FEEDBACK_LABEL_OWNER', '開發團隊');
     const value: FeedbackConfig = {
         labels: { client: clientLabel, owner: ownerLabel },
+        statusLabels: statusLabelsFor(clientLabel),
         portalTitle: str(env, 'FEEDBACK_PORTAL_TITLE', '問題回報追蹤'),
         home: {
             title: str(env, 'FEEDBACK_HOME_TITLE', '問題回報'),

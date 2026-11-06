@@ -6,10 +6,10 @@ import type { ReportStatus } from '../../src/shared/status';
 import { Browser, seedProject, seedReport, workerEnv, type SeededProject } from './helpers';
 
 /**
- * 問題清單與看板的頁籤（取代狀態篩選下拉）、每張單「等誰」的標示、客戶端的「完成」按鈕，
- * 以及開發團隊不能改成已完成。等誰由狀態與留言時間推導，不新增狀態值。
+ * 問題清單與看板的頁籤（取代狀態篩選下拉）、每張單上的狀態標示、客戶端的「完成」按鈕，
+ * 以及網頁上不能手動改狀態（只有客戶能按「完成」）。頁籤直接對應狀態：等工程師＝new、等{客戶}＝needs_input。
  */
-const labels = config(workerEnv).labels;
+const labels = config(workerEnv).statusLabels;
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 async function report(seeded: SeededProject, title: string, status: ReportStatus): Promise<Report> {
@@ -22,10 +22,10 @@ async function message(target: Report, author: 'reporter' | 'owner' | 'agent', a
     await env.DB.prepare('INSERT INTO messages (report_id, author_type, author_name, body, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?)').bind(target.id, author, '留言', at, at).run();
 }
 
-/** A: 待處理；B: 待審核但客戶後來又留言；C: 待審核、團隊最後回覆；D: 待審核、調整重點比客戶留言新；E: 已完成。 */
+/** A: 等工程師；B: 等客戶但客戶後來又留言；C: 等客戶、團隊最後回覆；D: 等客戶、調整重點比客戶留言新；E: 已完成。頁籤只看狀態，不看最後發言者。 */
 async function fixture() {
     const seeded = await seedProject();
-    const a = await report(seeded, '甲待處理', 'new');
+    const a = await report(seeded, '甲等工程師', 'new');
     const b = await report(seeded, '乙客戶追問', 'needs_input');
     await message(b, 'owner', minutesAgo(30));
     await message(b, 'reporter', minutesAgo(10));
@@ -43,31 +43,45 @@ const rowsOf = (html: string, reports: Report[]) => reports.filter((target) => h
 const tabLink = (html: string, tab: string) => new RegExp(`<a href="([^"]*)"[^>]*data-portal-tab="${tab}"`).exec(html)?.[1]?.replaceAll('&amp;', '&') ?? '';
 
 describe('清單頁籤與等誰標示', () => {
-    it('team side opens on 待{團隊}回覆 with counts, and the status dropdown is gone', async () => {
+    it('team side opens on the 等工程師 tab (status new) with counts, and the status dropdown is gone', async () => {
         const { seeded, a, b, c, d, e } = await fixture();
         const owner = await new Browser().asOwner(seeded);
         const html = await (await owner.get(`/p/${seeded.project.slug}`)).text();
         const all = [a, b, c, d, e];
 
-        expect(rowsOf(html, all).sort()).toEqual(['乙客戶追問', '甲待處理'].sort());
-        expect(html).toMatch(new RegExp(`aria-current="page" data-portal-tab="developer">待${labels.owner}回覆 <span[^>]*>2</span>`));
-        expect(html).toMatch(new RegExp(`data-portal-tab="client">待${labels.client}回覆 <span[^>]*>2</span>`));
+        expect(labels).toEqual({ new: '等工程師', needs_input: '等客戶', completed: '已完成' });
+        expect(rowsOf(html, all)).toEqual(['甲等工程師']);
+        expect(html).toMatch(new RegExp(`aria-current="page" data-portal-tab="developer">${labels.new} <span[^>]*>1</span>`));
+        expect(html).toMatch(new RegExp(`data-portal-tab="client">${labels.needs_input} <span[^>]*>3</span>`));
         expect(html).toContain('data-portal-tab="completed">已完成 1</a>');
         expect(html).toContain('data-portal-tab="all">全部 5</a>');
         expect(html).not.toContain('篩選狀態');
-        expect(html).not.toMatch(/<select name="status" data-auto-submit/);
+        expect(html).not.toMatch(/<select name="status"/);
         expect(html).not.toContain('待回覆<');
+        expect(html).not.toContain('待處理');
+        expect(html).not.toContain('待審核');
     });
 
-    it('client side opens on 待{客戶}回覆', async () => {
+    it('client side opens on the 等{客戶} tab (status needs_input)', async () => {
         const { seeded, a, b, c, d, e } = await fixture();
         const client = await new Browser().asClient(seeded);
         const html = await (await client.get(`/p/${seeded.project.slug}`)).text();
-        expect(rowsOf(html, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回'].sort());
+        expect(rowsOf(html, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回', '乙客戶追問'].sort());
         expect(html).toMatch(/aria-current="page" data-portal-tab="client"/);
     });
 
-    it('both sides show the same 等… label on each report; completed reports have none', async () => {
+    it('the client label follows the site setting (業主 → 等業主)', async () => {
+        const { seeded, a, b } = await fixture();
+        const owner = new Browser(undefined, { FEEDBACK_LABEL_CLIENT: '業主' });
+        await owner.asOwner(seeded);
+        const html = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
+        expect(html).toMatch(/data-portal-tab="client">等業主 <span/);
+        expect(html).toContain('等業主');
+        expect(html).not.toContain('等客戶');
+        expect(rowsOf(html, [a, b]).sort()).toEqual(['乙客戶追問', '甲等工程師'].sort());
+    });
+
+    it('both sides show the status name on each report; completed reports have none', async () => {
         const { seeded, a, b, c, d, e } = await fixture();
         const owner = await new Browser().asOwner(seeded);
         const client = await new Browser().asClient(seeded);
@@ -79,10 +93,10 @@ describe('清單頁籤與等誰標示', () => {
             return /data-waiting="(developer|client)">([^<]+)</.exec(row)?.[2] ?? null;
         };
         for (const html of pages) {
-            expect(labelOf(html, a)).toBe(`等${labels.owner}`);
-            expect(labelOf(html, b)).toBe(`等${labels.owner}`);
-            expect(labelOf(html, c)).toBe(`等${labels.client}`);
-            expect(labelOf(html, d)).toBe(`等${labels.client}`);
+            expect(labelOf(html, a)).toBe(labels.new);
+            expect(labelOf(html, b)).toBe(labels.needs_input);
+            expect(labelOf(html, c)).toBe(labels.needs_input);
+            expect(labelOf(html, d)).toBe(labels.needs_input);
         }
         expect(pages[0]).not.toContain(`data-waiting="completed"`);
         const completedRow = pages[0].slice(pages[0].indexOf(`data-report-row="${e.public_id}"`));
@@ -95,9 +109,9 @@ describe('清單頁籤與等誰標示', () => {
         const html = await (await owner.get(`/p/${seeded.project.slug}?tab=client`)).text();
         expect(html).toMatch(/href="[^"]*view=board[^"]*tab=client"[^>]*data-view-mode="board"/);
         expect(html).toContain('<input type="hidden" name="tab" value="client"/>');
-        expect(rowsOf(html, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回'].sort());
+        expect(rowsOf(html, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回', '乙客戶追問'].sort());
         const board = await (await owner.get(`/p/${seeded.project.slug}?view=board&tab=client`)).text();
-        expect(rowsOf(board, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回'].sort());
+        expect(rowsOf(board, [a, b, c, d, e]).sort()).toEqual(['丁調整重點較新', '丙團隊已回', '乙客戶追問'].sort());
         expect(board).toMatch(/href="[^"]*view=list[^"]*tab=client"[^>]*data-view-mode="list"/);
         expect(tabLink(board, 'developer')).toContain('view=board');
     });
@@ -117,7 +131,7 @@ describe('清單頁籤與等誰標示', () => {
     });
 });
 
-describe('完成只由客戶確認', () => {
+describe('網頁上不能手動改狀態，只有客戶能按「完成」', () => {
     it('the client has a 完成 button (with confirm) on list rows and board cards and can complete a report', async () => {
         const { seeded, c, e } = await fixture();
         const client = await new Browser().asClient(seeded);
@@ -130,26 +144,54 @@ describe('完成只由客戶確認', () => {
         expect((await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(c.id).first<{ status: string }>())?.status).toBe('completed');
     });
 
-    it('the team cannot set completed: the server answers 403 and the menus have no 已完成 option', async () => {
-        const { seeded, a, e } = await fixture();
+    it('the status endpoint refuses everything but the client completing: team any value, client new／needs_input', async () => {
+        const { seeded, a, c, e } = await fixture();
         const owner = await new Browser().asOwner(seeded);
-        expect((await owner.post(`/p/${seeded.project.slug}/reports/${a.public_id}/status`, { status: 'completed' })).status).toBe(403);
-        expect((await owner.post(`/p/${seeded.project.slug}/reports/${a.public_id}/status`, { status: 'completed' }, { accept: 'application/json' })).status).toBe(403);
-        expect((await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(a.id).first<{ status: string }>())?.status).toBe('new');
-        // Moving back from completed is still allowed.
-        expect((await owner.post(`/p/${seeded.project.slug}/reports/${e.public_id}/status`, { status: 'needs_input' })).status).toBe(302);
-        await env.DB.prepare("UPDATE reports SET status = 'completed' WHERE id = ?").bind(e.id).run();
+        const statusOf = async (target: Report) => (await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(target.id).first<{ status: string }>())?.status;
+        for (const [target, value] of [[a, 'completed'], [a, 'needs_input'], [c, 'new'], [e, 'needs_input'], [a, 'in_progress']] as const) {
+            expect((await owner.post(`/p/${seeded.project.slug}/reports/${target.public_id}/status`, { status: value })).status).toBe(403);
+            expect((await owner.post(`/p/${seeded.project.slug}/reports/${target.public_id}/status`, { status: value }, { accept: 'application/json' })).status).toBe(403);
+        }
+        const client = await new Browser().asClient(seeded);
+        for (const [target, value] of [[c, 'new'], [a, 'needs_input'], [e, 'new']] as const) {
+            expect((await client.post(`/p/${seeded.project.slug}/reports/${target.public_id}/status`, { status: value }, { accept: 'application/json' })).status).toBe(403);
+        }
+        expect([await statusOf(a), await statusOf(c), await statusOf(e)]).toEqual(['new', 'needs_input', 'completed']);
+    });
 
+    it('no status dropdown, drag or 更新狀態 anywhere; the status shows as text and the client gets 完成 on the report page', async () => {
+        const { seeded, a, c, e } = await fixture();
+        const owner = await new Browser().asOwner(seeded);
+        const client = await new Browser().asClient(seeded);
+        for (const browser of [owner, client]) {
+            for (const query of ['?tab=all', '?tab=all&view=board']) {
+                const html = await (await browser.get(`/p/${seeded.project.slug}${query}`)).text();
+                expect(html).not.toMatch(/<select name="status"/);
+                expect(html).not.toContain('data-status-autosave');
+                expect(html).not.toContain('data-kanban-status-form');
+                expect(html).not.toContain('移至其他狀態');
+                expect(html).not.toContain('拖拉');
+                expect(html).not.toContain('cursor-grab');
+                expect(html).not.toContain('已完成（由客戶確認）');
+            }
+        }
         const list = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(list).not.toContain('data-complete-report');
-        expect(list).not.toMatch(/<option value="completed"[^>]*>已完成<\/option>/);
-        expect(list).toMatch(/<option value="completed"[^>]*selected=""[^>]*disabled=""[^>]*>已完成（由客戶確認）<\/option>/);
-        const page = await (await owner.get(`/p/${seeded.project.slug}/reports/${a.public_id}`)).text();
-        expect(page).not.toMatch(/<option value="completed"/);
-        const done = await (await owner.get(`/p/${seeded.project.slug}/reports/${e.public_id}`)).text();
-        expect(done).toContain('已完成（由客戶確認）');
+        const row = list.slice(list.indexOf(`data-report-row="${c.public_id}"`));
+        expect(row.slice(0, row.indexOf('</tr>'))).toMatch(/data-status-text="needs_input"[^>]*>等客戶</);
 
-        const client = await new Browser().asClient(seeded);
-        expect(await (await client.get(`/p/${seeded.project.slug}/reports/${a.public_id}`)).text()).toMatch(/<option value="completed"[^>]*>已完成<\/option>/);
+        const teamPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${a.public_id}`)).text();
+        expect(teamPage).not.toContain('更新狀態');
+        expect(teamPage).not.toMatch(/<select[^>]*name="status"/);
+        expect(teamPage).toContain('data-report-status-panel');
+        expect(teamPage).toMatch(/data-report-status-panel[\s\S]*等工程師/);
+        expect(teamPage).not.toContain('data-complete-report');
+
+        const clientPage = await (await client.get(`/p/${seeded.project.slug}/reports/${c.public_id}`)).text();
+        expect(clientPage).not.toContain('更新狀態');
+        expect(clientPage).not.toMatch(/<select[^>]*name="status"/);
+        expect(clientPage).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+"[^>]*>[\\s\\S]*?name="status" value="completed"[\\s\\S]*?data-complete-report`));
+        const donePage = await (await client.get(`/p/${seeded.project.slug}/reports/${e.public_id}`)).text();
+        expect(donePage).not.toContain('data-complete-report');
     });
 });

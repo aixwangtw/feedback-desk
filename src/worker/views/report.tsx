@@ -2,12 +2,12 @@ import type { FC } from 'hono/jsx';
 import type { Attachment, Message, Project, Report } from '../lib/models';
 import type { DraftView } from '../lib/drafts';
 import type { Notifications } from '../lib/notifications';
-import { isStatus, statusLabel } from '../../shared/status';
+import { COMPLETE_CONFIRM, isStatus, statusLabel, type StatusLabels } from '../../shared/status';
 import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
 import { MAX_ADJUSTMENT_NOTE, MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { cx, ErrorList, Layout, StatusBadge, StatusSelect, Time, type ViewContext } from './components';
+import { cx, ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { RichText } from './rich-text';
 
 /** 已有分類不在專案清單時（例如分類改名後的舊單）仍列出，才能預選與保留。 */
@@ -223,7 +223,7 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                                 </div>
                             ) : null}
                             <div class="mt-3 flex flex-wrap items-center gap-2">
-                                <form method="post" action={`${base}/${draft.id}/send`}>
+                                <form method="post" action={paths.draftSend(slug, publicId, draft.id)}>
                                     <input type="hidden" name="_back" value={back} />
                                     <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-draft-send>送出</button>
                                 </form>
@@ -271,13 +271,13 @@ const EVENT_LABELS: Record<string, string> = {
     handoff: '寫交接紀錄',
 };
 
-function eventDetail(kind: string, detail: string | null): string {
+function eventDetail(kind: string, detail: string | null, labels: StatusLabels): string {
     if (!detail) {
         return '';
     }
     if (kind === 'status') {
         const [from, to] = detail.split('>');
-        return `：${isStatus(from) ? statusLabel(from) : from} → ${isStatus(to) ? statusLabel(to) : to}`;
+        return `：${isStatus(from) ? statusLabel(from, labels) : from} → ${isStatus(to) ? statusLabel(to, labels) : to}`;
     }
     return kind === 'takeover' || kind === 'release' ? `（原本是 ${detail}）` : '';
 }
@@ -352,7 +352,7 @@ export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; wor
                         {work.recent_activity.map((event) => (
                             <li>
                                 <Time v={v} at={event.at} relative class="text-slate-400" /> <span class="font-semibold text-slate-800">{event.by}</span> {EVENT_LABELS[event.kind] ?? event.kind}
-                                {eventDetail(event.kind, event.detail)}
+                                {eventDetail(event.kind, event.detail, v.cfg.statusLabels)}
                             </li>
                         ))}
                     </ol>
@@ -427,7 +427,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                     </div>
                                 ) : null}
                             </div>
-                            <StatusBadge status={report.status} />
+                            <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
                         </div>
 
                         <div class="mt-5" data-report-description><RichText text={report.description} /></div>
@@ -511,7 +511,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                                 {props.canManage ? (
                                     <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open={report.public_id}>在對話面板開啟</button>
                                 ) : null}
-                                <StatusBadge status={report.status} />
+                                <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
                             </div>
                         </div>
 
@@ -554,14 +554,20 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                 <aside class="grid gap-4 lg:sticky lg:top-6">
                     {isOwner && props.work ? <WorkPanel v={v} slug={slug} publicId={report.public_id} work={props.work} canClaim={props.canClaim === true} /> : null}
                     {props.canManage ? (
-                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 class="text-sm font-semibold text-slate-950">更新狀態</h2>
-                            <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-4 grid gap-3">
-<input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
-                                <label for="status" class="sr-only">處理狀態</label>
-                                <StatusSelect id="status" status={report.status} class="w-full" teamSide={isOwner} />
-                                <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 focus-visible:ring-offset-2">儲存狀態</button>
-                            </form>
+                        // 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」（同清單操作欄那顆）。
+                        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel>
+                            <h2 class="text-sm font-semibold text-slate-950">狀態</h2>
+                            <div class="mt-3">
+                                <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
+                            </div>
+                            <p class="mt-3 text-xs leading-5 text-slate-500">{labels.client}留言會變「{v.cfg.statusLabels.new}」，{labels.owner}回覆會變「{v.cfg.statusLabels.needs_input}」。</p>
+                            {!isOwner && report.status !== 'completed' ? (
+                                <form method="post" action={paths.reportStatus(slug, report.public_id)} data-confirm={COMPLETE_CONFIRM} class="mt-3">
+                                    <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
+                                    <input type="hidden" name="status" value="completed" />
+                                    <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report>完成</button>
+                                </form>
+                            ) : null}
                         </section>
                     ) : null}
 

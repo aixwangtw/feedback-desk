@@ -146,6 +146,9 @@ describe('API with a team token', () => {
         expect(all.reports[1].source).toBe('public_stranger');
         const byStatus = await api('GET', `${base}?status=待審核`, token);
         expect((await json<{ reports: unknown[] }>(byStatus)).reports).toEqual([]);
+        // 改名後的中文名稱也接受（舊名稱待處理／待審核照樣接受）。
+        expect((await api('GET', `${base}?status=等客戶`, token)).status).toBe(200);
+        expect((await json<{ reports: Array<{ title: string; status_label: string }> }>(await api('GET', `${base}?status=等工程師`, token))).reports.map((r) => [r.title, r.status_label])).toEqual([['客戶單', '等工程師']]);
         expect((await api('GET', `${base}?status=doing`, token)).status).toBe(422);
         const text = JSON.stringify(all);
         expect(text).not.toContain('reporter_token_hash');
@@ -201,7 +204,7 @@ describe('API with a team token', () => {
         expect(byId.status).toBe(200);
 
         const status = await json<{ previous: { status: string }; current: { status: string; label: string } }>(await api('POST', `${base}/${report.public_id}/status`, token, { status: '待審核' }));
-        expect(status).toMatchObject({ previous: { status: 'new' }, current: { status: 'needs_input', label: '待審核' } });
+        expect(status).toMatchObject({ previous: { status: 'new', label: '等工程師' }, current: { status: 'needs_input', label: '等客戶' } });
         expect((await api('POST', `${base}/${report.public_id}/status`, token, { status: 'done' })).status).toBe(422);
 
         const message = await json<{ author: string }>(await api('POST', `${base}/${report.public_id}/messages`, token, { body: '已處理' }));

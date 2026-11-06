@@ -88,8 +88,9 @@ export async function reports(rt: Runtime, argv: string[]): Promise<number> {
     });
     const slug = requirePositional(args, 0, '<project>');
     for (const input of list(args, 'status')) {
-        if (!statusFromInput(input)) {
-            throw new CliError(`不認得的狀態「${input}」。可用值：${describedStatusOptions()}`);
+        // CLI 不知道站台的客戶稱呼：「等…」先放行，伺服器再照站台設定確認。
+        if (!statusFromInput(input, null)) {
+            throw new CliError(`不認得的狀態「${input}」。可用值：${describedStatusOptions(null)}`);
         }
     }
     const query = new URLSearchParams();
@@ -320,8 +321,8 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
     const slug = requirePositional(args, 0, '<project>');
     const ref = requirePositional(args, 1, '<report>');
     const input = requirePositional(args, 2, '<status>');
-    if (!statusFromInput(input)) {
-        throw new CliError(`不認得的狀態。可用值：${describedStatusOptions()}`);
+    if (!statusFromInput(input, null)) {
+        throw new CliError(`不認得的狀態。可用值：${describedStatusOptions(null)}`);
     }
     const api = apiFor(rt, str(args, 'url'));
     const result = await api.post<{ title: string; previous: { status: string; label: string }; current: { status: string; label: string } }>(
@@ -367,7 +368,7 @@ export async function message(rt: Runtime, argv: string[]): Promise<number> {
         return 0;
     }
     rt.out(`已留言：${escapeInline(result.title)}（署名 ${escapeInline(result.author)}，附圖 ${result.images_added} 張）`);
-    // 待處理的單留言後伺服器自動改成待審核，提醒更新調整重點。
+    // 等工程師（new）的單留言後伺服器自動改成等客戶（needs_input），提醒更新調整重點。
     if (result.notice) rt.out(escapeInline(result.notice));
     return 0;
 }

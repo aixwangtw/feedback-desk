@@ -23,7 +23,7 @@ import {
 } from './db';
 import { CLIENT_VISIBLE_SQL, isVisibleToClient, type Attachment, type ClientAccount, type Developer, type Project, type Report } from './models';
 import {
-    ADJUSTMENT_REMINDER,
+    adjustmentReminder,
     addMessage,
     changeStatus,
     createReport,
@@ -140,9 +140,9 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
     const project = await projectOrFail(ctx.env, slug);
     const statuses: ReportStatus[] = [];
     for (const input of filters.statuses ?? []) {
-        const status = statusFromInput(input);
+        const status = statusFromInput(input, config(ctx.env).statusLabels);
         if (!status) {
-            throw new ServiceError('invalid_status', `不認得的狀態「${input}」。可用值：${describedStatusOptions()}`, 422);
+            throw new ServiceError('invalid_status', `不認得的狀態「${input}」。可用值：${describedStatusOptions(config(ctx.env).statusLabels)}`, 422);
         }
         statuses.push(status);
     }
@@ -200,7 +200,7 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             client_number: report.client_number,
             public_id: report.public_id,
             status: report.status,
-            status_label: statusLabel(report.status),
+            status_label: statusLabel(report.status, config(ctx.env).statusLabels),
             creator_type: report.creator_type,
             creator: withAgent(creatorLabel(ctx.env, report, project, report.developer_name, report.client_account_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
             claimed_by: report.claimed_at && report.claimed_name ? withAgent(report.claimed_name, report.claimed_agent, true) : null,
@@ -245,7 +245,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         project: project.slug,
         title: report.title,
         status: report.status,
-        status_label: statusLabel(report.status),
+        status_label: statusLabel(report.status, config(ctx.env).statusLabels),
         creator_type: report.creator_type,
         creator: withAgent(creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
@@ -274,9 +274,10 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
 
 export async function setReportStatus(ctx: TeamContext, slug: string, identifier: string, statusInput: string, options: { force?: boolean } = {}) {
     const project = await projectOrFail(ctx.env, slug);
-    const status = statusFromInput(statusInput);
+    const statusLabels = config(ctx.env).statusLabels;
+    const status = statusFromInput(statusInput, statusLabels);
     if (!status) {
-        throw new ServiceError('invalid_status', `不認得的狀態。可用值：${describedStatusOptions()}`, 422);
+        throw new ServiceError('invalid_status', `不認得的狀態。可用值：${describedStatusOptions(statusLabels)}`, 422);
     }
     const report = await resolveReport(ctx.env, project, identifier);
     const takenOver = await guardClaim(ctx, report, options.force === true);
@@ -284,8 +285,8 @@ export async function setReportStatus(ctx: TeamContext, slug: string, identifier
     return {
         public_id: report.public_id,
         title: report.title,
-        previous: { status: report.status, label: statusLabel(report.status) },
-        current: { status, label: statusLabel(status) },
+        previous: { status: report.status, label: statusLabel(report.status, statusLabels) },
+        current: { status, label: statusLabel(status, statusLabels) },
         took_over_from: takenOver,
     };
 }
@@ -513,7 +514,7 @@ export async function createTeamReport(
     );
     if (forClient) {
         const author = messageAuthorName(ctx.env, report, true, ctx.developer.name);
-        // 開單附的通知留言不套用留言自動切狀態：單維持待處理。
+        // 開單附的通知留言不套用留言自動切狀態：單維持等工程師（new）。
         await addMessage(ctx.env, report, { author_type: 'owner', author_name: author, body: notice, uploads: [], author: teamAuthor(ctx), applyStatusRule: false }, ctx.now);
     }
     return {
@@ -630,7 +631,7 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         images_added: uploads.length,
         status: result.status,
         status_changed: result.statusChanged,
-        ...(result.statusChanged ? { notice: ADJUSTMENT_REMINDER } : {}),
+        ...(result.statusChanged ? { notice: adjustmentReminder(ctx.env) } : {}),
     };
 }
 

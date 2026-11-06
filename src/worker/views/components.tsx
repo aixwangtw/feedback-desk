@@ -1,6 +1,6 @@
 import { raw } from 'hono/html';
 import type { Child, FC } from 'hono/jsx';
-import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
+import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
@@ -56,35 +56,19 @@ export const ChatButton: FC<{ publicId: string; title: string; total: number; un
     );
 };
 
-export const StatusBadge: FC<{ status: ReportStatus }> = ({ status }) => (
-    <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`}>{statusLabel(status)}</span>
+export const StatusBadge: FC<{ status: ReportStatus; labels: StatusLabels }> = ({ status, labels }) => (
+    <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`} data-status-badge={status}>{statusLabel(status, labels)}</span>
 );
 
-/** 開發團隊不能改成已完成：選單沒有「已完成」，單已完成時顯示停用的「已完成（由客戶確認）」。 */
-export const COMPLETED_BY_CLIENT_LABEL = '已完成（由客戶確認）';
-
-export const StatusSelect: FC<{ status: ReportStatus; id: string; class?: string; autosave?: boolean; teamSide?: boolean }> = ({ status, id, class: extra, autosave, teamSide }) => (
-    <select
-        name="status"
-        id={id}
-        class={cx('rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10', extra)}
-        data-status-select={autosave ? '' : undefined}
-        data-status-autosave={autosave ? '' : undefined}
-    >
-        {STATUSES.map((option) =>
-            teamSide && option === 'completed' ? (
-                status === 'completed' ? (
-                    <option value={option} data-dot={statusDotClass(option)} selected disabled>
-                        {COMPLETED_BY_CLIENT_LABEL}
-                    </option>
-                ) : null
-            ) : (
-                <option value={option} data-dot={statusDotClass(option)} selected={status === option}>
-                    {statusLabel(option)}
-                </option>
-            ),
-        )}
-    </select>
+/**
+ * 清單列的狀態欄：只顯示狀態文字（狀態由留言自動切換、客戶按「完成」，網頁上沒有下拉）。
+ * rows.ts 的 statusTextHtml 是同一份 HTML 的字串版。
+ */
+export const StatusText: FC<{ status: ReportStatus; labels: StatusLabels }> = ({ status, labels }) => (
+    <span class="flex items-center gap-2 sm:justify-center">
+        <span class={`size-2.5 shrink-0 rounded-full ${statusDotClass(status)}`} aria-hidden="true" data-status-dot></span>
+        <span class="text-xs font-semibold text-slate-700" data-status-text={status}>{statusLabel(status, labels)}</span>
+    </span>
 );
 
 export const ImageLightbox: FC = () => (
@@ -358,6 +342,29 @@ export const Pagination: FC<{ page: number; lastPage: number; total: number; per
 };
 
 /**
+ * 待審留言（只有開發團隊的面板輸出）：草稿帶進下面的輸入框，按「送出草稿」才發給客戶；可先改文字。
+ * client/chat-panel.js 用 textContent 填作者、原留言等文字。
+ */
+const ChatDraftBox: FC<{ clientLabel: string }> = ({ clientLabel }) => (
+    <>
+        <div class="mb-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-950" data-chat-draft hidden>
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span class="font-bold">待審留言（還沒發出）</span>
+                <span class="rounded bg-amber-200 px-1.5 py-0.5 font-semibold" data-chat-draft-replaces hidden>修改原留言</span>
+                <span class="text-amber-800" data-chat-draft-meta></span>
+                <span class="ml-auto flex items-center gap-2">
+                    <button type="button" class="rounded px-1.5 py-0.5 font-semibold text-amber-900 underline-offset-2 hover:underline" data-chat-draft-next hidden>下一則</button>
+                    <button type="button" class="rounded px-1.5 py-0.5 font-semibold text-amber-900 underline-offset-2 hover:underline" data-chat-draft-exit>改寫一般回覆</button>
+                </span>
+            </div>
+            <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-amber-900" data-chat-draft-original hidden></p>
+            <p class="mt-1 text-amber-800">按「送出草稿」才會發給{clientLabel}；輸入框裡改過的文字會照改過的送出。</p>
+        </div>
+        <button type="button" class="mb-2 inline-flex items-center rounded-lg border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100" data-chat-draft-resume hidden>帶入待審留言</button>
+    </>
+);
+
+/**
  * Bottom-right chat panel. The list and the conversations come from endpoints that need a project
  * sign-in; the script puts list texts in with textContent and conversations as server-escaped HTML.
  */
@@ -405,6 +412,7 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
                         <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-3 py-4 sm:px-4" aria-live="polite" data-chat-thread></div>
 
                         <form class="shrink-0 border-t border-slate-200 bg-white p-3" data-chat-form novalidate>
+                            {viewer === 'owner' ? <ChatDraftBox clientLabel={v.cfg.labels.client} /> : null}
                             <p class="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-chat-error hidden></p>
                             <div id="chat-preview" class="mb-2 grid grid-cols-4 gap-2 empty:hidden sm:grid-cols-5" aria-live="polite"></div>
                             <label for="chat-body" class="sr-only">回覆內容</label>

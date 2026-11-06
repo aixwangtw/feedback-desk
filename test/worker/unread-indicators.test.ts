@@ -46,7 +46,7 @@ describe('未讀標記與通知鈴鐺', () => {
             const html = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
             expect(html).toContain(`data-unread-flag="${waiting.public_id}"`);
             expect(html).toContain('3 則未讀');
-            // 不新增「待回覆」標示：狀態只有待處理、待審核、已完成。
+            // 不新增「待回覆」標示：狀態只有等工程師、等客戶、已完成。
             expect(html).not.toContain('待回覆');
             expect(html).not.toContain(`data-unread-flag="${answered.public_id}"`);
         }

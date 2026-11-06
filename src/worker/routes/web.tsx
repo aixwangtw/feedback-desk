@@ -7,7 +7,7 @@ import { attachmentsForReport, findClientAccount, findClientAccountInProject, fi
 import { CLIENT_VISIBLE_SQL, isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
-    ADJUSTMENT_REMINDER,
+    adjustmentReminder,
     addMessage,
     adjustmentNewForClientSql,
     parseStoredFiles,
@@ -69,7 +69,7 @@ import { projectCategories } from '../../shared/categories';
 import { verifyTurnstile } from '../lib/turnstile';
 import { isDeveloperSideCreator, withAgent } from '../lib/agents';
 import { claimReport, releaseReport, ServiceError, workState, writeHandoff, type TeamContext } from '../lib/team';
-import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type MessageDraft } from '../lib/drafts';
+import { discardDraft, draftsForReport, findDraft, sendDraft, updateDraft, type DraftView, type MessageDraft } from '../lib/drafts';
 import { clientNotifications, teamNotifications, type Notifications } from '../lib/notifications';
 
 export const web = new Hono<AppEnv>();
@@ -548,7 +548,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const direction: 'asc' | 'desc' = c.req.query('direction') === 'asc' ? 'asc' : 'desc';
     const statusInput = c.req.query('status') ?? '';
     const selectedStatus: ReportStatus | null = isStatus(statusInput) ? statusInput : null;
-    // 頁籤：舊網址帶 status= 時照舊只用狀態篩選、不套頁籤；否則團隊預設「待團隊回覆」、客戶預設「待客戶回覆」。
+    // 頁籤直接對應狀態：舊網址帶 status= 時照舊只用狀態篩選、不套頁籤；否則團隊預設「等工程師」（new）、客戶預設「等客戶」（needs_input）。
     const tabInput = c.req.query('tab') ?? '';
     // 編輯失敗重新顯示時用「全部」，被編輯的單一定在畫面上，對話框才能帶著錯誤重開。
     const defaultTab: PortalTab = form?.bag === 'editReport' ? 'all' : isOwner ? 'developer' : 'client';
@@ -1127,7 +1127,7 @@ web.get('/p/:slug/conversations', async (c) => {
                     creator_type, creator_developer_id, creator_agent, reporter_name, ${creatorClientNameSql('numbered')} AS creator_client_name,
                     (SELECT d.name FROM developers d WHERE d.id = numbered.creator_developer_id) AS creator_developer_name,
                     ${latest(`substr(lm2.body, 1, ${PREVIEW_SOURCE_CHARS})`)} AS latest_body,
-                    ${latest('lm2.author_type')} AS latest_author
+                    ${latest('lm2.author_type')} AS latest_author${isOwner ? ', (SELECT COUNT(*) FROM message_drafts md WHERE md.report_id = numbered.id) AS drafts_count' : ''}
                 FROM numbered ${isOwner ? '' : 'WHERE client_deleted_at IS NULL'}
             ) listed
             ORDER BY ${conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })}`,
@@ -1143,20 +1143,25 @@ web.get('/p/:slug/conversations', async (c) => {
             adjustment_updated: number;
             latest_body: string | null;
             latest_author: Message['author_type'] | null;
+            /** Team side only. */
+            drafts_count?: number;
         }>();
     let unreadTotal = 0;
     let awaitingTotal = 0;
+    let draftsTotal = 0;
     const items = results.map((row) => {
         const adjustmentUpdated = row.adjustment_updated === 1;
         unreadTotal += row.unread_count;
-        // 只看正式留言：待審留言（草稿）在另一張表，不算回覆。
-        const awaitingReply = isAwaitingReply(row.status, row.latest_author, row.creator_type, isOwner);
+        // 只看正式留言：待審留言（草稿）在另一張表，不算回覆。團隊端還有沒送出的草稿也算未回覆（面板會彈出提醒）。
+        const drafts = isOwner ? row.drafts_count ?? 0 : 0;
+        const awaitingReply = isAwaitingReply(row.status, row.latest_author, row.creator_type, isOwner) || drafts > 0;
         awaitingTotal += awaitingReply ? 1 : 0;
+        draftsTotal += drafts;
         return {
             id: row.public_id,
             number: row.seq,
             title: row.title,
-            status: statusLabel(row.status),
+            status: statusLabel(row.status, cfg.statusLabels),
             deleted: row.client_deleted_at !== null,
             preview: row.latest_body !== null ? messagePreview(row.latest_body) : null,
             preview_is_mine: row.latest_author !== null && (row.latest_author !== 'reporter') === isOwner,
@@ -1167,14 +1172,39 @@ web.get('/p/:slug/conversations', async (c) => {
             adjustment_updated: adjustmentUpdated,
             has_update: row.unread_count > 0 || adjustmentUpdated,
             awaiting_reply: awaitingReply,
+            // 待審留言數只給開發團隊；客戶端沒有這個欄位。
+            ...(isOwner ? { drafts_count: drafts } : {}),
             messages_count: row.messages_count,
             creator: withAgent(creatorLabel(c.env, row, project, row.creator_developer_name, row.creator_client_name), row.creator_agent, isDeveloperSideCreator(row.creator_type)),
             thread_url: paths.conversation(project.slug, row.public_id),
             page_url: paths.report(project.slug, row.public_id),
         };
     });
-    return c.json({ items, unread_total: unreadTotal, awaiting_total: awaitingTotal }, 200, cacheHeaders);
+    return c.json({ items, unread_total: unreadTotal, awaiting_total: awaitingTotal, ...(isOwner ? { drafts_total: draftsTotal } : {}) }, 200, cacheHeaders);
 });
+
+/** Version of a report's drafts for the team's thread ETag; '' without drafts. */
+async function draftsVersion(db: D1Database, reportId: number): Promise<string> {
+    const row = await db
+        .prepare('SELECT COUNT(*) AS total, MAX(id) AS last_id, MAX(updated_at) AS last_update FROM message_drafts WHERE report_id = ?')
+        .bind(reportId)
+        .first<{ total: number; last_id: number | null; last_update: string | null }>();
+    return row && row.total > 0 ? `${row.total}.${row.last_id}.${row.last_update}` : '';
+}
+
+/** A draft as the team's chat panel gets it: the text goes into the composer, send_url sends it. */
+function panelDraft(project: Project, report: Report, draft: DraftView) {
+    return {
+        id: draft.id,
+        body: draft.body,
+        author: withAgent(draft.display_author, draft.author_agent, true),
+        replaces_message_id: draft.replaces_message_id,
+        replaces_body: draft.replaces_body,
+        attachments_count: draft.files.length,
+        send_url: paths.draftSend(project.slug, report.public_id, draft.id),
+        page_url: `${paths.report(project.slug, report.public_id)}#message-drafts`,
+    };
+}
 
 /**
  * One conversation for the chat panel: the adjustment and the messages as server-rendered (escaped)
@@ -1196,15 +1226,22 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     const db = c.env.DB;
     const readAt = isOwner ? null : await clientReadAt(db, report, viewer);
     const adjustmentWasNew = !isOwner && report.adjustment_updated_at !== null && (readAt === null || report.adjustment_updated_at > readAt);
+    // 待審留言只給開發團隊：草稿不動到單的時間，所以團隊端的 ETag 另外帶草稿的版本（一個小查詢）。
+    const draftVersion = isOwner ? await draftsVersion(db, report.id) : '';
     // The list number is left out on purpose (it needs a count over the project); it only shifts when
     // reports are added or removed, and the next full answer picks it up.
-    const etag = `W/"thread|${activityEtag(report, viewerKey(isOwner, viewer), c.get('now')).slice(3, -1)}|${adjustmentWasNew ? 1 : 0}"`;
+    const etag = `W/"thread|${activityEtag(report, viewerKey(isOwner, viewer), c.get('now')).slice(3, -1)}|${adjustmentWasNew ? 1 : 0}${isOwner ? `|${draftVersion}` : ''}"`;
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
     if (c.req.header('if-none-match') === etag) {
         return c.body(null, 304, cacheHeaders);
     }
     const isPublicReporter = isPublicReport(report) && !isOwner;
-    const [attachments, messages, number] = await Promise.all([attachmentsForReport(db, report.id), messagesForReport(db, report.id), sequenceNumber(db, report, !isOwner)]);
+    const [attachments, messages, number, drafts] = await Promise.all([
+        attachmentsForReport(db, report.id),
+        messagesForReport(db, report.id),
+        sequenceNumber(db, report, !isOwner),
+        isOwner && draftVersion !== '' ? draftsForReport(db, report.id) : Promise.resolve([]),
+    ]);
     const messageAttachments = new Map<number, Attachment[]>();
     for (const attachment of attachments) {
         if (attachment.message_id !== null) {
@@ -1226,10 +1263,12 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
     return c.json(
         {
+            // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
+            ...(isOwner ? { drafts: drafts.map((draft) => panelDraft(project, report, draft)) } : {}),
             id: report.public_id,
             number,
             title: report.title,
-            status: statusLabel(report.status),
+            status: statusLabel(report.status, config(c.env).statusLabels),
             deleted: report.client_deleted_at !== null,
             page_url: paths.report(project.slug, report.public_id),
             post_url: paths.reportMessages(project.slug, report.public_id),
@@ -1465,23 +1504,29 @@ web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/status', async (c) => {
     }
     const form = await readForm(c);
     const status = field(form, 'status');
+    const isOwner = await access.isOwner(project);
+    // 網頁上不能手動改狀態：留言時自動切換（等工程師／等客戶），只有客戶能按「完成」結單。
+    // 排程 API 與 CLI（feedback-desk status）照舊可以改。
+    const refused = `狀態會依留言自動切換；網頁上只有${config(c.env).labels.client}能按「完成」結單。`;
+    if (isOwner) {
+        abort(403, refused);
+    }
     if (!isStatus(status)) {
         if (wantsJson(c)) {
             return c.json({ message: '選擇的 狀態 無效。', errors: { status: ['選擇的 狀態 無效。'] } }, 422);
         }
         return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
     }
-    // 已完成只由客戶確認：開發團隊不能把單改成已完成。
-    if (status === 'completed' && (await access.isOwner(project))) {
-        abort(403, '已完成要由客戶確認，開發團隊不能改成已完成。');
+    if (status !== 'completed') {
+        abort(403, refused);
     }
     await changeStatus(c.env, report, status, c.get('now'), await access.author(project));
-    const message = `狀態已更新為「${statusLabel(status)}」。`;
+    const statusLabels = config(c.env).statusLabels;
+    const message = `狀態已更新為「${statusLabel(status, statusLabels)}」。`;
     if (wantsJson(c)) {
-        const isOwner = await access.isOwner(project);
         return c.json({
             status,
-            label: statusLabel(status),
+            label: statusLabel(status, statusLabels),
             counts: await statusCounts(c.env.DB, project.id, { includeClientDeleted: isOwner, clientCreatedOnly: !isOwner }),
             message,
         });
@@ -1571,7 +1616,7 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
     );
     // Writing a message means the writer has seen the report, including messages before it.
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), account);
-    const notice = `訊息已送出。${isOwner && result.statusChanged ? ADJUSTMENT_REMINDER : ''}`;
+    const notice = `訊息已送出。${isOwner && result.statusChanged ? adjustmentReminder(c.env) : ''}`;
     if (wantsJson(c)) {
         return c.json({ message: notice, status: result.status }, 201);
     }
@@ -1600,20 +1645,36 @@ function draftsAnchor(project: Project, report: Report): string {
     return `${paths.report(project.slug, report.public_id)}#message-drafts`;
 }
 
+/**
+ * 送出草稿：單頁的「送出」不帶 body，照草稿原文；右下角對話面板帶上輸入框裡（可能改過）的文字，
+ * 要 JSON 時回 {message, status}。空白一律 422，草稿保留。
+ */
 web.post('/p/:slug/reports/:publicId/drafts/:draftId/send', async (c) => {
     await throttle(c, 'drafts', 30);
     const { project, report, draft } = await draftOr404(c);
     const access = c.get('access');
     const developer = await access.currentDeveloper(project);
+    const form = await readForm(c);
+    const editedBody = form.has('body') ? form.get('body') ?? '' : null;
+    let notice: string;
+    let status: ReportStatus;
     try {
-        const result = await sendDraft(c.env, report, draft, { author: await access.author(project), developerName: developer?.name ?? null }, c.get('now'));
-        access.setFlash({ success: `${result.replaced ? '已修改原留言。' : '留言已送出。'}${result.statusChanged ? ADJUSTMENT_REMINDER : ''}` });
+        const result = await sendDraft(c.env, report, draft, { author: await access.author(project), developerName: developer?.name ?? null }, c.get('now'), editedBody);
+        notice = `${result.replaced ? '已修改原留言。' : '留言已送出。'}${result.statusChanged ? adjustmentReminder(c.env) : ''}`;
+        status = result.status;
     } catch (error) {
         if (error instanceof ServiceError) {
+            if (wantsJson(c)) {
+                return c.json({ message: error.message, errors: { body: [error.message] } }, 422);
+            }
             abort(422, error.message);
         }
         throw error;
     }
+    if (wantsJson(c)) {
+        return c.json({ message: notice, status });
+    }
+    access.setFlash({ success: notice });
     return c.redirect(`${paths.report(project.slug, report.public_id)}#conversation`, 302);
 });
 

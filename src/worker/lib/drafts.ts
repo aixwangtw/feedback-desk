@@ -139,7 +139,7 @@ export async function updateDraft(env: Env, draft: MessageDraft, body: string, n
 /**
  * 送出：一般草稿照現行留言流程新增一則（作者＝按送出的人、時間＝現在，客戶端出現未讀，
  * 草稿寫的 AI 工具名稱保留）；修改原留言型的草稿改寫原留言內容，不新增一則，原留言時間不變。
- * 兩種都套用留言自動切狀態。
+ * 兩種都套用留言自動切狀態。editedBody 是送出前在畫面上改過的文字（對話面板），有給就以它為準。
  */
 export async function sendDraft(
     env: Env,
@@ -147,7 +147,12 @@ export async function sendDraft(
     draft: MessageDraft,
     sender: { author: Author; developerName: string | null },
     now = Date.now(),
+    editedBody: string | null = null,
 ): Promise<{ replaced: boolean; status: ReportStatus; statusChanged: boolean }> {
+    if (editedBody !== null) {
+        // 送出前在畫面上改過的文字（右下角對話面板）以它為準；空白照樣拒絕，草稿保留。
+        draft = { ...draft, body: validatedDraftBody(editedBody) };
+    }
     const db = env.DB;
     const author: Author = { ...sender.author, agent: draft.author_agent };
     const files = parseStoredFiles(draft.attachments);

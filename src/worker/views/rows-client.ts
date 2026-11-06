@@ -2,7 +2,7 @@
  * Large portal pages ship their rows as JSON and the browser builds them with the same functions
  * the server uses for small pages (rows.ts), so the markup is identical either way.
  */
-import type { ReportStatus } from '../../shared/status';
+import type { ReportStatus, StatusLabels } from '../../shared/status';
 import type { FeedbackConfig } from '../env';
 import type { Attachment, Report } from '../lib/models';
 import type { WaitingSide } from '../lib/reports';
@@ -25,6 +25,7 @@ export interface PortalRowsPayload {
     categories: string[];
     now: number;
     labels: { client: string; owner: string };
+    statusLabels: StatusLabels;
     utcOffsetMinutes: number;
     timezoneName: string;
     rows: Array<{
@@ -51,6 +52,7 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
         categories: ctx.categories ?? [],
         now: ctx.v.now,
         labels: { client: ctx.v.cfg.labels.client, owner: ctx.v.cfg.labels.owner },
+        statusLabels: ctx.v.cfg.statusLabels,
         utcOffsetMinutes: ctx.v.cfg.utcOffsetMinutes,
         timezoneName: ctx.v.cfg.timezoneName,
         rows: rows.map((row) => ({
@@ -84,7 +86,7 @@ export function payloadScript(payload: PortalRowsPayload): string {
 }
 
 function contextFrom(payload: PortalRowsPayload): RowContext {
-    const cfg = { labels: payload.labels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
+    const cfg = { labels: payload.labels, statusLabels: payload.statusLabels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
     return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory, categories: payload.categories ?? [] };
 }
 

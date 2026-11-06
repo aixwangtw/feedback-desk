@@ -5,7 +5,7 @@
  * Workers, above the free plan's 10 ms. The markup here is byte-for-byte the same as the JSX
  * reference components in rows-reference.tsx (a test compares the two).
  */
-import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
+import { COMPLETE_CONFIRM, statusDotClass, statusLabel, WAITING_STATUS, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, chatButtonLabels } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
 import type { Attachment, Report } from '../lib/models';
@@ -54,23 +54,10 @@ function time(v: ViewContext, at: string, relative = false): string {
     return `<time datetime="${esc(at)}" title="${esc(`${absolute}（${v.cfg.timezoneName}）`)}">${esc(relative ? formatRelative(at, v.now) : absolute)}</time>`;
 }
 
-const COMPLETE_CONFIRM = '確定這張單已經完成了嗎？';
-/** Same text as COMPLETED_BY_CLIENT_LABEL in components.tsx. */
-const COMPLETED_BY_CLIENT = '已完成（由客戶確認）';
 
-/** StatusSelect（components.tsx）：團隊端沒有「已完成」，已完成的單顯示停用選項。 */
-function statusSelect(id: string, status: ReportStatus, extra: string, teamSide: boolean): string {
-    let options = '';
-    for (const option of STATUSES) {
-        if (teamSide && option === 'completed') {
-            if (status === 'completed') {
-                options += `<option value="${option}" data-dot="${statusDotClass(option)}" selected="" disabled="">${COMPLETED_BY_CLIENT}</option>`;
-            }
-            continue;
-        }
-        options += `<option value="${option}" data-dot="${statusDotClass(option)}"${status === option ? ' selected=""' : ''}>${statusLabel(option)}</option>`;
-    }
-    return `<select name="status" id="${esc(id)}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10 ${extra}" data-status-select="" data-status-autosave="">${options}</select>`;
+/** StatusText（components.tsx）：只顯示狀態文字，網頁上沒有改狀態的下拉。 */
+function statusTextHtml(status: ReportStatus, labels: StatusLabels): string {
+    return `<span class="flex items-center gap-2 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(status)}" aria-hidden="true" data-status-dot="true"></span><span class="text-xs font-semibold text-slate-700" data-status-text="${status}">${esc(statusLabel(status, labels))}</span></span>`;
 }
 
 function thumb(href: string, name: string, border = 'border-slate-200', adjustment = false): string {
@@ -107,7 +94,7 @@ export function reportFlagsHtml(ctx: RowContext, row: PortalRow, extra: string):
     }
     let html = `<div class="flex flex-wrap items-center gap-1.5 ${extra}" data-report-flags="true">`;
     if (waiting) {
-        html += `<span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting="${waiting}">等${esc(waiting === 'developer' ? ctx.v.cfg.labels.owner : ctx.v.cfg.labels.client)}</span>`;
+        html += `<span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting="${waiting}">${esc(ctx.v.cfg.statusLabels[WAITING_STATUS[waiting]])}</span>`;
     }
     if (row.unread > 0) {
         html += `<button type="button" class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold leading-4 text-white shadow-sm hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-chat-open="${id}" data-unread-flag="${id}">${badgeText(row.unread)} 則未讀</button>`;
@@ -136,7 +123,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
         html += `<span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted="true"><span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">${esc(v.cfg.labels.client)}已刪除</span>${time(v, report.client_deleted_at as string)}</span>`;
     }
     html += '</td>';
-    html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center"><form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="grid">${back}<label for="status-${id}" class="sr-only">「${title}」的狀態</label><div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center"><span class="size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}" aria-hidden="true" data-status-dot="true"></span>${statusSelect(`status-${report.public_id}`, report.status, 'h-8 w-28 shrink-0 !px-2 !py-0 !text-xs', isOwner)}</div><noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="text-[11px] empty:hidden text-slate-500" data-status-feedback="true" aria-live="polite"></span></form></td>`;
+    html += `<td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">${statusTextHtml(report.status, v.cfg.statusLabels)}</td>`;
     if (ctx.showCategory) {
         html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
     }
@@ -190,7 +177,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const hasAdjustment = (report.adjustment_note ?? '') !== '' || row.adjustmentAttachments.length > 0;
     const url = (attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
-    let html = `<article class="cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}" title="拖拉卡片可改變狀態">`;
+    let html = `<article class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
     html += `<div class="flex items-start gap-2"><div class="min-w-0 flex-1"><p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number="true">${row.number}</span></p>${reportFlagsHtml(ctx, row, 'mt-1')}`;
     if ((ctx.categories ?? []).length > 0) {
         html += categorySelectHtml(ctx, report, 'card-category', 'mt-1');
@@ -229,7 +216,6 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     }
     html += `<p class="mt-3 text-xs text-slate-500" data-report-creator="true">建立者：${esc(row.creatorLabel)}</p>`;
     html += `<p class="mt-3 text-xs text-slate-500">更新於 ${time(v, report.latest_activity_at, true)}</p>`;
-    html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form="true">${back}<label for="board-status-${id}" class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>${statusSelect(`board-status-${report.public_id}`, report.status, 'w-full !px-2 !py-1.5 !text-xs', isOwner)}<noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript><span class="min-h-4 text-[11px] text-slate-500" data-status-feedback="true" aria-live="polite"></span></form>`;
     html += '</article>';
     return html;
 }

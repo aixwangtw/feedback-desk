@@ -111,7 +111,7 @@ export const PublicHomePage: FC<{
                                         <a href={paths.report(project.slug, report.public_id)} class="block truncate text-sm font-semibold text-teal-800 hover:underline" data-my-report-link>{report.title}</a>
                                         <Time v={v} at={report.created_at} class="text-xs text-slate-500" />
                                     </div>
-                                    <StatusBadge status={report.status} />
+                                    <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
                                 </li>
                             ))}
                         </ul>

@@ -189,6 +189,11 @@ describe('several people and AI tools on one report', () => {
         expect(initText).toContain(WORK_RULE);
         const listed = await rpcResult<{ tools: Array<{ name: string; description: string }> }>(await mcpCall(token, 'tools/list'));
         expect(listed.tools.find((t) => t.name === 'set_status')?.description).toContain(WORK_RULE);
+        // 狀態改名：MCP 的中文標籤照站台設定（等工程師／等{客戶}），不再出現舊顯示名。
+        const listedText = JSON.stringify(listed);
+        expect(listed.tools.find((t) => t.name === 'set_status')?.description).toContain('new（等工程師）、needs_input（等客戶）、completed（已完成）');
+        expect(listedText).not.toContain('（待處理）');
+        expect(listedText).not.toContain('改成待審核');
         await new Promise((resolve) => setTimeout(resolve, 50));
         expect(await env.DB.prepare('SELECT mcp_client FROM api_tokens WHERE agent IS NULL ORDER BY id DESC LIMIT 1').first()).toEqual({ mcp_client: 'hermes-agent' });
         expect((await tool(token, 'claim_report', { project: seeded.project.slug, report: report.public_id })).isError).toBe(false);

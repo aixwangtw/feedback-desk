@@ -4,15 +4,15 @@
  * compares against byte for byte.
  */
 import type { FC } from 'hono/jsx';
-import { statusDotClass } from '../../shared/status';
 import type { Attachment, Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { badgeText } from '../../shared/conversation';
-import { ChatButton, cx, StatusSelect, Time, type ViewContext } from './components';
+import { ChatButton, cx, StatusText, Time, type ViewContext } from './components';
 
-const COMPLETE_CONFIRM = '確定這張單已經完成了嗎？';
+import { COMPLETE_CONFIRM } from '../../shared/status';
 import type { PortalRow } from './portal';
 import { CategoryAutosave } from './report';
+import { WAITING_STATUS } from '../../shared/status';
 
 const ICON_TRASH = (
     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></svg>
@@ -30,7 +30,7 @@ function dialogsSrc(slug: string, publicId: string, backPath: string): string {
 
 /**
  * 清單與看板上每張單的明顯標記：紅底「N 則未讀」（各自依自己這一方的已讀狀態，點了開對話面板）；
- * 團隊端另有「待審留言 N」（草稿，只有團隊看得到）。
+ * 團隊端另有「待審留言 N」（草稿，只有團隊看得到）。等誰的標示＝狀態名稱（等工程師／等{客戶}）。
  */
 export const ReportFlags: FC<{ v: ViewContext; row: PortalRow; slug: string; isOwner: boolean; class: string }> = ({ v, row, slug, isOwner, class: extra }) => {
     const report = row.report;
@@ -42,7 +42,7 @@ export const ReportFlags: FC<{ v: ViewContext; row: PortalRow; slug: string; isO
     return (
         <div class={`flex flex-wrap items-center gap-1.5 ${extra}`} data-report-flags>
             {waiting ? (
-                <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting={waiting}>{`等${waiting === 'developer' ? v.cfg.labels.owner : v.cfg.labels.client}`}</span>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold leading-4 text-slate-700 ring-1 ring-inset ring-slate-200" data-waiting={waiting}>{v.cfg.statusLabels[WAITING_STATUS[waiting]]}</span>
             ) : null}
             {row.unread > 0 ? (
                 <button type="button" class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-bold leading-4 text-white shadow-sm hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-chat-open={report.public_id} data-unread-flag={report.public_id}>{`${badgeText(row.unread)} 則未讀`}</button>
@@ -78,16 +78,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                 ) : null}
             </td>
             <td class="block sm:table-cell sm:px-3 sm:py-2 sm:align-middle sm:text-center">
-                <form method="post" action={paths.reportStatus(slug, report.public_id)} class="grid">
-<input type="hidden" name="_back" value={backPath} />
-                    <label for={`status-${report.public_id}`} class="sr-only">「{report.title}」的狀態</label>
-                    <div class="flex items-center gap-2 sm:mx-auto sm:max-w-40 sm:justify-center">
-                        <span class={`size-2.5 shrink-0 rounded-full ${statusDotClass(report.status)}`} aria-hidden="true" data-status-dot></span>
-                        <StatusSelect id={`status-${report.public_id}`} status={report.status} class="h-8 w-28 shrink-0 !px-2 !py-0 !text-xs" autosave teamSide={isOwner} />
-                    </div>
-                    <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
-                    <span class="text-[11px] empty:hidden text-slate-500" data-status-feedback aria-live="polite"></span>
-                </form>
+                <StatusText status={report.status} labels={v.cfg.statusLabels} />
             </td>
             {showCategory ? (
                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-2 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="row-category" compact class="justify-start sm:justify-center" /> : report.category || '未分類'}</td>
@@ -159,7 +150,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
     const firstAttachment = row.attachments[0];
     const firstAdjustment = row.adjustmentAttachments[0];
     return (
-        <article class={cx('cursor-grab rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)} title="拖拉卡片可改變狀態">
+        <article class={cx('rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-shadow hover:shadow-md', deleted ? 'opacity-70' : null)} data-kanban-card data-report-id={report.public_id} data-status={report.status} data-board-order={order} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)}>
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
                     <p class="text-[11px] font-bold text-slate-500">編號 <span data-report-number>{row.number}</span></p>
@@ -223,13 +214,6 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
 
             <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{row.creatorLabel}</p>
             <p class="mt-3 text-xs text-slate-500">更新於 <Time v={v} at={report.latest_activity_at} relative /></p>
-            <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-3 grid gap-1 border-t border-slate-100 pt-3" data-kanban-status-form>
-<input type="hidden" name="_back" value={backPath} />
-                <label for={`board-status-${report.public_id}`} class="text-[11px] font-semibold text-slate-600">移至其他狀態</label>
-                <StatusSelect id={`board-status-${report.public_id}`} status={report.status} class="w-full !px-2 !py-1.5 !text-xs" autosave teamSide={isOwner} />
-                <noscript><button type="submit" class="text-xs font-semibold text-teal-700">儲存</button></noscript>
-                <span class="min-h-4 text-[11px] text-slate-500" data-status-feedback aria-live="polite"></span>
-            </form>
         </article>
     );
 };

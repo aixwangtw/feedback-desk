@@ -94,7 +94,7 @@ describe('chat panel list', () => {
         const data = await list(owner, seeded);
         expect(data.items.map((item) => item.title)).toEqual(['有未讀', '已讀有留言', '開發者建的', '沒留言最新', '沒留言較舊']);
         const [first, second] = data.items;
-        expect(first).toMatchObject({ id: unread.public_id, unread: 2, messages_count: 2, has_update: true, preview_is_mine: false, number: 3, status: '待處理', deleted: false });
+        expect(first).toMatchObject({ id: unread.public_id, unread: 2, messages_count: 2, has_update: true, preview_is_mine: false, number: 3, status: '等工程師', deleted: false });
         expect(first.preview).toBe(`${'很長的留言'.repeat(6)}...`);
         expect(first.thread_url).toBe(`/p/${seeded.project.slug}/conversations/${unread.public_id}`);
         expect(first.page_url).toBe(`/p/${seeded.project.slug}/reports/${unread.public_id}`);
@@ -161,12 +161,17 @@ describe('chat panel caching', () => {
         const slug = seeded.project.slug;
         let etag = (await owner.get(`/p/${slug}/conversations`, JSON_HEADERS)).headers.get('etag') as string;
         const changes: Array<[string, () => Promise<unknown>]> = [
-            ['status', () => owner.post(`/p/${slug}/reports/${report.public_id}/status`, { status: 'needs_input' })],
+            // 網頁上只有客戶能改狀態（按「完成」）。
+            ['status', () => client.post(`/p/${slug}/reports/${report.public_id}/status`, { status: 'completed' })],
             ['adjustment', () => owner.post(`/p/${slug}/reports/${report.public_id}/adjustment`, { adjustment_note: '改好了' })],
             ['client delete', () => client.post(`/p/${slug}/reports/${report.public_id}/client-delete`)],
             ['restore', () => owner.post(`/p/${slug}/reports/${report.public_id}/restore`)],
             ['new report', () => seedReport(seeded.project)],
             ['agent message', () => insertMessage(report, 'agent', new Date().toISOString())],
+            // 待審留言只動團隊端的清單版本（有草稿標記、算未回覆）。
+            ['draft', () => env.DB.prepare("INSERT INTO message_drafts (report_id, author_name, body, created_at, updated_at) VALUES (?, '開發團隊', '草稿', ?, ?)").bind(report.id, new Date().toISOString(), new Date().toISOString()).run()],
+            ['draft edit', () => env.DB.prepare("UPDATE message_drafts SET body = '改過的草稿' WHERE report_id = ?").bind(report.id).run()],
+            ['draft sent or discarded', () => env.DB.prepare('DELETE FROM message_drafts WHERE report_id = ?').bind(report.id).run()],
             ['delete', () => owner.post(`/p/${slug}/reports/${report.public_id}/delete`)],
         ];
         for (const [name, change] of changes) {
@@ -294,8 +299,8 @@ describe('chat panel conversation', () => {
 
         const response = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/messages`, { body: '已處理，附圖給你看', 'upload_ids[]': [uploadId] }, JSON_HEADERS);
         expect(response.status).toBe(201);
-        // 待處理的單團隊留言後自動改成待審核，回應附上提醒。
-        expect(await response.json()).toMatchObject({ message: '訊息已送出。狀態已改為待審核，記得更新調整重點。', status: 'needs_input' });
+        // 等工程師的單團隊留言後自動改成等客戶，回應附上提醒。
+        expect(await response.json()).toMatchObject({ message: '訊息已送出。狀態已改為「等客戶」，記得更新調整重點。', status: 'needs_input' });
         const message = await env.DB.prepare('SELECT * FROM messages WHERE report_id = ? ORDER BY id DESC LIMIT 1').bind(report.id).first<{ id: number; author_type: string; author_name: string }>();
         expect(message).toMatchObject({ author_type: 'owner', author_name: '王小明' });
         const attachment = await env.DB.prepare('SELECT * FROM attachments WHERE message_id = ?').bind(message?.id).first<{ original_name: string }>();

@@ -172,12 +172,14 @@ export async function setClientDeleted(env: Env, report: Report, deleted: boolea
         .run();
 }
 
-/** 團隊留言把單切成待審核後，給人看的提醒（網頁、指令、MCP、排程 API 共用）。 */
-export const ADJUSTMENT_REMINDER = '狀態已改為待審核，記得更新調整重點。';
+/** 團隊留言把單切成等客戶（needs_input）後，給人看的提醒（網頁、指令、MCP、排程 API 共用；名稱照站台設定）。 */
+export function adjustmentReminder(env: Env): string {
+    return `狀態已改為「${config(env).statusLabels.needs_input}」，記得更新調整重點。`;
+}
 
 /**
- * 留言自動切狀態：待審核的單客戶留言 → 待處理（要我方回覆）；團隊在待處理的單留言 → 待審核
- * （記得更新調整重點）。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
+ * 留言自動切狀態：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；團隊在等工程師的單留言 →
+ * 等客戶（記得更新調整重點）。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
  */
 export function statusAfterMessage(current: ReportStatus, byTeam: boolean): ReportStatus | null {
     if (byTeam && current === 'new') {
@@ -313,22 +315,17 @@ export async function updateAdjustment(
     await deleteObjects(env, removed);
 }
 
-/** 清單頁籤：待開發團隊回覆、待客戶回覆、已完成、全部。 */
+/** 清單頁籤：等工程師（new）、等客戶（needs_input）、已完成、全部。頁籤文字＝狀態名稱。 */
 export const PORTAL_TABS = ['developer', 'client', 'completed', 'all'] as const;
 export type PortalTab = (typeof PORTAL_TABS)[number];
-/** 每張單在等誰：由狀態與留言時間推導，不是新的狀態值。 */
-export type WaitingSide = 'developer' | 'client' | 'completed';
+export { WAITING_STATUS, type WaitingSide } from '../../shared/status';
 
 /**
- * SQL for who the report is waiting on (推導，不新增狀態值、不改資料結構): completed → 'completed';
- * new → 'developer'; needs_input whose newest client message is later than the team's last reply
- * (team message or adjustment update, whichever is later) → 'developer'; everything else → 'client'.
+ * SQL for who the report is waiting on, straight from the status (不看最後發言者):
+ * new → 'developer'、needs_input → 'client'、completed → 'completed'.
  */
 export function waitingSideSql(table: string): string {
-    const latestClient = `(SELECT MAX(wc.created_at) FROM messages wc WHERE wc.report_id = ${table}.id AND wc.author_type = 'reporter')`;
-    const latestTeam = `MAX(COALESCE((SELECT MAX(wt.created_at) FROM messages wt WHERE wt.report_id = ${table}.id AND wt.author_type IN ('owner', 'agent')), ''), COALESCE(${table}.adjustment_updated_at, ''))`;
-    return `(CASE WHEN ${table}.status = 'completed' THEN 'completed' WHEN ${table}.status = 'new' THEN 'developer'
-        WHEN COALESCE(${latestClient}, '') > ${latestTeam} THEN 'developer' ELSE 'client' END)`;
+    return `(CASE ${table}.status WHEN 'completed' THEN 'completed' WHEN 'new' THEN 'developer' ELSE 'client' END)`;
 }
 
 /** Message author types written by the team side (people and AI agents). */

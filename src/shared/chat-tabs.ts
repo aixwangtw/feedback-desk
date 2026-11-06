@@ -1,6 +1,7 @@
 /**
  * 右下角對話面板的「未回覆／已回覆」頁籤與自動展開規則（純邏輯；DOM 在 client/chat-panel.js）。
- * 未回覆＝單未完成，且對方最後發言、自己還沒回（伺服器端算好的 awaiting_reply）；待審留言草稿不算回覆。
+ * 未回覆＝單未完成，且對方最後發言、自己還沒回（伺服器端算好的 awaiting_reply）；待審留言草稿不算回覆，
+ * 團隊端還有沒送出的草稿時也算未回覆（伺服器端加上去，面板自動彈出並打開第一張有草稿的單）。
  */
 export const CHAT_TABS = ['awaiting', 'replied'] as const;
 export type ChatTab = (typeof CHAT_TABS)[number];

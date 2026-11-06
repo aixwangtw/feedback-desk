@@ -5,6 +5,7 @@
 import { badgeText, countUnreadReports, orderConversations, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from '../src/shared/conversation';
 import { CHAT_UNREAD_BADGE, UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from '../src/worker/views/chat-classes';
 import { chatTabCounts, filterByTab, rememberDismissed, sessionStorageOrNull, shouldAutoOpen } from '../src/shared/chat-tabs';
+import { draftMeta, draftSendParams, nextDraftIndex, shouldFillComposer } from '../src/shared/chat-drafts';
 
 const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
 const TAB_IDLE = ['border-transparent', 'text-slate-500', 'hover:text-slate-900'];
@@ -49,6 +50,15 @@ if (root) {
     const preview = document.getElementById('chat-preview');
     const sendButton = $('[data-chat-send]');
     const errorBox = $('[data-chat-error]');
+    // 待審留言區塊只在開發團隊的頁面輸出；客戶端這些都是 null。
+    const draftBox = $('[data-chat-draft]');
+    const draftReplaces = $('[data-chat-draft-replaces]');
+    const draftMetaText = $('[data-chat-draft-meta]');
+    const draftOriginal = $('[data-chat-draft-original]');
+    const draftNext = $('[data-chat-draft-next]');
+    const draftExit = $('[data-chat-draft-exit]');
+    const draftResume = $('[data-chat-draft-resume]');
+    const DRAFT_INPUT_CLASSES = ['border-2', 'border-dashed', 'border-amber-400', 'bg-amber-50/40'];
 
     const state = {
         items: [],
@@ -67,6 +77,13 @@ if (root) {
         // 「未回覆／已回覆」頁籤，預設未回覆。
         tab: 'awaiting',
         autoOpenChecked: false,
+        // 這張單的待審留言（團隊端）、目前帶入的是第幾則、是否在草稿模式、上次帶入輸入框的原文、
+        // 使用者按「改寫一般回覆」的那張單（輪詢時不再自動帶回）。
+        drafts: [],
+        draftIndex: 0,
+        draftMode: false,
+        draftLoadedBody: null,
+        draftDismissedFor: null,
     };
     const tabButtons = Array.from(root.querySelectorAll('[data-chat-tab]'));
 
@@ -230,6 +247,12 @@ if (root) {
                 el('span', `min-w-0 flex-1 truncate text-sm ${item.has_update ? 'font-bold text-slate-950' : 'font-semibold text-slate-800'}`, item.title),
                 el('span', 'shrink-0 text-[11px] text-slate-400', item.latest_label ?? ''),
             );
+            if ((item.drafts_count ?? 0) > 0) {
+                // 只有開發團隊的清單資料有 drafts_count。
+                const chip = el('span', 'shrink-0 rounded border border-dashed border-amber-500 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-900', '有草稿');
+                chip.dataset.chatDraftChip = item.id;
+                top.insertBefore(chip, top.lastChild);
+            }
 
             const bottom = el('div', 'mt-1 flex items-center gap-2');
             const previewText = item.preview === null
@@ -299,6 +322,11 @@ if (root) {
                     state.tab = 'awaiting';
                     setView('list');
                     openPanel();
+                    // 團隊端有沒送出的待審留言時，直接打開第一張有草稿的單（草稿已帶進輸入框）。
+                    const firstDraft = state.items.find((item) => (item.drafts_count ?? 0) > 0);
+                    if (firstDraft) {
+                        openThread(firstDraft.id);
+                    }
                 }
             }
             if (isOpen()) {
@@ -323,6 +351,106 @@ if (root) {
 
     const isNearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
 
+    const currentDraft = () => state.drafts[state.draftIndex] ?? null;
+
+    const renderDraftUi = () => {
+        if (!draftBox) {
+            return;
+        }
+        const draft = state.draftMode ? currentDraft() : null;
+        draftBox.hidden = draft === null;
+        draftResume.hidden = draft !== null || state.drafts.length === 0;
+        DRAFT_INPUT_CLASSES.forEach((name) => bodyInput.classList.toggle(name, draft !== null));
+        // 草稿模式不送面板選的附圖（草稿自己的附圖照送）。
+        fileInput.disabled = draft !== null;
+        if (!sendButton.disabled) {
+            sendButton.textContent = draft !== null ? '送出草稿' : '送出';
+        }
+        if (draft === null) {
+            return;
+        }
+        draftReplaces.hidden = draft.replaces_message_id === null;
+        draftOriginal.hidden = draft.replaces_body === null;
+        draftOriginal.textContent = draft.replaces_body === null ? '' : `原留言：${draft.replaces_body}`;
+        draftMetaText.textContent = draftMeta(draft, state.draftIndex, state.drafts.length);
+        draftNext.hidden = state.drafts.length < 2;
+    };
+
+    const enterDraft = (index) => {
+        const draft = state.drafts[index];
+        if (!draft) {
+            return;
+        }
+        if (shouldFillComposer(bodyInput.value, state.draftLoadedBody)) {
+            bodyInput.value = draft.body;
+            state.draftLoadedBody = draft.body;
+        }
+        state.draftIndex = index;
+        state.draftMode = true;
+        renderDraftUi();
+    };
+
+    const exitDraft = ({ dismiss = true } = {}) => {
+        if (state.draftMode && bodyInput.value === state.draftLoadedBody) {
+            bodyInput.value = '';
+        }
+        state.draftMode = false;
+        state.draftLoadedBody = null;
+        if (dismiss) {
+            state.draftDismissedFor = state.currentId;
+        }
+        renderDraftUi();
+    };
+
+    // 輪詢刷新時套用最新的草稿清單：使用者改過的文字不覆蓋（shouldFillComposer）。
+    const applyDrafts = (data) => {
+        if (!draftBox || !Array.isArray(data.drafts)) {
+            return;
+        }
+        const activeId = state.draftMode ? currentDraft()?.id : null;
+        state.drafts = data.drafts;
+        if (state.drafts.length === 0) {
+            exitDraft({ dismiss: false });
+
+            return;
+        }
+        if (state.draftMode) {
+            const index = state.drafts.findIndex((draft) => draft.id === activeId);
+            if (index === -1) {
+                // 正在看的那則已送出或被捨棄：輸入框還是它的原文就換成下一則，改過的保留。
+                if (bodyInput.value === state.draftLoadedBody) {
+                    bodyInput.value = '';
+                }
+                state.draftLoadedBody = null;
+                enterDraft(0);
+            } else {
+                state.draftIndex = index;
+                renderDraftUi();
+            }
+        } else if (state.draftDismissedFor !== data.id) {
+            enterDraft(0);
+        } else {
+            renderDraftUi();
+        }
+    };
+
+    draftExit?.addEventListener('click', () => {
+        exitDraft();
+        bodyInput.focus();
+    });
+    draftResume?.addEventListener('click', () => {
+        state.draftDismissedFor = null;
+        enterDraft(0);
+        bodyInput.focus();
+    });
+    draftNext?.addEventListener('click', () => {
+        const index = nextDraftIndex(state.draftIndex, state.drafts.length);
+        if (bodyInput.value === state.draftLoadedBody) {
+            bodyInput.value = '';
+        }
+        enterDraft(index);
+    });
+
     const applyThread = (data, { forceScroll }) => {
         threadNumber.textContent = `編號 ${data.number}`;
         threadStatus.textContent = data.status;
@@ -334,6 +462,7 @@ if (root) {
         state.uploadUrl = data.upload_url;
         state.maxFiles = data.max_files ?? DEFAULT_MAX_FILES;
         state.maxFileBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
+        applyDrafts(data);
 
         if (data.html !== state.lastThreadHtml) {
             const stickToBottom = forceScroll || isNearBottom();
@@ -398,7 +527,13 @@ if (root) {
     };
 
     const clearComposer = () => {
+        state.drafts = [];
+        state.draftMode = false;
+        state.draftLoadedBody = null;
+        state.draftIndex = 0;
+        state.draftDismissedFor = null;
         form.reset();
+        renderDraftUi();
         preview.replaceChildren();
         errorBox.hidden = true;
         errorBox.textContent = '';
@@ -577,7 +712,9 @@ if (root) {
 
             return;
         }
-        const problem = validateFiles();
+        // 草稿模式只送草稿（附圖已在草稿裡），不看面板選的檔案。
+        const draft = state.draftMode ? currentDraft() : null;
+        const problem = draft === null ? validateFiles() : null;
         if (problem) {
             showError(problem);
 
@@ -617,10 +754,35 @@ if (root) {
             if (response.status === 403 && data.message) {
                 return data.message;
             }
+            if (draft !== null && response.status === 404) {
+                return '這則待審留言已經送出或被捨棄，請重新開啟這張單。';
+            }
             return fallback;
         };
 
         try {
+            if (draft !== null) {
+                // 待審留言：走與單頁「送出」相同的端點，帶上輸入框裡（可能改過）的文字；取代型會改寫原留言。
+                const response = await fetch(draft.send_url, {
+                    method: 'POST',
+                    body: draftSendParams(body),
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                });
+                if (response.ok) {
+                    if (stillHere()) {
+                        clearComposer();
+                        await loadThread(id, { forceScroll: true });
+                    }
+                    loadList();
+
+                    return;
+                }
+                fail(await readError(response, '送出失敗，請稍後再試。'));
+
+                return;
+            }
+
             const params = new URLSearchParams();
             params.set('body', body);
             const files = Array.from(fileInput.files);
@@ -669,7 +831,7 @@ if (root) {
             fail('網路連線失敗，留言尚未送出。');
         } finally {
             sendButton.disabled = false;
-            sendButton.textContent = '送出';
+            sendButton.textContent = state.draftMode && currentDraft() !== null ? '送出草稿' : '送出';
         }
     };
 

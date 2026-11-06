@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import worker from '../../src/worker/index';
 import { formatAbsolute, formatRelative, parseUtcOffset } from '../../src/shared/time';
-import { statusFromInput } from '../../src/shared/status';
+import { describedStatusOptions, statusFromInput, statusLabel, statusLabelsFor } from '../../src/shared/status';
 import { mergeNote } from '../../src/worker/lib/reports';
 import { detectImageType, sanitizeFilename } from '../../src/worker/lib/uploads';
 import { workerEnv } from './helpers';
@@ -35,10 +35,25 @@ describe('time formatting', () => {
 });
 
 describe('small rules', () => {
-    it('reads statuses by value or Chinese label', () => {
-        expect(statusFromInput(' NEEDS_INPUT ')).toBe('needs_input');
-        expect(statusFromInput('已完成')).toBe('completed');
-        expect(statusFromInput('in_progress')).toBeNull();
+    it('reads statuses by value, the current Chinese name, or the old names 待處理／待審核', () => {
+        const labels = statusLabelsFor('老師');
+        expect(labels).toEqual({ new: '等工程師', needs_input: '等老師', completed: '已完成' });
+        expect(statusFromInput(' NEEDS_INPUT ', labels)).toBe('needs_input');
+        expect(statusFromInput('已完成', labels)).toBe('completed');
+        expect(statusFromInput('等工程師', labels)).toBe('new');
+        expect(statusFromInput('等老師', labels)).toBe('needs_input');
+        expect(statusFromInput('待處理', labels)).toBe('new');
+        expect(statusFromInput('待審核', labels)).toBe('needs_input');
+        expect(statusFromInput('等業主', labels)).toBeNull();
+        expect(statusFromInput('in_progress', labels)).toBeNull();
+        expect(statusLabel('needs_input', labels)).toBe('等老師');
+        expect(describedStatusOptions(labels)).toBe('new（等工程師）、needs_input（等老師）、completed（已完成）');
+        // CLI 不知道站台的客戶稱呼：「等…」先放行給伺服器判斷。
+        expect(statusFromInput('等業主', null)).toBe('needs_input');
+        expect(statusFromInput('等工程師', null)).toBe('new');
+        expect(statusFromInput('等', null)).toBeNull();
+        expect(statusFromInput('doing', null)).toBeNull();
+        expect(statusFromInput('constructor', labels)).toBeNull();
     });
 
     it('merges adjustment notes like the Laravel action', () => {

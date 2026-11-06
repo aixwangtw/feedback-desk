@@ -33,7 +33,7 @@ const cases: Array<[string, PortalRow]> = [
     ['unread and drafts', row({}, [], [], { unread: 3, messagesCount: 4, drafts: 1 })],
     ['waiting on the team', row({ status: 'new' }, [], [], { waiting: 'developer' })],
     ['waiting on the client, with unread', row({}, [], [], { waiting: 'client', unread: 1, messagesCount: 2 })],
-    ['completed (no waiting label, team menu shows the disabled option)', row({ status: 'completed' }, [], [], { waiting: 'completed' })],
+    ['completed (no waiting label; the status column shows text only)', row({ status: 'completed' }, [], [], { waiting: 'completed' })],
 ];
 
 describe('string-rendered rows match the JSX reference', () => {

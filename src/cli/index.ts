@@ -29,7 +29,7 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   token create [--expires 天數] [--agent 名稱]|list|revoke <id>
                                    管理 API token
   patrol-token issue [--developer 帳號] [--name 用途]|list|revoke --id 編號
-                                   排程專用 token（/api/patrol）：只能讀單、留言、寫待審留言、寫調整重點、改成待審核，
+                                   排程專用 token（/api/patrol）：只能讀單、留言、寫待審留言、寫調整重點、改成等客戶（needs_input），
                                    不能改成已完成或刪除；只存雜湊、可撤銷、限制速率
 
 專案與帳號
@@ -60,9 +60,10 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖檔]... [--for-client [--notice 通知文字]]
                                    開新單（團隊與客戶帳號都可以）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
-  status <project> <public_id|編號> <new|needs_input|completed|待處理|待審核|已完成> [--force]
+  status <project> <public_id|編號> <new|needs_input|completed|等工程師|等{客戶稱呼}|已完成> [--force]
+                                   舊名稱待處理／待審核也接受
   message <project> <public_id|編號> --body 文字 [--attach 圖檔]...
-                                   待處理的單留言後自動改成待審核（記得更新調整重點）
+                                   等工程師（new）的單留言後自動改成等客戶（needs_input，記得更新調整重點）
   draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖檔]...
                                    待審留言：客戶看不到，團隊在單頁按「送出」才發出；
                                    --replace-message 送出時改寫那則團隊留言（不新增）

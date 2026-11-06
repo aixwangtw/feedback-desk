@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx';
-import { STATUSES, statusDotClass, statusLabel, type ReportStatus } from '../../shared/status';
+import { STATUSES, statusDotClass, statusLabel, WAITING_STATUS, type ReportStatus, type StatusLabels } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
 import type { PortalTab, WaitingSide } from '../lib/reports';
@@ -29,7 +29,7 @@ export interface PortalRow {
     messagesCount: number;
     /** Team side only: 待審留言（草稿）數。 */
     drafts?: number;
-    /** 在等誰（推導）：等開發團隊、等客戶；已完成不標。 */
+    /** 在等誰（直接對應狀態）：等工程師、等客戶；已完成不標。 */
     waiting?: WaitingSide;
 }
 
@@ -99,16 +99,16 @@ const Thumb: FC<{ href: string; name: string; size?: string; border?: string; ad
 );
 
 /**
- * 清單與看板頂部的頁籤（取代狀態篩選下拉）：「待{開發團隊}回覆 N」「待{客戶}回覆 N」，
+ * 清單與看板頂部的頁籤（取代狀態篩選下拉），直接對應狀態、文字＝狀態名稱：「等工程師 N」「等{客戶} N」，
  * 最右邊兩個不顯眼的小連結「已完成 N」「全部 N」。
  */
-const PortalTabs: FC<{ labels: { owner: string; client: string }; selectedTab: PortalTab | null; counts: Record<PortalTab, number>; url: (tab: PortalTab) => string }> = ({ labels, selectedTab, counts, url }) => {
+const PortalTabs: FC<{ statusLabels: StatusLabels; selectedTab: PortalTab | null; counts: Record<PortalTab, number>; url: (tab: PortalTab) => string }> = ({ statusLabels, selectedTab, counts, url }) => {
     const main: Array<[PortalTab, string]> = [
-        ['developer', `待${labels.owner}回覆`],
-        ['client', `待${labels.client}回覆`],
+        ['developer', statusLabels[WAITING_STATUS.developer]],
+        ['client', statusLabels[WAITING_STATUS.client]],
     ];
     const minor: Array<[PortalTab, string]> = [
-        ['completed', '已完成'],
+        ['completed', statusLabels.completed],
         ['all', '全部'],
     ];
     return (
@@ -138,6 +138,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     const { v, project, isOwner, rows, sort, direction, selectedStatus, keyword, viewMode, deletedFilter, creator } = props;
     const unreadOnly = isOwner && props.unreadOnly;
     const labels = v.cfg.labels;
+    const statusLabels = v.cfg.statusLabels;
     const slug = project.slug;
     const baseQuery: Record<string, string | number | null> = {
         view: viewMode,
@@ -192,11 +193,11 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
                     <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-                    <p class="mt-2 text-sm leading-6 text-slate-600">{viewMode === 'board' ? '拖拉卡片到其他欄，即可更新狀態；各欄預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。' : '狀態可直接在表格中切換，點欄名即可排序；預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。'}</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{labels.client}留言就變「{statusLabels.new}」，{labels.owner}回覆就變「{statusLabels.needs_input}」；{labels.client}確認沒問題後按操作欄的「完成」。{viewMode === 'board' ? '各欄' : '點欄名即可排序；'}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
                     <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>待處理</span><span>已收到{labels.client}的回報，等{labels.owner}處理。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>待審核</span><span>{labels.owner}已改好並寫了調整重點，請{labels.client}確認。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>已完成</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>{statusLabels.new}</span><span>{labels.client}開了單或又留言，等{labels.owner}處理、回覆。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{statusLabels.needs_input}</span><span>{labels.owner}已回覆或改好並寫了調整重點，請{labels.client}確認。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>{statusLabels.completed}</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
                     </ul>
                     <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>可點開預覽：{viewMode === 'board' ? '卡片標題、附件縮圖、調整重點、調整圖（「N 張調整圖」）。' : '標題、圖片縮圖、調整重點、調整附圖。'}</p>
                 </div>
@@ -211,7 +212,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                         {STATUSES.map((status) => (
                             <li data-summary-status={status}>
-                                <a href={statusUrl(status)} class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item={status} data-label={statusLabel(status)}>{statusLabel(status)} {props.statusCounts[status] ?? 0} 題</a>
+                                <a href={statusUrl(status)} class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item={status} data-label={statusLabel(status, statusLabels)}>{statusLabel(status, statusLabels)} {props.statusCounts[status] ?? 0} 題</a>
                             </li>
                         ))}
                     </ul>
@@ -237,7 +238,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                     </div>
                 ) : null}
 
-                <PortalTabs labels={labels} selectedTab={props.selectedTab ?? null} counts={props.tabCounts ?? { developer: 0, client: 0, completed: 0, all: 0 }} url={(tab) => portalUrl({ tab }, ['status', 'page'])} />
+                <PortalTabs statusLabels={v.cfg.statusLabels} selectedTab={props.selectedTab ?? null} counts={props.tabCounts ?? { developer: 0, client: 0, completed: 0, all: 0 }} url={(tab) => portalUrl({ tab }, ['status', 'page'])} />
 
                 <form method="get" class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:flex md:items-center md:justify-end">
                     <input type="hidden" name="view" value={viewMode} />
@@ -339,7 +340,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                 return (
                                     <section class={`overflow-hidden rounded-xl border ${columnClass}`} aria-labelledby={`kanban-heading-${boardStatus}`} data-kanban-column data-status={boardStatus}>
                                         <header class="flex items-center justify-between gap-3 border-b border-black/5 px-3.5 py-3">
-                                            <h3 id={`kanban-heading-${boardStatus}`} class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class={`size-2.5 rounded-full ${statusDotClass(boardStatus)}`} aria-hidden="true"></span>{statusLabel(boardStatus)}</h3>
+                                            <h3 id={`kanban-heading-${boardStatus}`} class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class={`size-2.5 rounded-full ${statusDotClass(boardStatus)}`} aria-hidden="true"></span>{statusLabel(boardStatus, statusLabels)}</h3>
                                             <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-black/10" title="本頁／專案總數"><span data-kanban-page-count>{pageStatusCounts[boardStatus] ?? 0}</span> / <span data-kanban-total-count={boardStatus}>{props.statusCounts[boardStatus] ?? 0}</span></span>
                                         </header>
                                         <div class="grid min-h-36 content-start gap-3 p-3" data-kanban-list data-status={boardStatus}>
@@ -391,7 +392,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                 <div class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-4 overflow-y-auto p-5 sm:p-7">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
-                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status)}</p>
+                            <p class="text-xs font-bold text-slate-500">編號 {row.number} · {statusLabel(report.status, v.cfg.statusLabels)}</p>
                             <h2 id={`detail-report-title-${report.public_id}`} class="mt-1 break-words text-lg font-bold text-slate-950">{report.title}</h2>
                             {categories.length > 0 ? (
                                 <div class="mt-2">

@@ -7,10 +7,10 @@ import { api, BASE, Browser, mcpCall, rpcResult, seedDeveloper, seedProject, see
 
 /**
  * 留言自動切狀態：對應 Laravel 版 FeedbackMessageStatusRuleTest。
- * 待審核的單客戶留言 → 待處理；團隊在待處理的單送出留言 → 待審核並提醒更新調整重點。
+ * 等客戶（needs_input）的單客戶留言 → 等工程師（new）；團隊在等工程師的單送出留言 → 等客戶並提醒更新調整重點。
  * 已完成的單不因留言改狀態；草稿本身不改狀態；開單附的通知留言（--for-client）不套用。
  */
-const REMINDER = '狀態已改為待審核，記得更新調整重點。';
+const REMINDER = '狀態已改為「等客戶」，記得更新調整重點。';
 
 async function reportWith(seeded: SeededProject, status: ReportStatus): Promise<Report> {
     const { report } = await seedReport(seeded.project);
@@ -66,7 +66,8 @@ describe('留言自動切狀態', () => {
         const response = await owner.post(messages(seeded, report), { body: '已修正', _back: `/p/${seeded.project.slug}/reports/${report.public_id}` });
         expect(response.status).toBe(302);
         const page = await (await owner.get(response.headers.get('location') as string)).text();
-        expect(page).toContain('待審核');
+        expect(page).toContain('等客戶');
+        expect(page).not.toContain('待審核');
         expect(page).toContain(REMINDER);
 
         expect((await current(report)).status).toBe('needs_input');

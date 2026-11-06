@@ -19,7 +19,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 #[Signature('feedback:status
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {report : 回饋單 public_id，或團隊端清單編號（純數字）}
-    {status : 新狀態：new／needs_input／completed，或中文 等工程師／等客戶稱呼（如等老師）／已完成；舊名稱待處理／待審核也接受}
+    {status : 新狀態：new／needs_input，或中文 等工程師／等客戶稱呼（如等老師）；舊名稱待處理／待審核也接受（completed 已完成只由客戶按完成，會被擋下）}
     {--as= : 以這個團隊個人帳號記錄（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
     {--agent= : AI 工具名稱（預設讀 FEEDBACK_DESK_AGENT，在 Claude Code、Codex 裡自動判斷）}
     {--force : 別人認領中仍要做（記錄為接手）}')]
@@ -34,7 +34,8 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 說明：
   - report 純數字時是團隊端清單編號（含客戶刪除而隱藏的單）；否則視為 public_id。
   - 狀態寫錯時會列出可用值並失敗。
-  - 做完修改改成 needs_input（等客戶）；AI 不可直接改成「已完成」，要等提出的人或負責人確認（AI 身分改成已完成時會印提醒，不會擋）。
+  - 做完修改改成 needs_input（等客戶）。不能改成 completed（已完成）：已完成只由客戶在網頁上按「完成」，指令會擋下。
+  - 客戶結單後若要重開，可改回 new 或 needs_input。
   - 別人認領中的單會停下並說明是誰在處理；確定要接手才加 --force（會記錄）。
   - --as=帳號 讓紀錄顯示你的名字；在 Claude Code、Codex 裡執行時會自動標示是哪個 AI。
 HELP)]
@@ -54,6 +55,12 @@ class SetFeedbackReportStatusCommand extends Command
         $status = FeedbackReportStatus::fromInput((string) $this->argument('status'));
         if (! $status) {
             $this->components->error('不認得的狀態。可用值：'.implode('、', FeedbackReportStatus::describedOptions()));
+
+            return self::FAILURE;
+        }
+
+        if ($status === FeedbackReportStatus::Completed) {
+            $this->components->error(FeedbackWorkRule::COMPLETED_BY_CLIENT_ONLY);
 
             return self::FAILURE;
         }
@@ -86,9 +93,6 @@ class SetFeedbackReportStatusCommand extends Command
         $this->components->twoColumnDetail('新狀態', "{$status->value}（{$status->label()}）");
         if ($takenOver !== null) {
             $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
-        }
-        if ($status === FeedbackReportStatus::Completed && $actor->agent !== null) {
-            $this->components->warn(FeedbackWorkRule::COMPLETED_BY_AGENT_WARNING);
         }
 
         return self::SUCCESS;

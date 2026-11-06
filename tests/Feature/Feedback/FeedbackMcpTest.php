@@ -225,6 +225,22 @@ class FeedbackMcpTest extends TestCase
         return $this->withToken($token)->postJson(route('feedback.mcp'), $this->rpc($method, $params));
     }
 
+    public function test_team_set_status_refuses_completed(): void
+    {
+        $report = FeedbackReport::factory()->for($this->project)->create(['status' => FeedbackReportStatus::NeedsInput]);
+        $token = FeedbackApiToken::issue($this->amy, 'MCP', 'Claude Code')['plain'];
+
+        foreach (['completed', '已完成'] as $value) {
+            $refused = $this->callTool($token, 'set_status', ['project' => 'site', 'report' => $report->public_id, 'status' => $value]);
+            $refused->assertJsonPath('result.isError', true);
+            $this->assertStringContainsString('completed_by_client_only', $refused->json('result.content.0.text'));
+            $this->assertStringContainsString('已完成只由客戶按完成', $refused->json('result.content.0.text'));
+        }
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+
+        $this->assertSame('new', $this->tool($token, 'set_status', ['project' => 'site', 'report' => $report->public_id, 'status' => 'new'])['current']['status']);
+    }
+
     /**
      * @param  array<string, mixed>  $arguments
      */

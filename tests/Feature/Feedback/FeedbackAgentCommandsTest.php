@@ -220,11 +220,15 @@ class FeedbackAgentCommandsTest extends TestCase
         $this->assertTrue($report->latest_activity_at->isToday());
         $this->assertNull($report->completed_at);
 
-        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'completed'])->assertSuccessful();
-        $report->refresh();
-        $this->assertSame(FeedbackReportStatus::Completed, $report->status);
-        $this->assertNotNull($report->completed_at);
+        // 已完成只由客戶按「完成」：CLI 改成 completed 一律擋下，狀態不變。
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'completed'])
+            ->expectsOutputToContain('已完成只由客戶按完成')
+            ->assertFailed();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+        $this->assertNull($report->completed_at);
 
+        // 客戶結單後，團隊仍可用 CLI 改回 new／needs_input（排程與還原用）。
+        $report->update(['status' => FeedbackReportStatus::Completed, 'completed_at' => now()]);
         $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'new'])->assertSuccessful();
         $this->assertNull($report->refresh()->completed_at);
     }
@@ -240,14 +244,16 @@ class FeedbackAgentCommandsTest extends TestCase
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
 
-    public function test_status_completed_by_an_agent_prints_a_reminder_but_still_updates(): void
+    public function test_status_completed_is_refused_for_agents_and_people_alike(): void
     {
         $report = $this->makeReport(['status' => FeedbackReportStatus::NeedsInput]);
 
-        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => 'completed', '--agent' => 'Codex'])
-            ->expectsOutputToContain('AI 不應直接把單改成已完成')
-            ->assertSuccessful();
-        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+        foreach ([['--agent' => 'Codex'], [], ['status' => '已完成']] as $extra) {
+            $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => $report->public_id, 'status' => 'completed', ...$extra])
+                ->expectsOutputToContain('已完成只由客戶按完成')
+                ->assertFailed();
+        }
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
 
     public function test_status_rejects_unknown_status_and_keeps_report_unchanged(): void
@@ -275,8 +281,8 @@ class FeedbackAgentCommandsTest extends TestCase
         $report = $this->makeReport(['title' => '被刪的', 'client_deleted_at' => now()]);
 
         $this->artisan('feedback:report', ['project' => $this->project->slug, 'report' => '1'])->assertSuccessful();
-        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'completed'])->assertSuccessful();
-        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+        $this->artisan('feedback:status', ['project' => $this->project->slug, 'report' => '1', 'status' => 'needs_input'])->assertSuccessful();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
 
     public function test_adjust_rejects_bare_number_unless_by_id(): void

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\FeedbackAgentName;
+use App\Support\FeedbackTeamName;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,7 +39,8 @@ class FeedbackMessageDraft extends Model
      */
     public function displayAuthor(): string
     {
-        return FeedbackAgentName::label($this->authorDeveloper?->name ?? $this->author_name, $this->author_agent);
+        // 畫面上團隊一律顯示人名：個人帳號用帳號的名字，共用身分（含 AI 代發）用共用名字；AI 工具名稱只留在資料庫。
+        return FeedbackAgentName::label($this->authorDeveloper?->name ?? FeedbackTeamName::shared(), $this->author_agent, true);
     }
 
     /**

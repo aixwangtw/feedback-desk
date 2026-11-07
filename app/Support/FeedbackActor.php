@@ -31,7 +31,7 @@ final readonly class FeedbackActor
 
     public static function sharedOwner(?string $agent = null): self
     {
-        return new self((string) config('feedback.labels.owner'), true, agent: $agent);
+        return new self(FeedbackTeamName::shared(), true, agent: $agent);
     }
 
     public static function sharedClient(): self
@@ -50,6 +50,6 @@ final readonly class FeedbackActor
     public function isDeveloperSide(): bool
     {
         return $this->clientAccount === null
-            && ($this->developer !== null || ($this->isTeam && $this->name === (string) config('feedback.labels.owner')));
+            && ($this->developer !== null || ($this->isTeam && FeedbackTeamName::isShared($this->name)));
     }
 }

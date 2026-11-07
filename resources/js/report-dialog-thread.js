@@ -86,6 +86,12 @@ const setupThread = (section) => {
             if (albumBox && typeof data.album_html === 'string' && data.album_html !== lastAlbum) {
                 lastAlbum = data.album_html;
                 albumBox.innerHTML = data.album_html;
+                // 清單上的縮圖格跟著同步；從清單縮圖點進來時，相簿一載入就捲到相簿。
+                document.dispatchEvent(new CustomEvent('feedback:album-changed', { detail: { id: reportId } }));
+            }
+            if (albumBox && dialog.dataset.scrollToAlbum === '1' && albumBox.childElementCount > 0) {
+                delete dialog.dataset.scrollToAlbum;
+                albumBox.scrollIntoView({ block: 'start', behavior: 'smooth' });
             }
             applySide(data);
             if (draftsBox && typeof data.drafts_html === 'string') {

@@ -1,6 +1,6 @@
 {{--
-    活動時間軸（留言泡泡＋狀態變更），單頁、詳情視窗、右下角對話面板共用。看的人自己這一方的訊息靠右。
-    狀態變更是置中的一行；開發團隊端另顯示是誰改的，客戶端只顯示改成什麼狀態。
+    留言時間軸（留言泡泡），單頁、詳情視窗、右下角對話面板共用。看的人自己這一方的訊息靠右。
+    不列狀態變更紀錄（單目前的狀態在右側欄）；團隊一律顯示人名（FeedbackTeamName），不顯示「開發者」或 AI 工具名稱。
     「請確認完成」的留言：客戶端（能按完成的一方）在最新一則上看到「通過」按鈕，開發團隊端看不到也按不了。
 --}}
 @use('App\Enums\FeedbackAuthorType')
@@ -17,16 +17,6 @@
 
 <ol class="grid grid-cols-[minmax(0,1fr)] gap-4" data-chat-messages>
     @forelse ($timeline as $entry)
-        @if ($entry['type'] === 'status')
-            @php
-                $to = FeedbackReportStatus::tryFrom($entry['to']);
-                $who = $viewerIsOwner ? \App\Support\FeedbackAgentName::label((string) $entry['actor'], $entry['agent']).' ' : '';
-            @endphp
-            <li class="flex justify-center" data-chat-event="status" data-status-to="{{ $entry['to'] }}">
-                <p class="max-w-full rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-600">{{ $who }}將狀態改為「<span class="font-semibold text-slate-800">{{ $to?->label() ?? $entry['to'] }}</span>」 <x-feedback.time :at="$entry['at']" relative class="text-slate-400" /></p>
-            </li>
-            @continue
-        @endif
         @php
             $message = $entry['message'];
             $isTeamSide = $message->author_type !== FeedbackAuthorType::Reporter;

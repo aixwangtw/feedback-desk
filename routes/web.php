@@ -3,6 +3,7 @@
 use App\Http\Controllers\Feedback\FeedbackAccountController;
 use App\Http\Controllers\Feedback\FeedbackAdjustmentController;
 use App\Http\Controllers\Feedback\FeedbackAttachmentController;
+use App\Http\Controllers\Feedback\FeedbackAttachmentThumbsController;
 use App\Http\Controllers\Feedback\FeedbackClaimController;
 use App\Http\Controllers\Feedback\FeedbackClientController;
 use App\Http\Controllers\Feedback\FeedbackCompletionRequestController;
@@ -63,6 +64,9 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::put('/p/{feedbackProject:slug}/settings/categories', [FeedbackProjectSettingsController::class, 'updateCategories'])
         ->middleware('throttle:30,1')
         ->name('feedback.project.categories');
+    Route::get('/p/{feedbackProject:slug}/attachment-thumbs', [FeedbackAttachmentThumbsController::class, 'index'])
+        ->middleware('throttle:120,1')
+        ->name('feedback.attachment-thumbs.index');
     Route::get('/p/{feedbackProject:slug}/conversations', [FeedbackConversationController::class, 'index'])
         ->middleware('throttle:120,1')
         ->name('feedback.conversations.index');

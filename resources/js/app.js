@@ -7,3 +7,4 @@ import './row-link';
 import './album';
 import './message-edit';
 import './completion';
+import './attachment-thumbs';

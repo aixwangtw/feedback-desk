@@ -223,18 +223,8 @@
                             @if ($reportCategories !== [])
                                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
                             @endif
-                            <td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">
-                                @if ($report->feedbackAttachments->isNotEmpty())
-                                    <div class="flex flex-wrap gap-1 sm:justify-center">
-                                        @foreach ($report->feedbackAttachments as $attachment)
-                                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                                            </a>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <span class="text-xs text-slate-400">—</span>
-                                @endif
+                            <td class="block sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">
+                                @include('feedback.reports._attachment-thumbs', ['report' => $report, 'items' => $thumbItems[$report->id] ?? collect()])
                             </td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
@@ -322,15 +312,7 @@
                                         @if ($isOwner && $report->isDeletedByClient())
                                             <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{{ config('feedback.labels.client') }}已刪除</span>
                                         @endif
-                                        @if ($report->feedbackAttachments->isNotEmpty())
-                                            <div class="mt-3 flex items-center gap-2">
-                                                @php $attachment = $report->feedbackAttachments->first(); @endphp
-                                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                                                </a>
-                                                <span class="text-xs font-medium text-slate-500">{{ $report->feedbackAttachments->count() }} 張附件</span>
-                                            </div>
-                                        @endif
+                                        @include('feedback.reports._attachment-thumbs', ['report' => $report, 'items' => $thumbItems[$report->id] ?? collect(), 'card' => true])
 
                                         <p class="mt-3 text-xs text-slate-500" data-report-creator>建立者：{{ $report->creatorLabel() }}</p>
                                         <p class="mt-1 text-xs text-slate-500">更新於 <x-feedback.time :at="$report->latest_activity_at" relative /></p>
@@ -347,6 +329,7 @@
         @endif
     </section>
 
+    <div hidden data-attachment-thumbs-url="{{ route('feedback.attachment-thumbs.index', $project) }}"></div>
     <div class="mt-5">{{ $reports->links() }}</div>
 
     @foreach ($reports as $report)

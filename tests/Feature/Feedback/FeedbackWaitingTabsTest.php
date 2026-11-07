@@ -129,7 +129,9 @@ class FeedbackWaitingTabsTest extends TestCase
         $report = $this->reports['waitingClient'];
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'client']))->assertOk()->getContent();
+        // 團隊按「完成」只會跳出確認留言視窗，不是改狀態的表單。
         $this->assertStringNotContainsString('data-complete-report=', $html);
+        $this->assertStringContainsString('data-request-completion=', $html);
         $this->assertStringNotContainsString('<option value="completed"', $html);
         $this->assertStringNotContainsString('name="status"', $html);
         $this->assertStringNotContainsString('data-status-autosave', $html);

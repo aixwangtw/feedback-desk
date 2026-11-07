@@ -10,6 +10,7 @@ use App\Models\FeedbackDeveloper;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackAlbum;
 use App\Support\FeedbackWaitingOn;
 use App\Support\PublicReporting;
 use Closure;
@@ -148,6 +149,7 @@ class FeedbackPortalController extends Controller
 
         return view('feedback.portal', [
             'statusCounts' => $statusCounts,
+            'thumbItems' => app(FeedbackAlbum::class)->listItemsForReports(collect($reports->items()), $isOwner),
             'sequenceNumbers' => array_map(fn (int $index): int => $index + 1, $sequenceNumbers),
             'totalCount' => $totalCount,
             'project' => $feedbackProject,

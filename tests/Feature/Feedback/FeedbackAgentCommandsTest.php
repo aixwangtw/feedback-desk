@@ -138,6 +138,7 @@ class FeedbackAgentCommandsTest extends TestCase
 
     public function test_report_reads_full_content_with_attachment_paths_by_public_id_and_number(): void
     {
+        config(['feedback.shared_owner_name' => 'Alex']);
         $report = $this->makeReport(['title' => '登入頁破版', 'description' => "第一行\n第二行", 'page_url' => 'https://example.test/login', 'adjustment_note' => '已修正']);
         $first = FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id, 'path' => 'feedback/a.png', 'original_name' => 'a.png']);
         FeedbackAttachment::factory()->create(['feedback_report_id' => $report->id, 'kind' => FeedbackAttachmentKind::Adjustment, 'path' => 'feedback/adj.png', 'original_name' => 'adj.png']);
@@ -157,7 +158,8 @@ class FeedbackAgentCommandsTest extends TestCase
             $this->assertTrue($data['attachments'][0]['is_local']);
             $this->assertSame(Storage::disk('local')->path('feedback/adj.png'), $data['adjustment_attachments'][0]['path']);
             $this->assertSame('請補充截圖', $data['messages'][0]['body']);
-            $this->assertSame('小編', $data['messages'][0]['author']);
+            // 共用團隊身分一律顯示共用名字，不用舊資料裡存的稱呼。
+            $this->assertSame('Alex', $data['messages'][0]['author']);
             $this->assertSame(Storage::disk('local')->path('feedback/m.png'), $data['messages'][0]['attachments'][0]['path']);
             $this->assertStringNotContainsString('hash', json_encode($data));
         }

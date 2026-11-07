@@ -47,7 +47,15 @@ return [
     'labels' => [
         'client' => $clientLabel,
         'owner' => $ownerLabel,
+        // 詳情、單頁、對話面板的對話區標題（原本叫「活動」）。
+        'thread' => '留言',
     ],
+
+    /*
+     * 共用團隊身分（共用 owner 帳號、AI 工具代發）在畫面上顯示成誰；開發者個人帳號一律顯示帳號的 name。
+     * 空字串時退回 labels.owner。兩站都設 FEEDBACK_SHARED_OWNER_NAME=Alex。
+     */
+    'shared_owner_name' => env('FEEDBACK_SHARED_OWNER_NAME', ''),
 
     /*
      * 狀態顯示名稱：直接寫出在等誰（資料庫的值 new／needs_input／completed 不變）。

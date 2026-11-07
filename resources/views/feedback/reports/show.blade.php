@@ -63,7 +63,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
                     <div class="min-w-0">
                         @if ($isOwner || ! $canPostMessage)
-                            <h2 class="text-base font-semibold text-slate-950">活動</h2>
+                            <h2 class="text-base font-semibold text-slate-950">{{ config('feedback.labels.thread') }}</h2>
                         @else
                             <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
                             <p class="mt-1 text-sm leading-6 text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>

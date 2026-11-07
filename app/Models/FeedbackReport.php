@@ -8,6 +8,7 @@ use App\Enums\FeedbackCreatorType;
 use App\Enums\FeedbackReportStatus;
 use App\Support\FeedbackActor;
 use App\Support\FeedbackAgentName;
+use App\Support\FeedbackTeamName;
 use Carbon\CarbonInterface;
 use Database\Factories\FeedbackReportFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -235,9 +236,9 @@ class FeedbackReport extends Model
     {
         return match ($this->creator_type) {
             FeedbackCreatorType::Client => $this->creatorClientAccount?->name ?? $this->feedbackProject->clientLabel(),
-            FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? config('feedback.labels.owner'),
+            FeedbackCreatorType::Developer => $this->creatorDeveloper?->name ?? FeedbackTeamName::shared(),
             FeedbackCreatorType::Public => filled($this->reporter_name) ? "公開回報（{$this->reporter_name}）" : '公開回報',
-            FeedbackCreatorType::OwnerShared => config('feedback.labels.owner'),
+            FeedbackCreatorType::OwnerShared => FeedbackTeamName::shared(),
         };
     }
 

@@ -116,3 +116,16 @@ dialog.detail-panel[open]::backdrop {
 [data-album-force-all] [data-album-toggle] {
     display: none;
 }
+
+/* 面板相簿鈕：有新附件時徽章與按鈕短暫變色並顯示「有新附件」（chat-panel.js 設 data-album-new，數秒後移除）。 */
+[data-chat-album-open][data-album-new] {
+    border-color: #0d9488;
+    background-color: #f0fdfa;
+}
+[data-chat-album-open][data-album-new] [data-chat-album-count] {
+    background-color: #0d9488;
+    color: #fff;
+}
+[data-chat-album-open][data-album-new] .album-new-hint {
+    display: inline;
+}

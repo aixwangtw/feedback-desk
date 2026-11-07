@@ -37,8 +37,8 @@
                     </details>
                 @endif
 
-                <section class="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-slate-100 pt-4" aria-label="活動" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $reportId }}">
-                    <h3 class="text-sm font-bold text-slate-900">活動</h3>
+                <section class="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-slate-100 pt-4" aria-label="{{ config('feedback.labels.thread') }}" data-dialog-thread data-thread-url="{{ route('feedback.conversations.show', [$project, $report]) }}" data-report-id="{{ $reportId }}">
+                    <h3 class="text-sm font-bold text-slate-900">{{ config('feedback.labels.thread') }}</h3>
                     <div aria-live="polite" data-dialog-thread-body><p class="py-4 text-center text-sm text-slate-500">留言載入中…</p></div>
                     @if ($isOwner)
                         <div class="overflow-hidden rounded-xl empty:hidden" data-dialog-thread-drafts></div>

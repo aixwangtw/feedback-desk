@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Support\FeedbackTeamName;
+
 enum FeedbackAuthorType: string
 {
     case Reporter = 'reporter';
@@ -12,7 +14,7 @@ enum FeedbackAuthorType: string
     {
         return match ($this) {
             self::Reporter => (string) config('feedback.labels.client'),
-            self::Owner => (string) config('feedback.labels.owner'),
+            self::Owner => FeedbackTeamName::shared(),
             self::Agent => 'Vibe coding',
         };
     }

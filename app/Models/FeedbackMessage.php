@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\FeedbackAuthorType;
 use App\Support\FeedbackAgentName;
+use App\Support\FeedbackTeamName;
 use Database\Factories\FeedbackMessageFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -46,16 +47,21 @@ class FeedbackMessage extends Model
     public function displayAuthor(FeedbackReport $report, bool $viewerIsOwner): string
     {
         $isPublic = $report->isPublicReport();
+        $isTeam = $this->author_client_account_id === null && ($this->author_developer_id !== null || $this->author_type !== FeedbackAuthorType::Reporter);
         $name = $isPublic
             ? null
             : ($this->author_client_account_id !== null ? $this->authorClientAccount?->name : null)
                 ?? ($this->author_developer_id !== null ? $this->authorDeveloper?->name : null);
+        // 團隊身分的留言：有開發者帳號就用帳號的名字，共用身分（含 AI 代發）一律顯示共用名字，不用舊資料裡存的「開發團隊」稱呼。
+        if ($name === null && $isTeam && ! $isPublic) {
+            $name = FeedbackTeamName::shared();
+        }
         $name ??= filled($this->author_name) ? $this->author_name : $this->author_type->label();
 
         return FeedbackAgentName::label(
             $name,
             $isPublic && ! $viewerIsOwner ? null : $this->author_agent,
-            $this->author_client_account_id === null && ($this->author_developer_id !== null || $this->author_type === FeedbackAuthorType::Owner),
+            $isTeam,
         );
     }
 

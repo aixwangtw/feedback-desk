@@ -110,7 +110,7 @@ class FeedbackReportManagementTest extends TestCase
             ->assertSeeInOrder(['編號', '標題', '狀態', '附件', '建立者', '建立日期', '最後更新', '操作'])
             ->assertDontSee('調整重點')
             ->assertSee(route('feedback.attachments.show', [$project, $report, $attachment]), false)
-            ->assertSee('data-lightbox-trigger', false)
+            ->assertSee('data-open-album', false)
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)
             ->assertDontSee('data-delete-report', false)
             ->assertDontSee('id="delete-report-'.$report->public_id.'"', false)

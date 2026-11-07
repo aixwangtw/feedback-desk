@@ -13,6 +13,7 @@ use App\Models\FeedbackPatrolToken;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackCompletionRequest;
+use App\Support\FeedbackTeamName;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -119,7 +120,7 @@ class FeedbackJiraRedesignTest extends TestCase
 
     // ------------------------------------------------------------------ 活動時間軸
 
-    public function test_timeline_mixes_messages_and_status_changes_and_hides_who_changed_it_from_the_client(): void
+    public function test_timeline_has_only_messages_no_status_change_lines_for_either_side(): void
     {
         $this->report->update(['status' => FeedbackReportStatus::New]);
         $this->actingAsClient();
@@ -129,16 +130,45 @@ class FeedbackJiraRedesignTest extends TestCase
         $this->post(route('feedback.messages.store', [$this->project, $this->report]), ['body' => '開發者回覆'])->assertRedirect();
 
         $owner = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html');
-        $this->assertStringContainsString('data-chat-event="status"', $owner);
-        $this->assertStringContainsString('將狀態改為「'.'<span class="font-semibold text-slate-800">'.FeedbackReportStatus::NeedsInput->label().'</span>」', $owner);
+        $this->assertStringNotContainsString('data-chat-event', $owner);
+        $this->assertStringNotContainsString('將狀態改為', $owner);
         $this->assertLessThan(strpos($owner, '開發者回覆'), strpos($owner, '老師先留言'));
 
         $this->actingAsClient();
         $client = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html');
-        $this->assertStringContainsString('data-chat-event="status"', $client);
-        $this->assertStringContainsString('將狀態改為', $client);
-        // 老師端的狀態變更不寫是誰改的。
-        $this->assertDoesNotMatchRegularExpression('/<p[^>]*>[^<]+將狀態改為/', $client);
+        $this->assertStringNotContainsString('data-chat-event', $client);
+        $this->assertStringNotContainsString('將狀態改為', $client);
+        // 單目前的狀態仍在右側欄。
+        $this->assertStringContainsString('data-report-status-badge', $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('side_html'));
+    }
+
+    public function test_team_is_shown_by_name_never_as_developer_or_with_an_ai_tool_name(): void
+    {
+        config(['feedback.labels.owner' => '開發者', 'feedback.shared_owner_name' => 'Alex']);
+        $developer = FeedbackDeveloper::factory()->create(['name' => 'Nick']);
+        $shared = FeedbackMessage::factory()->create(['feedback_report_id' => $this->report->id, 'author_type' => FeedbackAuthorType::Owner, 'author_name' => '開發者', 'author_agent' => 'Claude Code', 'body' => '共用身分代發']);
+        $nick = FeedbackMessage::factory()->create(['feedback_report_id' => $this->report->id, 'author_type' => FeedbackAuthorType::Owner, 'author_developer_id' => $developer->id, 'author_name' => 'Nick', 'author_agent' => 'Claude Code', 'body' => 'Nick 的留言']);
+        $this->report->events()->create(['kind' => 'status', 'actor_name' => '開發者', 'agent' => 'Claude Code', 'detail' => 'new>needs_input']);
+        $listed = FeedbackReport::factory()->for($this->project)->byOwnerShared()->create(['title' => '團隊開的單', 'creator_agent' => 'Claude Code']);
+
+        foreach (['owner', 'client'] as $side) {
+            $side === 'owner' ? $this->actingAsOwner() : $this->actingAsClient();
+            $html = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html');
+            $this->assertStringContainsString('data-chat-author>Alex</span>', $html);
+            $this->assertStringContainsString('data-chat-author>Nick</span>', $html);
+            $this->assertStringNotContainsString('（Claude Code）', $html);
+            $this->assertStringNotContainsString('開發者', $html);
+        }
+
+        $this->actingAsOwner();
+        $page = $this->get(route('feedback.reports.show', [$this->project, $this->report]))->getContent();
+        $this->assertStringNotContainsString('（Claude Code）', $page);
+        $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
+        $this->assertMatchesRegularExpression('/data-report-creator>(?:<span[^>]*>建立者：<\/span>)?Alex<\/td>/', $list);
+        $this->assertStringNotContainsString('（Claude Code）', $list);
+        $this->assertSame('Alex', $listed->refresh()->creatorLabel());
+        $this->assertSame('Alex', $shared->displayAuthor($this->report, true));
+        $this->assertSame('Nick', $nick->displayAuthor($this->report, true));
     }
 
     // ------------------------------------------------------------------ 相簿
@@ -170,7 +200,7 @@ class FeedbackJiraRedesignTest extends TestCase
         $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $reply]), $owner);
         $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $video]), $owner);
         $this->assertStringContainsString('原始附件', $owner);
-        $this->assertStringContainsString('王工程師 的留言', $owner);
+        $this->assertStringContainsString(FeedbackTeamName::shared().' 的留言', $owner);
         $this->assertStringContainsString('data-lightbox-play', $owner);
         $this->assertStringContainsString('loading="lazy"', $owner);
         $this->assertStringContainsString(route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]), $owner);

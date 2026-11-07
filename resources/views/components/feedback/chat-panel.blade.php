@@ -46,10 +46,10 @@
                             <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{{ config('feedback.labels.client') }}已刪除</span></p>
                             <h3 class="truncate text-sm font-bold text-slate-950" data-chat-thread-title></h3>
                         </div>
-                        {{-- 相簿鈕（照 LINE、Messenger 的「相片與影片」）：切到面板內這張單的附件格狀頁，有附件才顯示；附件不放在對話串裡。 --}}
-                        <button type="button" class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="相簿" data-chat-album-open hidden>
+                        {{-- 相簿鈕（照 LINE、Messenger 的「相片與影片」）：固定在標題列（捲動對話不會消失），徽章顯示附件數，有新附件時變色提示；點了切到面板內的附件頁，可返回對話並回到原本的捲動位置；附件不放在對話串裡。 --}}
+                        <button type="button" class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="相簿" data-chat-album-open>
                             <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m21 16-5-5-8 8" /></svg>
-                            相簿 <span class="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600" data-chat-album-count>0</span>
+                            相簿 <span class="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600" data-chat-album-count>0</span><span class="album-new-hint hidden text-[11px] font-bold text-teal-800" data-chat-album-new-hint>有新附件</span>
                         </button>
                         <a href="#" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-page-link>開啟完整頁</a>
                     </div>

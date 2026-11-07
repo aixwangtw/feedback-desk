@@ -139,7 +139,7 @@ describe('清單頁籤與等誰標示', () => {
 });
 
 describe('網頁上不能手動改狀態，只有客戶能按「完成」', () => {
-    it('the 完成 button (with confirm) is on the client list rows, board cards and detail dialog; the client can complete a report, the team gets a request-for-confirmation button instead', async () => {
+    it('the 完成 button (no confirm) is on the client list rows, board cards and detail dialog; the client can complete a report, the team gets a request-for-confirmation button instead', async () => {
         const { seeded, c, e } = await fixture();
         const client = await new Browser().asClient(seeded);
         for (const query of ['?tab=all', '?tab=all&view=board']) {
@@ -150,7 +150,7 @@ describe('網頁上不能手動改狀態，只有客戶能按「完成」', () =
         const teamList = await (await (await new Browser().asOwner(seeded)).get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(teamList).not.toContain('data-complete-report');
         const dialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${c.public_id}/dialogs`)).text();
-        expect(dialogs).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+" data-completion-approve-form[^>]*><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*data-complete-report`));
+        expect(dialogs).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-completion-approve-form[^>]*><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*data-complete-report`));
         expect(await (await client.get(`/p/${seeded.project.slug}/reports/${e.public_id}/dialogs`)).text()).not.toContain('data-complete-report');
         expect(dialogs).not.toContain('data-request-completion');
         const owner = await new Browser().asOwner(seeded);
@@ -207,7 +207,7 @@ describe('網頁上不能手動改狀態，只有客戶能按「完成」', () =
         const clientPage = await (await client.get(`/p/${seeded.project.slug}/reports/${c.public_id}`)).text();
         expect(clientPage).not.toContain('更新狀態');
         expect(clientPage).not.toMatch(/<select[^>]*name="status"/);
-        expect(clientPage).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+"[^>]*>[\\s\\S]*?name="status" value="completed"[\\s\\S]*?data-complete-report`));
+        expect(clientPage).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status"[^>]*>[\\s\\S]*?name="status" value="completed"[\\s\\S]*?data-complete-report`));
         const donePage = await (await client.get(`/p/${seeded.project.slug}/reports/${e.public_id}`)).text();
         expect(donePage).not.toContain('data-complete-report');
     });

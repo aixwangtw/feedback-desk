@@ -2,17 +2,17 @@ import { raw } from 'hono/html';
 import type { Child, FC } from 'hono/jsx';
 import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, unreadDotLabel } from '../../shared/conversation';
-import { formatAbsolute, formatRelative } from '../../shared/time';
+import { formatAbsolute, formatRelative, formatShort } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
 import type { Notifications } from '../lib/notifications';
 import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
 import { attachmentTitle } from '../../shared/attachment-list';
-import { LIST_THUMB_LIMIT, type RowThumb } from '../../shared/album-thumbs';
+import { LIST_THUMB_LIMIT, lightboxGalleryJson, type RowThumb } from '../../shared/album-thumbs';
 import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
 import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
-import { COMPLETE_CONFIRM } from '../../shared/status';
+import { CONFIRM_CANCEL, type ConfirmText } from '../../shared/confirm';
 import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { CHAT_ICON_PATHS, REPORT_LINK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
 
@@ -26,9 +26,9 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
     return parts.filter(Boolean).join(' ');
 }
 
-export const Time: FC<{ v: ViewContext; at: string; relative?: boolean; class?: string }> = ({ v, at, relative, class: className }) => {
+export const Time: FC<{ v: ViewContext; at: string; relative?: boolean; short?: boolean; class?: string }> = ({ v, at, relative, short, class: className }) => {
     const absolute = formatAbsolute(at, v.cfg.utcOffsetMinutes);
-    const text = relative ? formatRelative(at, v.now) : absolute;
+    const text = relative ? formatRelative(at, v.now) : short ? formatShort(at, v.cfg.utcOffsetMinutes) : absolute;
     return (
         <time datetime={at} title={`${absolute}（${v.cfg.timezoneName}）`} class={className}>
             {text}
@@ -116,7 +116,8 @@ export const ImageLightbox: FC = () => (
     <dialog data-image-lightbox class="m-auto h-[100dvh] w-screen max-w-none overflow-hidden bg-transparent p-0 backdrop:bg-slate-950/90 sm:h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:rounded-2xl" aria-labelledby="image-lightbox-title">
         <div class="flex h-full min-h-0 flex-col bg-slate-950 text-white">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-slate-950/95 px-3 py-3 sm:px-5">
-                <h2 id="image-lightbox-title" class="min-w-0 flex-1 truncate text-sm font-semibold" data-lightbox-title>截圖預覽</h2>
+                <h2 id="image-lightbox-title" class="min-w-0 flex-1 truncate text-sm font-semibold" data-lightbox-title>附件</h2>
+                <output class="text-xs tabular-nums text-slate-300" data-lightbox-counter></output>
                 <div class="flex flex-wrap items-center justify-end gap-2">
                     <div class="flex items-center overflow-hidden rounded-lg border border-white/20" role="group" aria-label="縮放控制" data-lightbox-zoom-group>
                         <button type="button" class="grid size-10 place-items-center text-lg transition hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-zoom-out aria-label="縮小">−</button>
@@ -128,13 +129,20 @@ export const ImageLightbox: FC = () => (
                     <button type="button" class="grid size-10 place-items-center rounded-lg bg-white text-xl text-slate-950 transition hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-close aria-label="關閉截圖預覽">×</button>
                 </div>
             </div>
-            <div class="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6" data-lightbox-stage>
+            <div class="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6" data-lightbox-stage>
+                <button type="button" class="absolute left-2 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-2xl text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-prev aria-label="上一張" hidden>‹</button>
                 <img src="" alt="" class="max-h-full max-w-full origin-center object-contain transition-transform duration-150" data-lightbox-image />
                 <video controls playsinline class="max-h-full max-w-full bg-black" data-lightbox-video hidden></video>
+                <button type="button" class="absolute right-2 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-2xl text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400" data-lightbox-next aria-label="下一張" hidden>›</button>
+            </div>
+            <div class="border-t border-white/10 bg-slate-950/95 px-4 py-2.5 text-center">
+                <p class="break-words text-sm font-semibold" data-lightbox-caption-name></p>
+                <p class="mt-0.5 text-xs text-slate-300" data-lightbox-caption-meta></p>
             </div>
         </div>
     </dialog>
 );
+
 
 export interface LayoutProps {
     v: ViewContext;
@@ -291,6 +299,7 @@ export const Layout: FC<LayoutProps> = ({ v, title, project, projects, showLogou
             {chatPanel ? <ChatPanel v={v} slug={chatPanel.slug} viewer={chatPanel.viewer} /> : null}
 
             <ImageLightbox />
+            <ConfirmDialog id="confirm-dialog" text={{ title: '', message: '', confirm: '確認', tone: 'danger' }} />
         </body>
     </html>
     </>
@@ -471,7 +480,7 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
 
 /**
  * 「完成」鈕：清單、看板卡片、詳情右側窄欄共用（清單用字串版 rows.ts 的 completeButtonHtml，測試逐位元比對）。
- * 客戶端：確認後把單改成已完成；開發團隊端：跳出確認留言視窗（RequestCompletionDialog），單維持等客戶。已完成的單不顯示。
+ * 客戶端：按了直接把單改成已完成（不跳確認）；開發團隊端：跳出確認留言視窗（RequestCompletionDialog），單維持等客戶。已完成的單不顯示。
  */
 export const CompleteButton: FC<{ slug: string; publicId: string; status: ReportStatus; isOwner: boolean; clientLabel: string; backPath: string; compact?: boolean; cardAction?: boolean; approveForm?: boolean }> = ({ slug, publicId, status, isOwner, clientLabel, backPath, compact = false, cardAction = false, approveForm = false }) => {
     if (status === 'completed') {
@@ -483,7 +492,7 @@ export const CompleteButton: FC<{ slug: string; publicId: string; status: Report
         );
     }
     return (
-        <form method="post" action={paths.reportStatus(slug, publicId)} data-confirm={COMPLETE_CONFIRM} data-completion-approve-form={approveForm ? true : undefined}>
+        <form method="post" action={paths.reportStatus(slug, publicId)} data-completion-approve-form={approveForm ? true : undefined}>
             <input type="hidden" name="_back" value={backPath} />
             <input type="hidden" name="status" value="completed" />
             <button type="submit" class={completeButtonClass(compact)} data-complete-report data-card-action={cardAction ? true : undefined} title="確認沒問題，改成已完成">完成</button>
@@ -494,23 +503,46 @@ export const CompleteButton: FC<{ slug: string; publicId: string; status: Report
 const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
 
 /**
- * 清單、看板的附件縮圖（最多 3 張＋「+N」）：點縮圖或「+N」打開該單詳情並捲到相簿。
+ * 清單、看板的附件縮圖（最多 3 張＋「+N」）：點縮圖或「+N」直接開附件燈箱（data-lightbox-gallery 帶這張單的全部附件），不開詳情。
  * 清單用字串版 rows.ts 的 attachmentThumbsHtml（測試逐位元比對），輪詢端點也回傳同一份。
  */
 export const AttachmentThumbs: FC<{ publicId: string; thumbs: RowThumb[]; total: number; card?: boolean }> = ({ publicId, thumbs, total, card = false }) => {
     const shown = thumbs.slice(0, LIST_THUMB_LIMIT);
     const more = total - shown.length;
     return (
-        <div class={`flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}`} data-attachment-thumbs={publicId} data-attachment-count={total} data-card-action={card ? true : undefined} hidden={card && total === 0 ? true : undefined}>
-            {shown.map((thumb) => (
-                <button type="button" class={THUMB_TILE} data-dialog-open={`detail-report-${publicId}`} data-open-album title={`${thumb.isVideo ? '影片：' : ''}${thumb.name}（開啟相簿）`} aria-label={`開啟相簿：${thumb.name}`}>
+        <div class={`flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}`} data-attachment-thumbs={publicId} data-attachment-count={total} data-lightbox-gallery={lightboxGalleryJson(thumbs)} data-card-action={card ? true : undefined} hidden={card && total === 0 ? true : undefined}>
+            {shown.map((thumb, index) => (
+                <button type="button" class={THUMB_TILE} data-lightbox-index={index} title={`${thumb.isVideo ? '影片：' : ''}${thumb.name}`} aria-label={`檢視附件：${thumb.name}`}>
                     <AttachmentMedia src={thumb.url} name={thumb.name} mime={thumb.isVideo ? 'video/mp4' : 'image/jpeg'} class="size-full object-cover" />
                 </button>
             ))}
             {shown.length === 0 && !card ? <span class="text-xs text-slate-400">—</span> : null}
             {more > 0 ? (
-                <button type="button" class={`${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200`} data-dialog-open={`detail-report-${publicId}`} data-open-album aria-label={`還有 ${more} 個附件，開啟相簿`} title="開啟相簿">+{more}</button>
+                <button type="button" class={`${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200`} data-lightbox-index={shown.length} aria-label={`還有 ${more} 個附件，檢視附件`} title="檢視附件">+{more}</button>
             ) : null}
         </div>
     );
 };
+
+/**
+ * 確認視窗（網站自己的對話視窗，不用瀏覽器 confirm()）：刪除、收回、捨棄共用這一個元件，文字來自 shared/confirm.ts。
+ * 有 action：每張單各一個（刪除單），由 data-dialog-open 開啟、按鈕送出表單；沒有 action：全站一個共用視窗（頁面底部放一次），
+ * client/confirm-dialog.js 在表單帶 data-confirm-* 屬性送出前填字並開啟。
+ */
+export const ConfirmDialog: FC<{ id: string; action?: string; text: ConfirmText }> = ({ id, action, text }) => (
+    <dialog id={id} class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`${id}-title`} data-confirm-dialog={action ? undefined : true}>
+        <form method={action ? 'post' : 'dialog'} action={action} class="grid gap-4 p-5 sm:p-6">
+            <h2 id={`${id}-title`} class="text-lg font-bold text-slate-950" data-confirm-title-text>{text.title}</h2>
+            <p class="whitespace-pre-line break-words text-sm leading-6 text-slate-600" data-confirm-message-text>{text.message}</p>
+            <div class="flex justify-end gap-3">
+                <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close data-confirm-cancel autofocus>{CONFIRM_CANCEL}</button>
+                <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2" data-confirm-ok>{text.confirm}</button>
+            </div>
+        </form>
+    </dialog>
+);
+
+/** 放在 <form> 上的 data 屬性，client/confirm-dialog.js 會在送出前先跳出確認視窗。 */
+export function confirmAttrs(text: ConfirmText): Record<string, string> {
+    return { 'data-confirm-title': text.title, 'data-confirm-message': text.message, 'data-confirm-label': text.confirm, 'data-confirm-tone': text.tone };
+}

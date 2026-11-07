@@ -4,7 +4,8 @@ import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
 import type { PortalTab } from '../lib/reports';
 import { paths } from '../routes/paths';
-import { AttachmentMedia, cx, ErrorList, Layout, Pagination, type ViewContext } from './components';
+import { deleteReportText } from '../../shared/confirm';
+import { AttachmentMedia, ConfirmDialog, cx, ErrorList, Layout, Pagination, type ViewContext } from './components';
 import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastNotes, RequestCompletionDialog } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
@@ -308,18 +309,18 @@ export const PortalPage: FC<PortalProps> = (props) => {
 
                 {viewMode === 'list' ? (
                     <div class="sm:overflow-x-auto" data-list-view>
-                        <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[60rem]" data-report-table>
+                        <table class="block w-full border-collapse text-left text-sm sm:table" data-report-table>
                             <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                                 <tr>
-                                    <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
-                                    {sortHeader('title', '標題', 'whitespace-nowrap px-4 text-left py-3.5')}
-                                    {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
-                                    {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
-                                    <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
-                                    <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
-                                    {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
-                                    {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-32 px-4 py-3.5 text-center')}
-                                    <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
+                                    <th class="whitespace-nowrap w-14 px-2 text-center py-3.5">編號</th>
+                                    {sortHeader('title', '標題', 'whitespace-nowrap px-3 text-left py-3.5')}
+                                    {sortHeader('status', '狀態', 'whitespace-nowrap w-24 px-2 py-3.5 text-center')}
+                                    {showCategory ? <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center">分類</th> : null}
+                                    <th class="whitespace-nowrap w-44 px-2 text-center py-3.5">附件</th>
+                                    <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center">建立者</th>
+                                    {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-28 px-2 text-center py-3.5')}
+                                    {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-24 px-2 py-3.5 text-center')}
+                                    <th class="whitespace-nowrap w-px px-2 py-3.5 text-center">操作</th>
                                 </tr>
                             </thead>
                             <tbody class="block divide-y divide-slate-100 sm:table-row-group">
@@ -527,27 +528,9 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
             </dialog>
 
             {isOwner ? (
-                <dialog id={`delete-report-${report.public_id}`} class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`delete-report-title-${report.public_id}`}>
-                    <form method="post" action={paths.reportDestroy(slug, report.public_id)} class="grid gap-4 p-5 sm:p-6">
-                        <h2 id={`delete-report-title-${report.public_id}`} class="text-lg font-bold text-slate-950">確定要刪除這個問題？</h2>
-                        <p class="text-sm leading-6 text-slate-600">「{report.title}」與它的截圖、留言紀錄會被永久刪除，無法復原。</p>
-                        <div class="flex justify-end gap-3">
-                            <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
-                            <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>
-                        </div>
-                    </form>
-                </dialog>
+                <ConfirmDialog id={`delete-report-${report.public_id}`} action={paths.reportDestroy(slug, report.public_id)} text={deleteReportText(report.title, true)} />
             ) : (
-                <dialog id={`client-delete-report-${report.public_id}`} class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`client-delete-report-title-${report.public_id}`}>
-                    <form method="post" action={paths.reportClientDestroy(slug, report.public_id)} class="grid gap-4 p-5 sm:p-6">
-                        <h2 id={`client-delete-report-title-${report.public_id}`} class="text-lg font-bold text-slate-950">確定刪除？</h2>
-                        <p class="text-sm leading-6 text-slate-600">「{report.title}」刪除後會從清單移除，無法自行復原。</p>
-                        <div class="flex justify-end gap-3">
-                            <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
-                            <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>
-                        </div>
-                    </form>
-                </dialog>
+                <ConfirmDialog id={`client-delete-report-${report.public_id}`} action={paths.reportClientDestroy(slug, report.public_id)} text={deleteReportText(report.title, false)} />
             )}
         </>
     );

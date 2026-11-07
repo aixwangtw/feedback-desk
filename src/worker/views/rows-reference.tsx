@@ -26,10 +26,10 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
     const labels = v.cfg.labels;
     return (
         <tr class={cx('block', ROW_CLICK_CLASS, 'space-y-1 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle', deleted ? 'bg-slate-50 text-slate-500' : null)} data-report-row={report.public_id} data-row-link={`detail-report-${report.public_id}`} data-dialogs-src={dialogsSrc(slug, report.public_id, backPath)}>
-            <td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-3 sm:align-middle">
+            <td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-2 sm:py-3 sm:align-middle">
                 <ReportLink slug={slug} publicId={report.public_id}><span class="sm:hidden">編號 </span><span data-report-number>{row.number}</span></ReportLink>
             </td>
-            <td class="block sm:table-cell sm:px-4 sm:py-3 sm:align-middle">
+            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle">
                 <div class="flex items-start gap-2">
                     <ReportLink slug={slug} publicId={report.public_id} class="min-w-0 break-words text-left font-semibold">{report.title}</ReportLink>
                     <UnreadDot publicId={report.public_id} unread={row.unread} />
@@ -41,20 +41,20 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                     </span>
                 ) : null}
             </td>
-            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">
+            <td class="block sm:table-cell sm:px-2 sm:py-3 sm:align-middle sm:text-center">
                 <StatusText status={report.status} labels={v.cfg.statusLabels} />
             </td>
             {showCategory ? (
-                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="row-category" compact class="justify-start sm:justify-center" /> : report.category || '未分類'}</td>
+                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-category><span class="font-semibold text-slate-500 sm:hidden">分類：</span>{(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="row-category" compact class="justify-start sm:justify-center" /> : report.category || '未分類'}</td>
             ) : null}
-            <td class="block sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">
+            <td class="block sm:table-cell sm:text-center sm:px-2 sm:py-3 sm:align-middle">
                 <AttachmentThumbs publicId={report.public_id} thumbs={row.thumbs} total={row.thumbTotal} />
             </td>
-            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
-            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><Time v={v} at={report.created_at} /></td>
-            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><Time v={v} at={report.latest_activity_at} relative /></td>
-            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">
-                <div class="flex flex-wrap gap-2 sm:justify-center">
+            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{row.creatorLabel}</td>
+            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><Time v={v} at={report.created_at} short /></td>
+            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><Time v={v} at={report.latest_activity_at} relative /></td>
+            <td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center">
+                <div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions>
                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`edit-report-${report.public_id}`}>編輯</button>
                     <CompleteButton slug={slug} publicId={report.public_id} status={report.status} isOwner={isOwner} clientLabel={labels.client} backPath={backPath} />
                     {isOwner && deleted ? (

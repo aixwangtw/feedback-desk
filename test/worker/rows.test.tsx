@@ -8,7 +8,7 @@ import { workerEnv } from './helpers';
 
 const png: Attachment = { id: 11, report_id: 1, message_id: null, kind: 'feedback', object_key: 'k', original_name: '圖一 <紅框>.png', mime_type: 'image/png', size: 5, uploader_client_account_id: null, uploader_developer_id: null, created_at: '' };
 const mp4: Attachment = { ...png, id: 12, original_name: '操作.mp4', mime_type: 'video/mp4' };
-const thumbOf = (attachment: Attachment) => ({ url: `/p/demo/reports/0199c3a1-0000-4000-8000-000000000001/attachments/${attachment.id}`, name: attachment.original_name, isVideo: attachment.mime_type.startsWith('video/') });
+const thumbOf = (attachment: Attachment) => ({ url: `/p/demo/reports/0199c3a1-0000-4000-8000-000000000001/attachments/${attachment.id}`, name: attachment.original_name, isVideo: attachment.mime_type.startsWith('video/'), source: '原始附件', at: '2026/10/13 10:30' });
 
 function row(overrides: Partial<Report>, unread = 0, attachments: Attachment[] = [], extraTotal = 0): PortalRow {
     const report: Report = {
@@ -71,7 +71,8 @@ describe('Jira-style list rows and board cards', () => {
         expect(html).toContain('data-dialog-open="edit-report-');
         expect(html).toContain('data-delete-report');
         // image thumbnail and a video thumbnail with a play icon
-        expect(html.match(/data-open-album/g)).toHaveLength(2);
+        expect(html.match(/data-lightbox-index=/g)).toHaveLength(2);
+        expect(html).toContain('data-lightbox-gallery=');
         expect(html).toContain('data-attachment-video');
         // the order follows the pre-redesign table
         const order = ['data-report-number', 'data-status-text', 'data-report-category', 'data-attachment-thumbs', 'data-report-creator', '建立：', '最後更新：', 'data-dialog-open="edit-report-'];
@@ -103,7 +104,8 @@ describe('Jira-style list rows and board cards', () => {
         const html = listRowHtml({ ...ctx, isOwner: false }, row({}, 0, [png]));
         // every clickable control sits in an <a>, <button> or <form>, which row-link.js already skips
         expect(html).toContain('<a href="/p/demo/reports/');
-        expect(html).toMatch(/<button [^>]*data-open-album/);
+        expect(html).toMatch(/<button [^>]*data-lightbox-index="0"/);
+        expect(html).not.toContain('data-open-album');
         expect(html).toMatch(/<button [^>]*data-dialog-open="edit-report-/);
     });
 

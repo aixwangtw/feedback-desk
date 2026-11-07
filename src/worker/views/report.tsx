@@ -12,7 +12,8 @@ import { MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
 import { THREAD_HEADING } from '../../shared/album-thumbs';
-import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, CompleteButton, cx, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { discardDraftText, withdrawMessageText } from '../../shared/confirm';
+import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, CompleteButton, confirmAttrs, cx, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
@@ -131,7 +132,7 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
                                     {messageAuthorLabel(v, report, message, viewerIsOwner)}
                                 </span>
                                 <Time v={v} at={message.created_at} relative class="text-slate-500" />
-                                {manageable ? <MessageMenu slug={slug} publicId={report.public_id} messageId={message.id} /> : null}
+                                {manageable ? <MessageMenu slug={slug} publicId={report.public_id} messageId={message.id} body={message.body} /> : null}
                             </div>
                             <div class={cx('mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', bubbleClass, isMine ? 'rounded-tr-md' : 'rounded-tl-md')}>
                                 {isRequest ? <p class="mb-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800" data-completion-request-badge>請確認完成</p> : null}
@@ -212,12 +213,12 @@ export const Thread: FC<ActivityProps> = (activity) => (
  * 留言旁的「⋯」選單（照 LINE、Slack）：編輯、收回自己發的留言。單頁、詳情視窗、右下角面板共用（Activity 放進每則自己的留言）。
  * 編輯與收回都不留痕跡：沒有「已編輯」、收回後整則消失；動作由 client/message-edit.js 處理（沒有 JS 時收回照表單送出）。
  */
-export const MessageMenu: FC<{ slug: string; publicId: string; messageId: number }> = ({ slug, publicId, messageId }) => (
+export const MessageMenu: FC<{ slug: string; publicId: string; messageId: number; body: string }> = ({ slug, publicId, messageId, body }) => (
     <details class="relative" data-message-menu>
         <summary class="grid size-6 cursor-pointer list-none place-items-center rounded-md text-base font-bold leading-none text-slate-500 transition hover:bg-black/5 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 [&::-webkit-details-marker]:hidden" aria-label="這則留言的選項" title="編輯、收回">⋯</summary>
         <div class="absolute right-0 top-full z-20 mt-1 min-w-24 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-lg ring-1 ring-black/5">
             <button type="button" class="block w-full px-3 py-1.5 text-left font-medium text-slate-800 hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-100" data-message-edit-open>編輯</button>
-            <form method="post" action={paths.messageWithdraw(slug, publicId, messageId)} data-message-withdraw-form>
+            <form method="post" action={paths.messageWithdraw(slug, publicId, messageId)} {...confirmAttrs(withdrawMessageText(body))} data-message-withdraw-form>
                 <button type="submit" class="block w-full px-3 py-1.5 text-left font-medium text-rose-700 hover:bg-rose-50 focus:outline-none focus-visible:bg-rose-50">收回</button>
             </form>
         </div>
@@ -382,7 +383,7 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                                     <input type="hidden" name="_back" value={back} />
                                     <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-draft-send>送出</button>
                                 </form>
-                                <form method="post" action={`${base}/${draft.id}/discard`} data-confirm="確定捨棄這則待審留言？" data-draft-form="discard">
+                                <form method="post" action={`${base}/${draft.id}/discard`} {...confirmAttrs(discardDraftText())} data-draft-form="discard">
                                     <input type="hidden" name="_back" value={back} />
                                     <button type="submit" class="inline-flex min-h-9 items-center rounded-lg border border-rose-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-draft-discard>捨棄</button>
                                 </form>

@@ -32,6 +32,11 @@ export function formatAbsolute(iso: string, offsetMinutes: number): string {
     return `${date.getUTCFullYear()}/${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
 }
 
+/** "10/14 10:30" in the configured offset: the short form for narrow list columns. */
+export function formatShort(iso: string, offsetMinutes: number): string {
+    return formatAbsolute(iso, offsetMinutes).slice(5);
+}
+
 /** "2026-10-14 10:30" in the configured offset, used by the CLI. */
 export function formatDashed(iso: string, offsetMinutes: number): string {
     return formatAbsolute(iso, offsetMinutes).replaceAll('/', '-');

@@ -51,10 +51,12 @@ describe('列表與看板的附件縮圖含留言附件', () => {
             expect(block.match(/<img /g)).toHaveLength(3);
             expect(block.indexOf('m-new.png')).toBeLessThan(block.indexOf('m-mid.png'));
             expect(block.indexOf('m-mid.png')).toBeLessThan(block.indexOf('m-old.png'));
-            expect(block).not.toContain('original.png');
+            expect(block).not.toContain('alt="original.png"');
             expect(block).toContain('>+1</button>');
-            expect(block).toContain('data-open-album');
-            expect(block).toContain(`data-dialog-open="detail-report-${report.public_id}"`);
+            expect(block).toContain('data-lightbox-gallery=');
+            expect(block).toContain('data-lightbox-index="3"');
+            expect(block).not.toContain('data-open-album');
+            expect(block).not.toContain('data-dialog-open');
             expect(html).toContain('data-attachment-thumbs-url');
         }
     });
@@ -107,7 +109,7 @@ describe('列表與看板的附件縮圖含留言附件', () => {
         expect(after.reports[report.public_id].card_html).toContain('data-card-action');
         expect(after.reports[report.public_id].row_html).not.toContain('data-card-action');
 
-        const unit = await listThumbsForReports(env.DB, slugOf(seeded), [report]);
+        const unit = await listThumbsForReports(env.DB, slugOf(seeded), [report], { authorLabel: () => 'x', formatAt: (iso) => iso });
         expect(unit.get(report.id)?.total).toBe(1);
     });
 
@@ -177,3 +179,27 @@ describe('團隊也有「完成」鈕與新的詳細資料排版', () => {
     });
 });
 
+describe('附件燈箱（點縮圖只看這張單的附件）', () => {
+    it('the thumbnail cell carries every attachment of this report with name, source and time, and no draft files', async () => {
+        const { seeded, report, owner } = await setup();
+        const other = (await seedReport(seeded.project, { title: '別張單' })).report;
+        await seedDatedAttachment(other, null, 'someone-elses.png', '2026-11-07T01:00:00.000Z');
+        await seedDatedAttachment(report, null, 'original.png', '2026-11-07T01:00:00.000Z');
+        const message = await seedMessage(report);
+        for (const [index, name] of ['a.png', 'b.png', 'c.png', 'd.png'].entries()) {
+            await seedDatedAttachment(report, message, name, `2026-11-07T0${2 + index}:00:00.000Z`);
+        }
+        const data = (await (await owner.get(thumbsUrl(seeded, [report.public_id]))).json()) as { reports: Record<string, { row_html: string }> };
+        const html = data.reports[report.public_id].row_html;
+        const raw = /data-lightbox-gallery="([^"]*)"/.exec(html)?.[1] ?? '';
+        const gallery = JSON.parse(raw.replaceAll('&quot;', '"').replaceAll('&amp;', '&')) as Array<{ url: string; name: string; video: boolean; source: string; at: string }>;
+        expect(gallery.map((item) => item.name)).toEqual(['d.png', 'c.png', 'b.png', 'a.png', 'original.png']);
+        expect(gallery[0].source).toContain('的留言');
+        expect(gallery[4].source).toBe('原始附件');
+        expect(gallery[0].at).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/);
+        expect(raw).not.toContain('someone-elses');
+        expect(html).not.toContain('data-open-album');
+        expect(html).not.toContain('data-dialog-open');
+        expect(html.match(/data-lightbox-index=/g)).toHaveLength(4);
+    });
+});

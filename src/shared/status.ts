@@ -26,9 +26,6 @@ export type WaitingSide = 'developer' | 'client' | 'completed';
 /** 頁籤／等誰對應的狀態：developer＝new（等工程師）、client＝needs_input（等客戶）、completed＝completed。 */
 export const WAITING_STATUS: Record<WaitingSide, ReportStatus> = { developer: 'new', client: 'needs_input', completed: 'completed' };
 
-/** 客戶按「完成」前的確認文字（清單列、看板卡、單頁側欄共用）。 */
-export const COMPLETE_CONFIRM = '確定這張單已經完成了嗎？';
-
 /** Tailwind background class of the colour dot shown beside each status. */
 const DOT_CLASSES: Record<ReportStatus, string> = {
     new: 'bg-slate-500',

@@ -1,6 +1,6 @@
 // 清單與看板的附件縮圖（最多 3 張＋「+N」）：有人上傳新附件時，這一格跟著伺服器更新。
 // 伺服器畫面只有一份（views/rows.ts 的 attachmentThumbsHtml），這裡只負責定時取回、有變才換掉，不自己組 HTML。
-// 點縮圖或「+N」會打開該單詳情並捲到相簿（捲動由 report-dialog-thread.js 在相簿載入後執行）。
+// 點縮圖或「+N」直接開附件燈箱（attachment-lightbox.js 讀 data-lightbox-gallery），不開詳情。
 
 const POLL_MS = 8000;
 
@@ -60,14 +60,4 @@ if (typeof document !== 'undefined') {
         }, POLL_MS);
         ['feedback:activity-changed', 'feedback:album-changed'].forEach((name) => document.addEventListener(name, () => refresh(url)));
     }
-
-    document.addEventListener('click', (event) => {
-        const opener = event.target.closest?.('[data-open-album]');
-        if (opener) {
-            const id = opener.dataset.dialogOpen?.replace(/^detail-report-/, '');
-            if (id) {
-                document.documentElement.dataset.scrollAlbumFor = id;
-            }
-        }
-    });
 }

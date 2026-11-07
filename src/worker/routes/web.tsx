@@ -687,7 +687,11 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     }
 
     // 清單的附件欄與看板卡片縮圖：這張單所有附件（原始＋留言，收回的不算、不含草稿），與詳情的相簿同一套規則（lib/album.ts）。
-    const listThumbs = await listThumbsForReports(db, project.slug, reports);
+    const thumbView = viewContext(c);
+    const listThumbs = await listThumbsForReports(db, project.slug, reports, {
+        authorLabel: (report, message) => messageAuthorLabel(thumbView, report, message, isOwner),
+        formatAt: (iso) => formatAbsolute(iso, thumbView.cfg.utcOffsetMinutes),
+    });
     const rows: PortalRow[] = reports.map((report) => ({
         report,
         number: report.seq,
@@ -1261,10 +1265,14 @@ web.get('/p/:slug/attachment-thumbs', async (c) => {
         return c.json({ reports: {} }, 200, { 'Cache-Control': 'private, no-store' });
     }
     const scope = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
-    const { results } = await c.env.DB.prepare(`SELECT id, public_id, created_at FROM reports WHERE project_id = ? AND public_id IN (${placeholders(ids.length)}) ${scope}`)
+    const { results } = await c.env.DB.prepare(`SELECT id, public_id, created_at, creator_type FROM reports WHERE project_id = ? AND public_id IN (${placeholders(ids.length)}) ${scope}`)
         .bind(project.id, ...ids)
-        .all<Pick<Report, 'id' | 'public_id' | 'created_at'>>();
-    const thumbs = await listThumbsForReports(c.env.DB, project.slug, results);
+            .all<Pick<Report, 'id' | 'public_id' | 'created_at' | 'creator_type'>>();
+    const thumbView = viewContext(c);
+    const thumbs = await listThumbsForReports(c.env.DB, project.slug, results, {
+        authorLabel: (report, message) => messageAuthorLabel(thumbView, report, message, isOwner),
+        formatAt: (iso) => formatAbsolute(iso, thumbView.cfg.utcOffsetMinutes),
+    });
     const reports: Record<string, { count: number; row_html: string; card_html: string }> = {};
     for (const report of results) {
         const found = thumbs.get(report.id) ?? { thumbs: [], total: 0 };

@@ -8,6 +8,8 @@ import { openDialogThread } from './report-dialog-thread.js';
 import { reopenPendingReport } from './completion.js';
 import './row-link.js';
 import './attachment-thumbs.js';
+import './attachment-lightbox.js';
+import './confirm-dialog.js';
 import { isEditingMessage, replaceKeepingOpen } from './thread-details.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
@@ -106,19 +108,6 @@ const formatMegabytes = (bytes) => `${Math.round(bytes / 1024 / 1024)} MB`;
 // Each screenshot is sent in its own PUT request before the form is submitted; the form then only
 // carries the returned upload ids. The Workers free plan allows 10 ms of CPU per request, and
 // streaming one file straight into storage stays well inside it, while parsing a multipart body does not.
-// 需要再確認的表單（例如捨棄待審留言）：CSP 不允許 inline onsubmit，改用 data-confirm。
-document.addEventListener(
-    'submit',
-    (event) => {
-        const form = event.target instanceof HTMLFormElement ? event.target.closest('form[data-confirm]') : null;
-        if (form && !window.confirm(form.dataset.confirm)) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-        }
-    },
-    true,
-);
-
 document.addEventListener('submit', async (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.matches('[data-upload-form]') || form.dataset.uploadState === 'done') {
@@ -305,99 +294,7 @@ document.querySelectorAll('[data-keyword-search]').forEach((input) => {
     });
 });
 
-const imageLightbox = document.querySelector('[data-image-lightbox]');
-if (imageLightbox) {
-    const image = imageLightbox.querySelector('[data-lightbox-image]');
-    const title = imageLightbox.querySelector('[data-lightbox-title]');
-    const scaleOutput = imageLightbox.querySelector('[data-lightbox-scale]');
-    const openOriginal = imageLightbox.querySelector('[data-lightbox-original]');
-    const stage = imageLightbox.querySelector('[data-lightbox-stage]');
-    const video = imageLightbox.querySelector('[data-lightbox-video]');
-    const zoomGroup = imageLightbox.querySelector('[data-lightbox-zoom-group]');
-    let activeTrigger = null;
-    let scale = 1;
-
-    const applyScale = () => {
-        image.style.transform = `scale(${scale})`;
-        scaleOutput.value = `${Math.round(scale * 100)}%`;
-        stage.scrollTo({ left: 0, top: 0 });
-    };
-
-    const changeScale = (amount) => {
-        scale = Math.min(3, Math.max(0.5, scale + amount));
-        applyScale();
-    };
-
-    const closeLightbox = () => imageLightbox.close();
-
-    document.addEventListener('click', (event) => {
-        const trigger = event.target.closest('[data-lightbox-trigger]');
-        if (!trigger || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
-            return;
-        }
-        // 影片縮圖不進圖片燈箱：照連結（target=_blank）在新分頁播放；只有相簿（data-lightbox-play）在燈箱裡直接播放。
-        const isVideo = Boolean(trigger.querySelector('[data-attachment-video]'));
-        if (isVideo && !('lightboxPlay' in trigger.dataset)) {
-            return;
-        }
-
-        event.preventDefault();
-        activeTrigger = trigger;
-        scale = 1;
-        image.hidden = isVideo;
-        video.hidden = !isVideo;
-        zoomGroup.hidden = isVideo;
-        if (isVideo) {
-            video.src = trigger.href;
-            video.play?.().catch(() => {});
-        } else {
-            image.src = trigger.href;
-        }
-        image.alt = trigger.dataset.lightboxAlt || '截圖預覽';
-        title.textContent = trigger.dataset.lightboxAlt || (isVideo ? '影片' : '截圖預覽');
-        openOriginal.href = trigger.href;
-        openOriginal.textContent = isVideo ? '開啟原檔' : '開啟原圖';
-        applyScale();
-        imageLightbox.showModal();
-        document.body.classList.add('overflow-hidden');
-        imageLightbox.querySelector('[data-lightbox-close]').focus();
-    });
-
-    imageLightbox.querySelector('[data-lightbox-zoom-out]').addEventListener('click', () => changeScale(-0.25));
-    imageLightbox.querySelector('[data-lightbox-zoom-in]').addEventListener('click', () => changeScale(0.25));
-    imageLightbox.querySelector('[data-lightbox-reset]').addEventListener('click', () => {
-        scale = 1;
-        applyScale();
-    });
-    imageLightbox.querySelector('[data-lightbox-close]').addEventListener('click', closeLightbox);
-    imageLightbox.addEventListener('click', (event) => {
-        if (event.target === imageLightbox) {
-            closeLightbox();
-        }
-    });
-    imageLightbox.addEventListener('close', () => {
-        document.body.classList.remove('overflow-hidden');
-        image.removeAttribute('src');
-        video.pause?.();
-        video.removeAttribute('src');
-        video.load?.();
-        activeTrigger?.focus();
-        activeTrigger = null;
-    });
-    imageLightbox.addEventListener('keydown', (event) => {
-        if (event.key === '+' || event.key === '=') {
-            event.preventDefault();
-            changeScale(0.25);
-        } else if (event.key === '-') {
-            event.preventDefault();
-            changeScale(-0.25);
-        } else if (event.key === '0') {
-            event.preventDefault();
-            scale = 1;
-            applyScale();
-        }
-    });
-}
+// 附件燈箱（放大、播放、上一張／下一張）在 attachment-lightbox.js，清單縮圖、相簿、詳情共用。
 
 const activity = document.querySelector('[data-activity]');
 if (activity) {

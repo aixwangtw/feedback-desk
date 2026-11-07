@@ -9,13 +9,13 @@
  * 其餘欄位照改版前：編號、標題、狀態、分類、附件、建立者、建立日期、最後更新、操作（編輯、刪除；客戶端另有完成）。
  * 整列、整張卡片都能點開詳情（client/row-link.js）；編號與標題是藍色連結。
  */
-import { LIST_THUMB_LIMIT, type RowThumb } from '../../shared/album-thumbs';
+import { LIST_THUMB_LIMIT, lightboxGalleryJson, type RowThumb } from '../../shared/album-thumbs';
 import { isVideoMime } from '../../shared/attachment-rules';
 import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
 import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
-import { COMPLETE_CONFIRM, statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
+import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, unreadDotLabel } from '../../shared/conversation';
-import { formatAbsolute, formatRelative } from '../../shared/time';
+import { formatAbsolute, formatRelative, formatShort } from '../../shared/time';
 import type { Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { CARD_HOVER_CLASS, REPORT_LINK_CLASS, ROW_CLICK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
@@ -57,9 +57,9 @@ export function categorySelectHtml(ctx: RowContext, report: Report, idPrefix: st
     return html;
 }
 
-function time(v: ViewContext, at: string, relative = false): string {
+function time(v: ViewContext, at: string, relative = false, short = false): string {
     const absolute = formatAbsolute(at, v.cfg.utcOffsetMinutes);
-    return `<time datetime="${esc(at)}" title="${esc(`${absolute}（${v.cfg.timezoneName}）`)}">${esc(relative ? formatRelative(at, v.now) : absolute)}</time>`;
+    return `<time datetime="${esc(at)}" title="${esc(`${absolute}（${v.cfg.timezoneName}）`)}">${esc(relative ? formatRelative(at, v.now) : short ? formatShort(at, v.cfg.utcOffsetMinutes) : absolute)}</time>`;
 }
 
 /** StatusText（components.tsx）：只顯示狀態文字，網頁上沒有改狀態的下拉。 */
@@ -86,7 +86,7 @@ export function completeButtonHtml(input: { slug: string; publicId: string; stat
     if (isOwner) {
         return `<button type="button" class="${completeButtonClass(compact)}" data-dialog-open="request-completion-${id}" data-request-completion="${id}"${card} title="${esc(teamCompleteTitle(clientLabel, COMPLETION_APPROVE_LABEL))}">完成</button>`;
     }
-    return `<form method="post" action="${esc(paths.reportStatus(slug, publicId))}" data-confirm="${COMPLETE_CONFIRM}"${approveForm ? ' data-completion-approve-form="true"' : ''}><input type="hidden" name="_back" value="${esc(backPath)}"/><input type="hidden" name="status" value="completed"/><button type="submit" class="${completeButtonClass(compact)}" data-complete-report="true"${card} title="確認沒問題，改成已完成">完成</button></form>`;
+    return `<form method="post" action="${esc(paths.reportStatus(slug, publicId))}"${approveForm ? ' data-completion-approve-form="true"' : ''}><input type="hidden" name="_back" value="${esc(backPath)}"/><input type="hidden" name="status" value="completed"/><button type="submit" class="${completeButtonClass(compact)}" data-complete-report="true"${card} title="確認沒問題，改成已完成">完成</button></form>`;
 }
 
 const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
@@ -96,15 +96,15 @@ export function attachmentThumbsHtml(publicId: string, thumbs: RowThumb[], total
     const id = esc(publicId);
     const shown = thumbs.slice(0, LIST_THUMB_LIMIT);
     const more = total - shown.length;
-    let html = `<div class="flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}" data-attachment-thumbs="${id}" data-attachment-count="${total}"${card ? ' data-card-action="true"' : ''}${card && total === 0 ? ' hidden=""' : ''}>`;
-    for (const thumb of shown) {
-        html += `<button type="button" class="${THUMB_TILE}" data-dialog-open="detail-report-${id}" data-open-album="true" title="${esc(`${thumb.isVideo ? '影片：' : ''}${thumb.name}（開啟相簿）`)}" aria-label="${esc(`開啟相簿：${thumb.name}`)}">${attachmentMediaHtml(thumb.url, thumb.name, thumb.isVideo ? 'video/mp4' : 'image/jpeg', 'size-full object-cover')}</button>`;
-    }
+    let html = `<div class="flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}" data-attachment-thumbs="${id}" data-attachment-count="${total}" data-lightbox-gallery="${esc(lightboxGalleryJson(thumbs))}"${card ? ' data-card-action="true"' : ''}${card && total === 0 ? ' hidden=""' : ''}>`;
+    shown.forEach((thumb, index) => {
+        html += `<button type="button" class="${THUMB_TILE}" data-lightbox-index="${index}" title="${esc(`${thumb.isVideo ? '影片：' : ''}${thumb.name}`)}" aria-label="${esc(`檢視附件：${thumb.name}`)}">${attachmentMediaHtml(thumb.url, thumb.name, thumb.isVideo ? 'video/mp4' : 'image/jpeg', 'size-full object-cover')}</button>`;
+    });
     if (shown.length === 0 && !card) {
         html += '<span class="text-xs text-slate-400">—</span>';
     }
     if (more > 0) {
-        html += `<button type="button" class="${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200" data-dialog-open="detail-report-${id}" data-open-album="true" aria-label="${esc(`還有 ${more} 個附件，開啟相簿`)}" title="開啟相簿">+${more}</button>`;
+        html += `<button type="button" class="${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200" data-lightbox-index="${shown.length}" aria-label="${esc(`還有 ${more} 個附件，檢視附件`)}" title="檢視附件">+${more}</button>`;
     }
     return `${html}</div>`;
 }
@@ -135,21 +135,21 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     const deleted = report.client_deleted_at !== null;
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<tr class="block ${ROW_CLICK_CLASS} space-y-1 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle${deleted ? ' bg-slate-50 text-slate-500' : ''}" data-report-row="${id}" data-row-link="detail-report-${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
-    html += `<td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-3 sm:align-middle">${reportLinkHtml(ctx, report.public_id, `<span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span>`)}</td>`;
-    html += `<td class="block sm:table-cell sm:px-4 sm:py-3 sm:align-middle"><div class="flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left font-semibold')}${unreadDotHtml(report.public_id, row.unread)}</div>`;
+    html += `<td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-2 sm:py-3 sm:align-middle">${reportLinkHtml(ctx, report.public_id, `<span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span>`)}</td>`;
+    html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle"><div class="flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left font-semibold')}${unreadDotHtml(report.public_id, row.unread)}</div>`;
     if (isOwner && deleted) {
         html += `<span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted="true"><span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">${esc(v.cfg.labels.client)}已刪除</span>${time(v, report.client_deleted_at as string)}</span>`;
     }
     html += '</td>';
-    html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">${statusTextHtml(report.status, v.cfg.statusLabels)}</td>`;
+    html += `<td class="block sm:table-cell sm:px-2 sm:py-3 sm:align-middle sm:text-center">${statusTextHtml(report.status, v.cfg.statusLabels)}</td>`;
     if (ctx.showCategory) {
-        html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
+        html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
     }
-    html += `<td class="block sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">${attachmentThumbsHtml(report.public_id, row.thumbs, row.thumbTotal)}</td>`;
-    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
-    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at)}</td>`;
-    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
-    html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center"><div class="flex flex-wrap gap-2 sm:justify-center"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
+    html += `<td class="block sm:table-cell sm:text-center sm:px-2 sm:py-3 sm:align-middle">${attachmentThumbsHtml(report.public_id, row.thumbs, row.thumbTotal)}</td>`;
+    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
+    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at, false, true)}</td>`;
+    html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
+    html += `<td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center"><div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions="true"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
     html += completeButtonHtml({ slug, publicId: report.public_id, status: report.status, isOwner, clientLabel: v.cfg.labels.client, backPath: ctx.backPath });
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report="true">還原</button></form>`;

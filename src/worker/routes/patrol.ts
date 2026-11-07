@@ -104,10 +104,10 @@ patrol.get('/projects/:slug/attention', async (c) => {
     const project = await team.projectOrFail(c.env, c.req.param('slug'));
     const { results } = await c.env.DB.prepare(
         `SELECT r.id, r.public_id, r.status, r.adjustment_updated_at, r.owner_last_read_at,
-            (SELECT COUNT(*) FROM messages m WHERE m.report_id = r.id AND m.author_type = 'reporter'
+            (SELECT COUNT(*) FROM messages m WHERE m.deleted_at IS NULL AND m.report_id = r.id AND m.author_type = 'reporter'
                 AND (r.owner_last_read_at IS NULL OR m.created_at > r.owner_last_read_at)) AS unread_messages_count,
-            (SELECT MAX(m.created_at) FROM messages m WHERE m.report_id = r.id AND m.author_type = 'reporter') AS latest_reporter_message_at,
-            (SELECT MAX(m.created_at) FROM messages m WHERE m.report_id = r.id AND m.author_type IN ('owner', 'agent')) AS latest_team_message_at
+            (SELECT MAX(m.created_at) FROM messages m WHERE m.deleted_at IS NULL AND m.report_id = r.id AND m.author_type = 'reporter') AS latest_reporter_message_at,
+            (SELECT MAX(m.created_at) FROM messages m WHERE m.deleted_at IS NULL AND m.report_id = r.id AND m.author_type IN ('owner', 'agent')) AS latest_team_message_at
         FROM reports r WHERE r.project_id = ? AND r.client_deleted_at IS NULL
         ORDER BY r.created_at DESC, r.id DESC`,
     )
@@ -135,7 +135,7 @@ patrol.get('/projects/:slug/attention', async (c) => {
 /** Client messages after the last team reply (or the latest one if none) contain a question marker. */
 async function hasNewQuestion(db: D1Database, reportId: number, handledAt: number): Promise<boolean> {
     const { results } = await db
-        .prepare("SELECT body, created_at FROM messages WHERE report_id = ? AND author_type = 'reporter' ORDER BY created_at DESC, id DESC")
+        .prepare("SELECT body, created_at FROM messages WHERE report_id = ? AND deleted_at IS NULL AND author_type = 'reporter' ORDER BY created_at DESC, id DESC")
         .bind(reportId)
         .all<{ body: string; created_at: string }>();
     const newer = results.filter((message) => Date.parse(message.created_at) > handledAt);
@@ -175,6 +175,20 @@ patrol.post('/projects/:slug/reports/:ref/messages', async (c) => {
     const text = typeof input.body === 'string' ? input.body : '';
     return logged(c, 'message', { body_length: charLength(text) }, () => team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), { body: text }));
 });
+
+/** 編輯團隊留言（巡檢身分）：不顯示「已編輯」、不改狀態。body 必填；remove_attachment_ids 可移除附件。 */
+patrol.put('/projects/:slug/reports/:ref/messages/:id', async (c) => {
+    const input = await body(c);
+    const text = typeof input.body === 'string' ? input.body : '';
+    return logged(c, 'edit_message', { message_id: c.req.param('id'), body_length: charLength(text) }, () =>
+        team.editTeamMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), c.req.param('id'), { body: text, remove_attachment_ids: input.remove_attachment_ids }),
+    );
+});
+
+/** 收回團隊留言（巡檢身分）：客戶端完全看不到痕跡。 */
+patrol.delete('/projects/:slug/reports/:ref/messages/:id', async (c) =>
+    logged(c, 'withdraw_message', { message_id: c.req.param('id') }, () => team.withdrawTeamMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), c.req.param('id'))),
+);
 
 /**
  * 待審留言（草稿）：客戶端看不到，團隊在單頁審過按「送出」才發出。body 必填；replace_message_id

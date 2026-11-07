@@ -54,7 +54,7 @@ export async function findReportById(db: D1Database, projectId: number, id: numb
 
 export async function attachmentsForReport(db: D1Database, reportId: number): Promise<Attachment[]> {
     const { results } = await db
-        .prepare('SELECT * FROM attachments WHERE report_id = ? ORDER BY id')
+        .prepare('SELECT * FROM attachments a WHERE a.report_id = ? AND (a.message_id IS NULL OR a.message_id IN (SELECT id FROM messages WHERE deleted_at IS NULL)) ORDER BY a.id')
         .bind(reportId)
         .all<Attachment>();
     return results;
@@ -73,7 +73,7 @@ export async function messagesForReport(db: D1Database, reportId: number): Promi
              JOIN reports r ON r.id = m.report_id
              LEFT JOIN client_accounts ca ON ca.id = m.author_client_account_id
              LEFT JOIN developers d ON d.id = m.author_developer_id
-             WHERE m.report_id = ? ORDER BY m.created_at, m.id`,
+             WHERE m.report_id = ? AND m.deleted_at IS NULL ORDER BY m.created_at, m.id`,
         )
         .bind(reportId)
         .all<Message>();

@@ -34,7 +34,7 @@ const installPageGuard = () => {
 
 const buildPreviewNode = (item, url, onRemove) => {
     const figure = document.createElement('figure');
-    figure.className = `flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 ${item.kind === 'video' ? 'w-44 max-w-full' : 'w-20'}`;
+    figure.className = `flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 ${item.kind === 'video' ? 'w-56 max-w-full' : 'attachment-tile'}`;
     figure.dataset.attachmentPreview = item.kind;
     let media;
     if (item.kind === 'video') {
@@ -49,10 +49,10 @@ const buildPreviewNode = (item, url, onRemove) => {
         media = document.createElement('img');
         media.src = url;
         media.alt = item.name;
-        media.className = 'size-[4.5rem] rounded object-cover';
+        media.className = 'attachment-tile-thumb w-full rounded object-cover';
     }
     const caption = document.createElement('figcaption');
-    caption.className = 'truncate text-[11px] leading-4 text-slate-600';
+    caption.className = 'attachment-caption text-[11px] leading-4 text-slate-600';
     caption.textContent = attachmentTitle(item.name);
     caption.title = item.name;
     caption.dataset.attachmentTitle = '';

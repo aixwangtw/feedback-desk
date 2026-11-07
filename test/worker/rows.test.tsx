@@ -1,19 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { config } from '../../src/worker/env';
-import type { Report } from '../../src/worker/lib/models';
+import type { Attachment, Report } from '../../src/worker/lib/models';
 import type { PortalRow } from '../../src/worker/views/portal';
 import { BoardCard, ListRow } from '../../src/worker/views/rows-reference';
 import { boardCardHtml, listRowHtml } from '../../src/worker/views/rows';
 import { workerEnv } from './helpers';
 
-function row(overrides: Partial<Report>, unread = 0): PortalRow {
+const png: Attachment = { id: 11, report_id: 1, message_id: null, kind: 'feedback', object_key: 'k', original_name: '圖一 <紅框>.png', mime_type: 'image/png', size: 5, uploader_client_account_id: null, uploader_developer_id: null, created_at: '' };
+const mp4: Attachment = { ...png, id: 12, original_name: '操作.mp4', mime_type: 'video/mp4' };
+const attachmentUrl = (report: Report, attachment: Attachment) => `/p/demo/reports/${report.public_id}/attachments/${attachment.id}`;
+
+function row(overrides: Partial<Report>, unread = 0, attachments: Attachment[] = []): PortalRow {
     const report: Report = {
         id: 1, project_id: 1, public_id: '0199c3a1-0000-4000-8000-000000000001', reporter_token_hash: '', reporter_name: null, category: null, creator_type: 'client', creator_developer_id: null, creator_client_account_id: null, creator_agent: null, claimed_by_developer_id: null, claimed_agent: null, claimed_at: null,
         title: '標題 <b>"引號" & \'單引號\'</b>', description: 'd', adjustment_note: null, page_url: null, status: 'needs_input', completed_at: null, client_deleted_at: null, shared_with_client: 0,
         latest_activity_at: '2026-10-14T02:30:00.000Z', owner_last_read_at: null, client_last_read_at: null, adjustment_updated_at: null,
         created_at: '2026-10-13T02:30:00.000Z', updated_at: '', ...overrides,
     };
-    return { report, number: 7, creatorLabel: '王老師 & <客戶>', unread };
+    return { report, number: 7, creatorLabel: '王老師 & <客戶>', unread, attachments };
 }
 
 const cases: Array<[string, PortalRow]> = [
@@ -22,6 +26,8 @@ const cases: Array<[string, PortalRow]> = [
     ['completed', row({ status: 'completed' })],
     ['waiting on the team', row({ status: 'new' })],
     ['unread', row({}, 2)],
+    ['with an image and a video', row({ category: '版面 & 字型' }, 0, [png, mp4])],
+    ['an unlisted category', row({ category: '舊分類' }, 1, [png])],
     ['over 99 unread', row({}, 120)],
     ['a long title and creator with markup', row({ title: '很長的標題 '.repeat(20) })],
 ];
@@ -33,12 +39,15 @@ describe('string-rendered rows match the JSX reference', () => {
     for (const isOwner of [true, false]) {
         for (const [name, portalRow] of cases) {
             it(`${name} (${isOwner ? 'owner' : 'client'})`, () => {
-                const ctx = { v, slug: 'demo', isOwner, backPath };
-                const jsxRow = String(<ListRow v={v} row={portalRow} slug="demo" isOwner={isOwner} backPath={backPath} />);
-                expect(jsxRow.length).toBeGreaterThan(800);
-                expect(listRowHtml(ctx, portalRow)).toBe(jsxRow);
-                const jsxCard = String(<BoardCard v={v} row={portalRow} order={3} slug="demo" isOwner={isOwner} backPath={backPath} />);
-                expect(boardCardHtml(ctx, portalRow, 3)).toBe(jsxCard);
+                for (const categories of [[], ['版面 & 字型', '其他']]) {
+                    const showCategory = categories.length > 0;
+                    const ctx = { v, slug: 'demo', isOwner, backPath, showCategory, categories };
+                    const jsxRow = String(<ListRow v={v} row={portalRow} slug="demo" isOwner={isOwner} backPath={backPath} showCategory={showCategory} categories={categories} attachmentUrl={attachmentUrl} />);
+                    expect(jsxRow.length).toBeGreaterThan(800);
+                    expect(listRowHtml(ctx, portalRow)).toBe(jsxRow);
+                    const jsxCard = String(<BoardCard v={v} row={portalRow} order={3} slug="demo" isOwner={isOwner} backPath={backPath} categories={categories} attachmentUrl={attachmentUrl} />);
+                    expect(boardCardHtml(ctx, portalRow, 3)).toBe(jsxCard);
+                }
             });
         }
     }
@@ -47,19 +56,46 @@ describe('string-rendered rows match the JSX reference', () => {
 describe('Jira-style list rows and board cards', () => {
     const ctx = { v, slug: 'demo', isOwner: true, backPath: '/p/demo' };
 
-    it('keeps only number, title, status, creator and last update; no badges, buttons, thumbnails or adjustment', () => {
-        const html = listRowHtml(ctx, row({ adjustment_note: '舊的調整重點' }, 3));
-        for (const gone of ['data-report-flags', 'data-chat-open', 'data-unread-flag', '待審留言', 'data-draft-badge', 'data-adjustment', '調整重點', 'data-lightbox-trigger', 'data-dialog-open="edit-report', 'data-complete-report', 'data-delete-report', 'data-category-autosave', 'data-report-category']) {
+    it('keeps the old columns except the three removed (title tags, per-row chat button, adjustment column)', () => {
+        const catCtx = { ...ctx, showCategory: true, categories: ['版面 & 字型'] };
+        const html = listRowHtml(catCtx, row({ adjustment_note: '舊的調整重點', category: '版面 & 字型' }, 3, [png, mp4]));
+        for (const gone of ['data-report-flags', 'data-chat-open', 'data-unread-flag', '待審留言', 'data-draft-badge', 'data-adjustment', '調整重點']) {
             expect(html, gone).not.toContain(gone);
         }
-        expect(html.match(/<td /g)).toHaveLength(5);
-        expect(html).toContain('data-report-creator');
+        // number, title, status, category, attachments, creator, created, last update, actions
+        expect(html.match(/<td /g)).toHaveLength(9);
+        expect(html).toContain('data-category-autosave');
+        expect(html).toContain('建立：');
         expect(html).toContain('最後更新：');
-        expect(boardCardHtml(ctx, row({ adjustment_note: '舊的' }, 3), 0)).not.toContain('調整重點');
-        const card = boardCardHtml(ctx, row({}, 3), 0);
-        for (const gone of ['data-card-action', 'data-lightbox-trigger', 'data-category-autosave', 'data-complete-report', 'data-chat-open']) {
+        expect(html).toContain('data-dialog-open="edit-report-');
+        expect(html).toContain('data-delete-report');
+        // image thumbnail and a video thumbnail with a play icon
+        expect(html.match(/data-lightbox-trigger/g)).toHaveLength(2);
+        expect(html).toContain('data-attachment-video');
+        // the order follows the pre-redesign table
+        const order = ['data-report-number', 'data-status-text', 'data-report-category', 'data-lightbox-trigger', 'data-report-creator', '建立：', '最後更新：', 'data-dialog-open="edit-report-'];
+        const positions = order.map((needle) => html.indexOf(needle));
+        expect(positions).toEqual([...positions].sort((a, b) => a - b));
+        expect(positions.every((position) => position >= 0)).toBe(true);
+
+        const card = boardCardHtml(catCtx, row({ category: '版面 & 字型' }, 3, [png, mp4]), 0);
+        for (const needle of ['data-card-action', 'data-lightbox-trigger', 'data-category-autosave', 'data-dialog-open="edit-report-', 'data-delete-report', '2 張附件']) {
+            expect(card, needle).toContain(needle);
+        }
+        for (const gone of ['data-chat-open', '調整重點']) {
             expect(card, gone).not.toContain(gone);
         }
+        // the client side also gets the complete button; the team does not
+        expect(listRowHtml({ ...ctx, isOwner: false }, row({}))).toContain('data-complete-report');
+        expect(listRowHtml(ctx, row({}))).not.toContain('data-complete-report');
+    });
+
+    it('row click ignores the action buttons and thumbnails (they are links, buttons or forms)', () => {
+        const html = listRowHtml({ ...ctx, isOwner: false }, row({}, 0, [png]));
+        // every clickable control sits in an <a>, <button> or <form>, which row-link.js already skips
+        expect(html).toContain('<a href="/p/demo/reports/');
+        expect(html).toMatch(/<a [^>]*data-lightbox-trigger/);
+        expect(html).toMatch(/<button [^>]*data-dialog-open="edit-report-/);
     });
 
     it('shows the unread count as a plain dot beside the title (not a button or link), on both sides', () => {

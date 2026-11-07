@@ -65,7 +65,7 @@ interface ReportDetail {
     attachments: AttachmentInfo[];
     adjustment_note: string | null;
     adjustment_attachments: AttachmentInfo[];
-    messages: Array<{ author_type: string; author: string; created_at: string; body: string; attachments: AttachmentInfo[] }>;
+    messages: Array<{ id?: number; author_type: string; author: string; created_at: string; body: string; attachments: AttachmentInfo[] }>;
     /** Team side only. */
     claim?: { by: string; since: string; yours: boolean } | null;
     handoff_notes?: Array<{ author: string; created_at: string; note: string }>;
@@ -222,7 +222,7 @@ export async function report(rt: Runtime, argv: string[]): Promise<number> {
     rt.out('');
     rt.out(`## 留言（${detail.messages.length}）`);
     for (const message of detail.messages) {
-        rt.out(`- ${escapeInline(message.author)}　${time(rt, message.created_at)}`);
+        rt.out(`- ${escapeInline(message.author)}　${time(rt, message.created_at)}${message.id === undefined ? '' : `　（留言 id ${message.id}）`}`);
         rt.out(`  ${e(message.body).replaceAll('\n', '\n  ')}`);
         printAttachments(rt, '附件', message.attachments, '  ');
     }
@@ -403,6 +403,53 @@ export async function message(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`已留言：${escapeInline(result.title)}（署名 ${escapeInline(result.author)}，附圖 ${result.images_added} 張）`);
     // 等工程師（new）的單留言後伺服器自動改成等客戶（needs_input），提醒更新調整重點。
     if (result.notice) rt.out(escapeInline(result.notice));
+    return 0;
+}
+
+/** 編輯團隊身分發的留言：不顯示「已編輯」、不改狀態。--body 是新的完整內容；--attach 新增附件；--remove 移除附件 id。 */
+export async function messageEdit(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, { body: { type: 'string' }, image: { type: 'string', multiple: true }, attach: { type: 'string', multiple: true }, remove: { type: 'string', multiple: true } });
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report>');
+    const messageId = requirePositional(args, 2, '<message id>');
+    const body = str(args, 'body');
+    if (!body || body.trim() === '') {
+        throw new CliError('請用 --body 提供新的留言內容。');
+    }
+    const paths = attachPaths(args);
+    if (paths.length > MAX_IMAGES) {
+        throw new CliError(TOO_MANY_ATTACHMENTS);
+    }
+    const images = readImages(paths, { allowVideo: true });
+    const api = apiFor(rt, str(args, 'url'));
+    const base = `/projects/${encodePath(slug)}/reports/${encodePath(ref)}`;
+    const uploadIds: string[] = [];
+    for (const image of images) {
+        uploadIds.push((await api.upload(`${base}/uploads?purpose=message`, image.bytes, image.name, image.mime)).id);
+    }
+    const remove = ((args.values.remove as string[] | undefined) ?? []).map(Number).filter((id) => Number.isInteger(id));
+    const result = await api.put<{ title: string; message_id: number }>(`${base}/messages/${encodePath(messageId)}`, { body, upload_ids: uploadIds, remove_attachment_ids: remove });
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已更新留言 ${result.message_id}：${escapeInline(result.title)}`);
+    return 0;
+}
+
+/** 收回團隊身分發的留言：客戶端完全看不到痕跡。 */
+export async function messageWithdraw(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, {});
+    const slug = requirePositional(args, 0, '<project>');
+    const ref = requirePositional(args, 1, '<report>');
+    const messageId = requirePositional(args, 2, '<message id>');
+    const api = apiFor(rt, str(args, 'url'));
+    const result = await api.delete<{ title: string; message_id: number }>(`/projects/${encodePath(slug)}/reports/${encodePath(ref)}/messages/${encodePath(messageId)}`);
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out(`已收回留言 ${result.message_id}：${escapeInline(result.title)}`);
     return 0;
 }
 

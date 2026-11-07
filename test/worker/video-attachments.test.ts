@@ -244,29 +244,30 @@ describe('附件縮圖支援影片', () => {
         return { seeded, report, url: `/p/${seeded.project.slug}/reports/${report.public_id}/attachments/${row!.id}` };
     }
 
-    it('detail dialog, report page and the album show the first frame with a play mark instead of an <img>; list and board carry no thumbnails', async () => {
+    it('report page, album, list and board show the first frame with a play mark instead of an <img>; the detail dialog loads the album over the conversation endpoint', async () => {
         const { seeded, report, url } = await withReportVideo();
         const owner = await new Browser().asOwner(seeded);
         const thumb = `<video muted="" playsinline="" preload="metadata" src="${url}#t=0.1"`;
         const pages = {
-            dialogs: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text(),
             page: await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text(),
-            album: ((await (await owner.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { accept: 'application/json' })).json()) as { html: string }).html,
+            album: ((await (await owner.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, { accept: 'application/json' })).json()) as { album_html: string }).album_html,
+            list: await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text(),
+            board: await (await owner.get(`/p/${seeded.project.slug}?tab=all&view=board`)).text(),
         };
+        // The dialog has a container for the album (filled from the conversation endpoint), not the attachments themselves.
+        const dialogs = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}/dialogs`)).text();
+        expect(dialogs).toContain('data-dialog-album');
+        expect(dialogs).not.toContain('data-detail-attachments');
         for (const [name, html] of Object.entries(pages)) {
             expect(html, name).toContain(thumb);
             expect(html, name).toContain('data-attachment-video');
             expect(html, name).toContain('影片：開單錄影.mp4');
             expect(html, name).not.toContain(`<img src="${url}"`);
         }
+        expect(pages.list).toContain('>附件</th>');
         // The album plays videos in the lightbox (data-lightbox-play); other thumbnails open a new tab.
         expect(pages.album).toContain('data-lightbox-play');
         expect(pages.album).toContain('title="播放影片"');
-        for (const query of ['?tab=all', '?tab=all&view=board']) {
-            const html = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
-            expect(html).not.toContain('data-attachment-video');
-            expect(html).not.toContain('>附件</th>');
-        }
     });
 });
 

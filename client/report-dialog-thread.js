@@ -7,7 +7,7 @@ import { fileProblem } from '../src/shared/attachment-rules';
 import { bindAttachmentComposer } from './attachment-composer.js';
 import { draftsSignature, renderMessageDrafts } from './message-drafts.js';
 import { clearReportUnread } from './report-read.js';
-import { replaceKeepingOpen } from './thread-details.js';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details.js';
 import { statusDotClass } from '../src/shared/status';
 
 const POLL_MS = 5000;
@@ -57,8 +57,10 @@ const setupThread = (section) => {
     const errorBox = section.querySelector('[data-dialog-thread-error]');
     // 待審留言（只有開發團隊拿得到，客戶端這個容器不存在）：顯示在留言串最下面，與單頁、面板同一份。
     const draftsBox = section.querySelector('[data-dialog-thread-drafts]');
+    // 附件（相簿）：在說明下方、這個活動區上方，內容跟著對話端點更新。
+    const albumBox = dialog.querySelector('[data-dialog-album]');
     const reportId = section.dataset.reportId;
-    const state = { lastHtml: '', timer: null, uploadUrl: null, maxFiles: DEFAULT_MAX_FILES, maxBytes: DEFAULT_MAX_FILE_BYTES, request: 0 };
+    const state = { lastAlbum: null, lastHtml: '', timer: null, uploadUrl: null, maxFiles: DEFAULT_MAX_FILES, maxBytes: DEFAULT_MAX_FILE_BYTES, request: 0 };
 
     const showError = (message) => {
         errorBox.textContent = message;
@@ -108,7 +110,11 @@ const setupThread = (section) => {
             state.maxFiles = data.max_files ?? DEFAULT_MAX_FILES;
             state.maxBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
             state.allowVideo = data.allow_video === true;
-            if (data.html !== state.lastHtml) {
+            if (albumBox && typeof data.album_html === 'string' && data.album_html !== state.lastAlbum) {
+                state.lastAlbum = data.album_html;
+                albumBox.innerHTML = data.album_html;
+            }
+            if (data.html !== state.lastHtml && !isEditingMessage(body)) {
                 const template = document.createElement('template');
                 template.innerHTML = data.html;
                 // 調整重點已在視窗上方顯示，這裡只放留言串。
@@ -227,6 +233,12 @@ const setupThread = (section) => {
     };
 
     dialog.addEventListener('close', stop);
+    // 編輯、收回留言後重新載入（只在視窗開著時）。
+    document.addEventListener('feedback:messages-changed', () => {
+        if (dialog.open) {
+            load();
+        }
+    });
 
     return {
         // 每次開啟都重新載入（也就重新標為已讀），開著時每 5 秒刷新；分頁在背景時不刷新。

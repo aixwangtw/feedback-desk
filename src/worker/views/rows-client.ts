@@ -4,7 +4,7 @@
  */
 import type { ReportStatus, StatusLabels } from '../../shared/status';
 import type { FeedbackConfig } from '../env';
-import type { Report } from '../lib/models';
+import type { Attachment, Report } from '../lib/models';
 import type { PortalRow } from './portal';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 
@@ -13,20 +13,25 @@ export const SERVER_ROW_LIMIT = 20;
 
 export const PORTAL_ROWS_ELEMENT_ID = 'portal-rows-data';
 
+type CompactAttachment = Pick<Attachment, 'id' | 'original_name' | 'mime_type'>;
+
 export interface PortalRowsPayload {
     view: 'list' | 'board';
     slug: string;
     isOwner: boolean;
     backPath: string;
+    showCategory: boolean;
+    categories: string[];
     now: number;
     labels: { client: string; owner: string };
     statusLabels: StatusLabels;
     utcOffsetMinutes: number;
     timezoneName: string;
     rows: Array<{
-        report: Pick<Report, 'public_id' | 'title' | 'status' | 'client_deleted_at' | 'latest_activity_at'>;
+        report: Pick<Report, 'public_id' | 'title' | 'category' | 'status' | 'client_deleted_at' | 'latest_activity_at' | 'created_at'>;
         number: number;
         creatorLabel: string;
+        attachments: CompactAttachment[];
         unread: number;
     }>;
 }
@@ -37,6 +42,8 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
         slug: ctx.slug,
         isOwner: ctx.isOwner,
         backPath: ctx.backPath,
+        showCategory: ctx.showCategory === true,
+        categories: ctx.categories ?? [],
         now: ctx.v.now,
         labels: { client: ctx.v.cfg.labels.client, owner: ctx.v.cfg.labels.owner },
         statusLabels: ctx.v.cfg.statusLabels,
@@ -46,12 +53,15 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             report: {
                 public_id: row.report.public_id,
                 title: row.report.title,
+                category: row.report.category,
+                created_at: row.report.created_at,
                 status: row.report.status,
                 client_deleted_at: row.report.client_deleted_at,
                 latest_activity_at: row.report.latest_activity_at,
             },
             number: row.number,
             creatorLabel: row.creatorLabel,
+            attachments: row.attachments.map((item) => ({ id: item.id, original_name: item.original_name, mime_type: item.mime_type })),
             // Already computed for this viewer side (the team's unread state never reaches the client).
             unread: row.unread,
         })),
@@ -65,7 +75,7 @@ export function payloadScript(payload: PortalRowsPayload): string {
 
 function contextFrom(payload: PortalRowsPayload): RowContext {
     const cfg = { labels: payload.labels, statusLabels: payload.statusLabels, utcOffsetMinutes: payload.utcOffsetMinutes, timezoneName: payload.timezoneName } as unknown as FeedbackConfig;
-    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath };
+    return { v: { cfg, now: payload.now }, slug: payload.slug, isOwner: payload.isOwner, backPath: payload.backPath, showCategory: payload.showCategory, categories: payload.categories };
 }
 
 function toRows(payload: PortalRowsPayload): PortalRow[] {

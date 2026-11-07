@@ -139,14 +139,16 @@ describe('清單頁籤與等誰標示', () => {
 });
 
 describe('網頁上不能手動改狀態，只有客戶能按「完成」', () => {
-    it('the 完成 button (with confirm) is in the detail dialog, not on list rows or board cards; the client can complete a report, the team gets a request-for-confirmation button instead', async () => {
+    it('the 完成 button (with confirm) is on the client list rows, board cards and detail dialog; the client can complete a report, the team gets a request-for-confirmation button instead', async () => {
         const { seeded, c, e } = await fixture();
         const client = await new Browser().asClient(seeded);
         for (const query of ['?tab=all', '?tab=all&view=board']) {
             const html = await (await client.get(`/p/${seeded.project.slug}${query}`)).text();
-            expect(html).not.toContain('data-complete-report');
-            expect(html).not.toContain(`reports/${c.public_id}/status`);
+            expect(html).toContain('data-complete-report');
+            expect(html).toContain(`reports/${c.public_id}/status`);
         }
+        const teamList = await (await (await new Browser().asOwner(seeded)).get(`/p/${seeded.project.slug}?tab=all`)).text();
+        expect(teamList).not.toContain('data-complete-report');
         const dialogs = await (await client.get(`/p/${seeded.project.slug}/reports/${c.public_id}/dialogs`)).text();
         expect(dialogs).toMatch(new RegExp(`action="/p/[^"]+/reports/${c.public_id}/status" data-confirm="[^"]+" data-completion-approve-form[^>]*><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*data-complete-report`));
         expect(await (await client.get(`/p/${seeded.project.slug}/reports/${e.public_id}/dialogs`)).text()).not.toContain('data-complete-report');

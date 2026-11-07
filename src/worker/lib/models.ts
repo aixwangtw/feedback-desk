@@ -103,6 +103,8 @@ export interface Message {
     is_completion_request: number;
     created_at: string;
     updated_at: string;
+    /** 收回的留言（migration 0015）：有值就當它不存在；一般查詢都已排除。 */
+    deleted_at?: string | null;
 }
 
 export interface Attachment {

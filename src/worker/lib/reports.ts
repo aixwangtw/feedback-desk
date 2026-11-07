@@ -7,7 +7,7 @@ import { config } from '../env';
 import type { Author, Creator } from './access';
 import { randomString, sha256Hex } from './crypto';
 import { placeholders } from './db';
-import { CLIENT_VISIBLE_SQL, type Attachment, type ClientAccount, type Project, type Report, type Upload } from './models';
+import { CLIENT_VISIBLE_SQL, type Attachment, type ClientAccount, type Message, type Project, type Report, type Upload } from './models';
 import { claimStatements } from './uploads';
 
 export const MAX_TITLE = 160;
@@ -270,6 +270,52 @@ export async function addMessage(
     return { id: message.id, status: rule.next ?? report.status, statusChanged: rule.next !== null };
 }
 
+/** 找這張單裡還沒收回的留言；收回的留言一律當作不存在。 */
+export async function findMessage(db: D1Database, report: Report, messageId: number): Promise<Message | null> {
+    if (!Number.isInteger(messageId)) {
+        return null;
+    }
+    return db.prepare('SELECT * FROM messages WHERE id = ? AND report_id = ? AND deleted_at IS NULL').bind(messageId, report.id).first<Message>();
+}
+
+export { canManageMessage } from '../../shared/message-manage';
+
+/**
+ * 編輯自己的留言：改內文、增減附件。不顯示「已編輯」、不改單的狀態、不動「最後更新」（只動 updated_at，讓各處的 ETag 重算）。
+ * removeAttachmentIds 只收這則留言自己的附件。
+ */
+export async function editMessage(
+    env: Env,
+    report: Report,
+    message: Message,
+    data: { body: string; uploads: Upload[]; removeAttachmentIds: number[]; author?: Author },
+    now = Date.now(),
+): Promise<void> {
+    const db = env.DB;
+    const at = nowIso(now);
+    const unique = [...new Set(data.removeAttachmentIds)].filter((id) => Number.isInteger(id));
+    const removed =
+        unique.length === 0
+            ? []
+            : (await db.prepare(`SELECT * FROM attachments WHERE report_id = ? AND message_id = ? AND id IN (${placeholders(unique.length)})`).bind(report.id, message.id, ...unique).all<Attachment>()).results;
+    await db.batch([
+        db.prepare('UPDATE messages SET body = ?, updated_at = ? WHERE id = ?').bind(data.body, at, message.id),
+        ...removed.map((attachment) => db.prepare('DELETE FROM attachments WHERE id = ?').bind(attachment.id)),
+        ...claimStatements(db, data.uploads, { reportPublicId: report.public_id, kind: 'feedback', messageId: message.id, nowIso: at, author: data.author }),
+        db.prepare('UPDATE reports SET updated_at = ? WHERE id = ?').bind(at, report.id),
+    ]);
+    await deleteObjects(env, removed);
+}
+
+/** 收回自己的留言：軟刪除（deleted_at），畫面、API、未讀數、通知、相簿都當它不存在，檔案網址一併失效；單的狀態不變。 */
+export async function withdrawMessage(db: D1Database, report: Report, message: Message, now = Date.now()): Promise<void> {
+    const at = nowIso(now);
+    await db.batch([
+        db.prepare('UPDATE messages SET deleted_at = ?, updated_at = ? WHERE id = ?').bind(at, at, message.id),
+        db.prepare('UPDATE reports SET updated_at = ? WHERE id = ?').bind(at, report.id),
+    ]);
+}
+
 /** Overwrites or appends; blank text is stored as null so the client side shows no empty block. */
 export function mergeNote(current: string | null, note: string | null, append: boolean): string | null {
     const next = (note ?? '').trim();
@@ -337,13 +383,13 @@ export const TEAM_AUTHOR_TYPES = "('owner', 'agent')";
  * row in the surrounding query. Team and AI messages never count.
  */
 export function unreadMessagesSql(table: string): string {
-    return `(SELECT COUNT(*) FROM messages um WHERE um.report_id = ${table}.id AND um.author_type = 'reporter'
+    return `(SELECT COUNT(*) FROM messages um WHERE um.deleted_at IS NULL AND um.report_id = ${table}.id AND um.author_type = 'reporter'
         AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
 }
 
 /** SQL condition: the report has at least one client message the team has not seen. */
 export function hasUnreadMessagesSql(table: string): string {
-    return `EXISTS (SELECT 1 FROM messages um WHERE um.report_id = ${table}.id AND um.author_type = 'reporter'
+    return `EXISTS (SELECT 1 FROM messages um WHERE um.deleted_at IS NULL AND um.report_id = ${table}.id AND um.author_type = 'reporter'
         AND (${table}.owner_last_read_at IS NULL OR um.created_at > ${table}.owner_last_read_at))`;
 }
 
@@ -387,7 +433,7 @@ function readAtFor(table: string, viewer: ClientViewer, precomputed: boolean): s
 /** SQL for the number of team (and AI) messages the client viewer has not seen. */
 export function clientUnreadRepliesSql(table: string, viewer: ClientViewer = null, precomputed = false): string {
     const readAt = readAtFor(table, viewer, precomputed);
-    return `(SELECT COUNT(*) FROM messages rm WHERE rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
+    return `(SELECT COUNT(*) FROM messages rm WHERE rm.deleted_at IS NULL AND rm.report_id = ${table}.id AND rm.author_type IN ${TEAM_AUTHOR_TYPES}
         AND (${readAt} IS NULL OR rm.created_at > ${readAt}))`;
 }
 
@@ -421,7 +467,7 @@ export function creatorClientNameSql(table: string): string {
 
 /** SQL for the number of messages on the report. */
 export function messagesCountSql(table: string): string {
-    return `(SELECT COUNT(*) FROM messages cm WHERE cm.report_id = ${table}.id)`;
+    return `(SELECT COUNT(*) FROM messages cm WHERE cm.deleted_at IS NULL AND cm.report_id = ${table}.id)`;
 }
 
 /**
@@ -458,7 +504,7 @@ export async function chatCounts(db: D1Database, report: Pick<Report, 'id'>, isO
 
 /** SQL for the time of the newest message on the report (NULL without messages). */
 export function latestMessageSql(table: string): string {
-    return `(SELECT MAX(lm.created_at) FROM messages lm WHERE lm.report_id = ${table}.id)`;
+    return `(SELECT MAX(lm.created_at) FROM messages lm WHERE lm.deleted_at IS NULL AND lm.report_id = ${table}.id)`;
 }
 
 /**

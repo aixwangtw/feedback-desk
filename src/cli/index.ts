@@ -1,5 +1,5 @@
 import { MESSAGE_HINT } from '../shared/attachment-rules';
-import { adjust, claim, create, draft, handoff, message, release, report, reports, requestCompletion, status } from './commands/reports';
+import { adjust, claim, create, draft, handoff, message, messageEdit, messageWithdraw, release, report, reports, requestCompletion, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, patrolToken, token } from './commands/auth';
 import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
@@ -70,6 +70,10 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
                                    --attach 附件：${MESSAGE_HINT}（mp4）
                                    等工程師（new）的單留言後自動改成等客戶（needs_input）
+  message-edit <project> <public_id|編號> <留言id> --body 新內容 [--attach 圖片／影片]... [--remove 附件id]...
+                                   編輯團隊身分發的留言（留言 id 看 report 輸出）；不顯示「已編輯」、不改狀態
+  message-withdraw <project> <public_id|編號> <留言id>
+                                   收回團隊身分發的留言，客戶端完全看不到痕跡
   draft <project> <public_id> --body 文字 [--replace-message 留言id] [--attach 圖片／影片]...
                                    --attach 規則同 message
                                    待審留言：客戶看不到，團隊在單頁按「送出」才發出；
@@ -109,6 +113,8 @@ const COMMANDS: Record<string, Command> = {
     'request-completion': requestCompletion,
     status,
     message,
+    'message-edit': messageEdit,
+    'message-withdraw': messageWithdraw,
     draft,
     create,
     claim,

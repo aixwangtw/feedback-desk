@@ -3,7 +3,7 @@ import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared
 import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
-import { attachmentsForReport, statusEventsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport } from '../lib/db';
+import { attachmentsForReport, statusEventsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
 import { CLIENT_VISIBLE_SQL, isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
@@ -27,6 +27,9 @@ import {
     deleteReport,
     conversationOrderSql,
     statusPriorityOrderSql,
+    canManageMessage,
+    editMessage,
+    findMessage,
     hasUnreadMessagesSql,
     latestMessageSql,
     markRead,
@@ -41,6 +44,7 @@ import {
     statusCounts,
     updateReport,
     viewerUnreadSql,
+    withdrawMessage,
 } from '../lib/reports';
 import {
     findClaimableUploads,
@@ -58,7 +62,7 @@ import { messagePreview, shortTime } from '../../shared/conversation';
 import { isAwaitingReply } from '../../shared/chat-tabs';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, editCategoryOptions, type DialogRow, type PortalFormState, type PortalRow } from '../views/portal';
-import { ConversationFragment, DetailSide, DraftsSection, messageAuthorLabel, ReportPage, Thread } from '../views/report';
+import { Album, ConversationFragment, DetailSide, DraftsSection, messageAuthorLabel, ReportPage, Thread } from '../views/report';
 import { albumItems } from '../lib/album';
 import { ADJUSTMENT_WEB_DISABLED, completionSentNotice } from '../../shared/completion';
 import { requestCompletion } from '../lib/completion';
@@ -681,12 +685,25 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         }
     }
 
-    // 清單只有編號、標題、狀態、建立者、最後更新：不載入附件與待審留言數。
+    // 清單的附件欄與看板卡片縮圖：一次載入這一頁各單自己的附件（不含留言的附件、不含舊的調整重點附件）。
+    const listAttachments = new Map<number, Attachment[]>();
+    if (reports.length > 0) {
+        const found = await db
+            .prepare(`SELECT * FROM attachments WHERE message_id IS NULL AND kind = 'feedback' AND report_id IN (${placeholders(reports.length)}) ORDER BY id`)
+            .bind(...reports.map((report) => report.id))
+            .all<Attachment>();
+        for (const attachment of found.results) {
+            const list = listAttachments.get(attachment.report_id) ?? [];
+            list.push(attachment);
+            listAttachments.set(attachment.report_id, list);
+        }
+    }
     const rows: PortalRow[] = reports.map((report) => ({
         report,
         number: report.seq,
         creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         unread: report.unread_count,
+        attachments: listAttachments.get(report.id) ?? [],
     }));
     // 編輯失敗重新顯示：被編輯的那張單要帶著錯誤重開對話框，所以只為它載入附件。
     const editingReport = form?.bag === 'editReport' ? reports.find((report) => report.public_id === form.editing?.publicId) : undefined;
@@ -976,6 +993,9 @@ async function loadThread(c: AppContext, project: Project, report: Report, isOwn
         reportCreatedAt: report.created_at,
         drafts: isOwner ? drafts : null,
     });
+    // 「通過」鈕只掛在最新一則確認留言上，連已收回的也算：最新那則被收回後鈕跟著消失，不退回舊的那則。
+    const latestRequest = await db.prepare('SELECT MAX(id) AS id FROM messages WHERE report_id = ? AND is_completion_request = 1').bind(report.id).first<{ id: number | null }>();
+    const viewerAccount = isOwner ? null : await access.currentClientAccount(project);
     return {
         attachments,
         messages,
@@ -983,6 +1003,8 @@ async function loadThread(c: AppContext, project: Project, report: Report, isOwn
         statusEvents,
         drafts,
         album,
+        latestRequestId: latestRequest?.id ?? null,
+        viewerAccountId: viewerAccount?.id ?? null,
         // 「通過」只給客戶端（能結案的一方），且單還沒完成。
         canApprove: !isOwner && canManage && report.status !== 'completed',
     };
@@ -1040,6 +1062,8 @@ async function renderReport(
             statusEvents={thread.statusEvents}
             album={thread.album}
             canApprove={thread.canApprove}
+            latestRequestId={thread.latestRequestId}
+            viewerAccountId={thread.viewerAccountId}
             attachmentUrl={attachmentUrlFor(project, report)}
             success={flash.success}
             privateReportUrl={flash.private_report_url}
@@ -1095,12 +1119,20 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
     // an unchanged report answers 304 without loading messages.
     const isOwner = await access.isOwner(project);
     const viewer = await access.clientViewer(project);
-    const etag = activityEtag(report, await threadSide(c, report, isOwner, viewer), c.get('now'));
+    // part=album：單頁的附件區（相簿）與活動時間軸分開刷新，各有自己的 ETag。
+    const albumOnly = c.req.query('part') === 'album';
+    const etagBase = activityEtag(report, await threadSide(c, report, isOwner, viewer), c.get('now'));
+    const etag = albumOnly ? `W/"album|${etagBase.slice(3, -1)}"` : etagBase;
     const cacheHeaders = { ETag: etag, 'Cache-Control': 'private, no-cache' };
     if (c.req.header('if-none-match') === etag) {
         return c.body(null, 304, cacheHeaders);
     }
     const thread = await loadThread(c, project, report, isOwner);
+    if (albumOnly) {
+        c.header('ETag', etag);
+        c.header('Cache-Control', 'private, no-cache');
+        return c.html(<Album v={viewContext(c)} publicId={report.public_id} items={thread.album} />);
+    }
     // A 304 means nothing new since the last fetch, which already marked the report read.
     await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
     c.header('ETag', etag);
@@ -1116,7 +1148,8 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
             viewerIsOwner={isOwner}
             statusEvents={thread.statusEvents}
             canApprove={thread.canApprove}
-            album={thread.album}
+            latestRequestId={thread.latestRequestId}
+            viewerAccountId={thread.viewerAccountId}
         />,
     );
 });
@@ -1154,7 +1187,7 @@ web.get('/p/:slug/conversations', async (c) => {
         return c.body(null, 304, cacheHeaders);
     }
 
-    const latest = (column: string) => `(SELECT ${column} FROM messages lm2 WHERE lm2.report_id = numbered.id ORDER BY lm2.created_at DESC, lm2.id DESC LIMIT 1)`;
+    const latest = (column: string) => `(SELECT ${column} FROM messages lm2 WHERE lm2.deleted_at IS NULL AND lm2.report_id = numbered.id ORDER BY lm2.created_at DESC, lm2.id DESC LIMIT 1)`;
     const { results } = await db
         .prepare(
             `WITH numbered AS (
@@ -1278,12 +1311,15 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
             statusEvents={thread.statusEvents}
             canApprove={thread.canApprove}
-            album={thread.album}
+            latestRequestId={thread.latestRequestId}
+            viewerAccountId={thread.viewerAccountId}
             attachmentUrl={attachmentUrlFor(project, report)}
             viewerIsOwner={isOwner}
         />
     ).toString();
     // 詳情視窗右側窄欄（狀態、完成鈕、時間）：留言可能讓狀態改變，跟著對話一起更新。
+    // 附件（相簿）不放在對話串裡：詳情視窗放在說明下方，面板用相簿鈕切到附件頁；草稿附件只在團隊端的 album 裡。
+    const albumHtml = thread.album.length === 0 ? '' : await (<Album v={v} publicId={report.public_id} items={thread.album} />).toString();
     const sideHtml = await (<DetailSide v={v} slug={project.slug} report={report} isOwner={isOwner} canManage creatorLabel={isPublicReporter ? null : creator} />).toString();
     // 客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
     if (isOwner || c.req.query('peek') !== '1') {
@@ -1299,6 +1335,8 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             status: statusLabel(report.status, config(c.env).statusLabels),
             status_value: report.status,
             side_html: sideHtml,
+            album_count: thread.album.length,
+            album_html: albumHtml,
             deleted: report.client_deleted_at !== null,
             page_url: paths.report(project.slug, report.public_id),
             post_url: paths.reportMessages(project.slug, report.public_id),
@@ -1362,7 +1400,7 @@ async function dialogRow(c: AppContext, project: Project, report: Report, isOwne
 web.get('/p/:slug/reports/:publicId/attachments/:attachmentId', async (c) => {
     const project = await projectOr404(c);
     const report = await reportOr404(c, project);
-    const attachment = await c.env.DB.prepare('SELECT * FROM attachments WHERE id = ? AND report_id = ?')
+    const attachment = await c.env.DB.prepare('SELECT * FROM attachments a WHERE a.id = ? AND a.report_id = ? AND (a.message_id IS NULL OR a.message_id IN (SELECT id FROM messages WHERE deleted_at IS NULL))')
         .bind(Number(c.req.param('attachmentId')) || 0, report.id)
         .first<Attachment>();
     if (!attachment) {
@@ -1749,6 +1787,74 @@ web.post('/p/:slug/reports/:publicId/messages', async (c) => {
         return c.json({ message: notice, status: result.status }, 201);
     }
     access.setFlash({ success: notice });
+    return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
+});
+
+/**
+ * 編輯、收回自己發的留言：團隊身分的留言任何開發者都可以動；老師只能動自己的。不是自己的、已收回的一律 404（不透露那則留言存在）。
+ * 都不留痕跡（沒有「已編輯」、收回後整則消失）、不改單的狀態。
+ */
+async function ownMessageOr404(c: AppContext) {
+    const project = await projectOr404(c);
+    const report = await reportOr404(c, project);
+    const access = c.get('access');
+    if (!(await access.canView(project, report))) {
+        abort(403);
+    }
+    if (!(await access.reportVisible(project, report))) {
+        abort(404);
+    }
+    const isOwner = await access.isOwner(project);
+    const account = isOwner ? null : await access.currentClientAccount(project);
+    const message = await findMessage(c.env.DB, report, Number(c.req.param('messageId')));
+    if (!message || !canManageMessage(message, { isOwner, clientAccountId: account?.id ?? null })) {
+        abort(404);
+    }
+    return { project, report, message, access, isOwner };
+}
+
+web.post('/p/:slug/reports/:publicId/messages/:messageId/update', async (c) => {
+    await throttle(c, 'messages', 30);
+    const { project, report, message, access, isOwner } = await ownMessageOr404(c);
+    const form = await readForm(c);
+    const body = field(form, 'body');
+    const ids = uploadIds(form, 'upload_ids[]');
+    const errors: string[] = [];
+    validateText(errors, body, '訊息內容', MAX_MESSAGE);
+    const isPublicReporter = isPublicReport(report) && !isOwner;
+    const maxShots = isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : MAX_SCREENSHOTS;
+    const remove = form.getAll('remove_attachments[]').map((value) => Number(value));
+    if (ids.length > maxShots) {
+        errors.push(`截圖 最多只能有 ${maxShots} 項。`);
+    }
+    let uploads: Awaited<ReturnType<typeof findClaimableUploads>> = [];
+    if (errors.length === 0) {
+        uploads = await findClaimableUploads(c.env.DB, ids, { projectId: project.id, purpose: 'message', reportId: report.id });
+        if (uploads === null) {
+            errors.push(STALE_UPLOAD_MESSAGE);
+        }
+    }
+    if (errors.length > 0 || uploads === null) {
+        if (wantsJson(c)) {
+            return c.json({ message: errors[0], errors: { body: errors } }, 422);
+        }
+        abort(422, errors[0]);
+    }
+    await editMessage(c.env, report, message, { body, uploads, removeAttachmentIds: remove, author: await access.author(project) }, c.get('now'));
+    if (wantsJson(c)) {
+        return c.json({ message: '留言已更新。' });
+    }
+    return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
+});
+
+web.post('/p/:slug/reports/:publicId/messages/:messageId/withdraw', async (c) => {
+    await throttle(c, 'messages', 30);
+    const { project, report, message } = await ownMessageOr404(c);
+    await withdrawMessage(c.env.DB, report, message, c.get('now'));
+    if (wantsJson(c)) {
+        return c.json({ message: '留言已收回。' });
+    }
+    const form = await readForm(c);
     return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
 });
 

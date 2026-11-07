@@ -35,6 +35,10 @@ import {
     eventStatement,
     findInProject,
     latestMessageSql,
+    canManageMessage,
+    editMessage,
+    findMessage,
+    withdrawMessage,
     MAX_ADJUSTMENT_NOTE,
     MAX_DESCRIPTION,
     MAX_MESSAGE,
@@ -181,8 +185,8 @@ export async function listReports(ctx: TeamContext, slug: string, filters: ListF
             SELECT r.*,
                 ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number,
                 CASE WHEN ${CLIENT_VISIBLE_SQL} THEN ROW_NUMBER() OVER (PARTITION BY ${CLIENT_VISIBLE_SQL} ORDER BY created_at DESC, id DESC) END AS client_number,
-                (SELECT COUNT(*) FROM messages m WHERE m.report_id = r.id) AS messages_count,
-                (SELECT COUNT(*) FROM attachments a WHERE a.report_id = r.id) AS attachments_count,
+                (SELECT COUNT(*) FROM messages m WHERE m.deleted_at IS NULL AND m.report_id = r.id) AS messages_count,
+                (SELECT COUNT(*) FROM attachments a WHERE a.report_id = r.id AND (a.message_id IS NULL OR a.message_id IN (SELECT id FROM messages WHERE deleted_at IS NULL))) AS attachments_count,
                 ${unreadMessagesSql('r')} AS unread_messages_count,
                 ${latestMessageSql('r')} AS latest_message_at
             FROM reports r WHERE project_id = ?
@@ -266,6 +270,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         adjustment_attachments: await attachmentData(ctx, attachments.filter((a) => a.kind === 'adjustment')),
         messages: await Promise.all(
             messages.map(async (message) => ({
+                id: message.id,
                 author_type: message.author_type,
                 author: withAgent(message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client), message.author_agent, isDeveloperSideAuthor(message)),
                 created_at: message.created_at,
@@ -670,6 +675,51 @@ export async function postMessage(ctx: TeamContext, slug: string, identifier: st
         status_changed: result.statusChanged,
         ...(result.statusChanged ? { notice: statusChangeNotice(ctx.env) } : {}),
     };
+}
+
+/** 團隊編輯、收回留言共用：找到單與還沒收回的團隊身分留言；客戶的留言與已收回的一律 404（不透露存在）。 */
+async function teamMessageOrFail(ctx: TeamContext, slug: string, identifier: string, messageId: unknown) {
+    const project = await projectOrFail(ctx.env, slug);
+    const report = await resolveReport(ctx.env, project, identifier);
+    const id = typeof messageId === 'number' ? messageId : typeof messageId === 'string' && /^\d+$/.test(messageId) ? Number(messageId) : NaN;
+    const message = await findMessage(ctx.env.DB, report, id);
+    if (!message || !canManageMessage(message, { isOwner: true, clientAccountId: null })) {
+        throw new ServiceError('message_not_found', '找不到這則團隊留言（message_id 看 get_report 的 messages；客戶的留言不能改）。', 404);
+    }
+    return { project, report, message };
+}
+
+/**
+ * 編輯團隊身分發的留言（任何開發者都可以；網頁、CLI、MCP、巡檢 API 共用）：不顯示「已編輯」、不改單的狀態。
+ * body 是新的完整內容；upload_ids 新增附件；remove_attachment_ids 移除這則留言的附件。
+ */
+export async function editTeamMessage(ctx: TeamContext, slug: string, identifier: string, messageId: unknown, input: { body: string; upload_ids?: string[]; remove_attachment_ids?: unknown }) {
+    const { project, report, message } = await teamMessageOrFail(ctx, slug, identifier, messageId);
+    const body = (input.body ?? '').trim();
+    if (body === '') {
+        throw new ServiceError('body_required', '訊息內容 為必填。', 422);
+    }
+    if (charLength(body) > MAX_MESSAGE) {
+        throw new ServiceError('body_too_long', `訊息內容 不能超過 ${MAX_MESSAGE} 個字元。`, 422);
+    }
+    const uploadIds = input.upload_ids ?? [];
+    if (uploadIds.length > 5) {
+        throw new ServiceError('too_many_images', TOO_MANY_ATTACHMENTS, 422);
+    }
+    const uploads = await findClaimableUploads(ctx.env.DB, uploadIds, { projectId: project.id, purpose: 'message', reportId: report.id });
+    if (uploads === null) {
+        throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這張單，請重新上傳。', 422);
+    }
+    const remove = Array.isArray(input.remove_attachment_ids) ? input.remove_attachment_ids.map(Number).filter((id) => Number.isInteger(id)) : [];
+    await editMessage(ctx.env, report, message, { body, uploads, removeAttachmentIds: remove, author: teamAuthor(ctx) }, ctx.now);
+    return { public_id: report.public_id, title: report.title, message_id: message.id, images_added: uploads.length, status: report.status };
+}
+
+/** 收回團隊身分發的留言：客戶端的畫面、API、未讀數、通知、相簿都看不到任何痕跡；資料庫軟刪除，救得回來。 */
+export async function withdrawTeamMessage(ctx: TeamContext, slug: string, identifier: string, messageId: unknown) {
+    const { report, message } = await teamMessageOrFail(ctx, slug, identifier, messageId);
+    await withdrawMessage(ctx.env.DB, report, message, ctx.now);
+    return { public_id: report.public_id, title: report.title, message_id: message.id, withdrawn: true, status: report.status };
 }
 
 /**

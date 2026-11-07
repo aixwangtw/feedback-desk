@@ -69,11 +69,11 @@ export async function teamNotifications(db: D1Database, projectIds: number[]): P
             .prepare(
                 `WITH unread AS (
                     SELECT r.id, r.project_id, r.public_id, r.title,
-                        (SELECT COUNT(*) FROM messages um WHERE um.report_id = r.id AND um.author_type = 'reporter'
+                        (SELECT COUNT(*) FROM messages um WHERE um.deleted_at IS NULL AND um.report_id = r.id AND um.author_type = 'reporter'
                             AND (r.owner_last_read_at IS NULL OR um.created_at > r.owner_last_read_at)) AS unread
                     FROM reports r WHERE ${inProjects}
                 ), latest AS (
-                    SELECT u.*, (SELECT lm.id FROM messages lm WHERE lm.report_id = u.id AND lm.author_type = 'reporter' ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1) AS latest_id
+                    SELECT u.*, (SELECT lm.id FROM messages lm WHERE lm.deleted_at IS NULL AND lm.report_id = u.id AND lm.author_type = 'reporter' ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1) AS latest_id
                     FROM unread u WHERE u.unread > 0
                 )
                 SELECT p.name AS project_name, p.slug AS project_slug, l.public_id, l.title, l.unread,
@@ -118,11 +118,11 @@ export async function clientNotifications(db: D1Database, projectId: number, vie
                 SELECT r.id, r.project_id, r.public_id, r.title, ${readAt} AS read_at
                 FROM reports r WHERE r.project_id = ? AND ${CLIENT_VISIBLE_SQL} AND r.client_deleted_at IS NULL
             ), unread AS (
-                SELECT s.*, (SELECT COUNT(*) FROM messages um WHERE um.report_id = s.id AND um.author_type IN ${TEAM_AUTHOR_TYPES}
+                SELECT s.*, (SELECT COUNT(*) FROM messages um WHERE um.deleted_at IS NULL AND um.report_id = s.id AND um.author_type IN ${TEAM_AUTHOR_TYPES}
                     AND (s.read_at IS NULL OR um.created_at > s.read_at)) AS unread
                 FROM seen s
             ), latest AS (
-                SELECT u.*, (SELECT lm.id FROM messages lm WHERE lm.report_id = u.id AND lm.author_type IN ${TEAM_AUTHOR_TYPES} ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1) AS latest_id
+                SELECT u.*, (SELECT lm.id FROM messages lm WHERE lm.deleted_at IS NULL AND lm.report_id = u.id AND lm.author_type IN ${TEAM_AUTHOR_TYPES} ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1) AS latest_id
                 FROM unread u WHERE u.unread > 0
             )
             SELECT p.name AS project_name, p.slug AS project_slug, l.public_id, l.title, l.unread,

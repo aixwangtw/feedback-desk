@@ -59,7 +59,7 @@ files.get('/files/:id', async (c) => {
     if (!Number.isInteger(id) || !(await verifyAttachmentSignature(c.env, id, expires, c.req.query('s') ?? '', c.get('now')))) {
         abort(403, '下載網址無效或已過期。');
     }
-    const attachment = await c.env.DB.prepare('SELECT * FROM attachments WHERE id = ?').bind(id).first<Attachment>();
+    const attachment = await c.env.DB.prepare('SELECT * FROM attachments a WHERE a.id = ? AND (a.message_id IS NULL OR a.message_id IN (SELECT id FROM messages WHERE deleted_at IS NULL))').bind(id).first<Attachment>();
     if (!attachment) {
         abort(404);
     }

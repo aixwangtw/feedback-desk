@@ -6,6 +6,7 @@ import { COMPLETE_CONFIRM, isStatus, statusLabel, type StatusLabels } from '../.
 import { COMPLETION_APPROVE_LABEL, defaultCompletionBody } from '../../shared/completion';
 import { buildTimeline, latestCompletionRequestId, type TimelineStatusEvent } from '../../shared/timeline';
 import type { AlbumItem } from '../lib/album';
+import { canManageMessage } from '../../shared/message-manage';
 import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
 import { MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
@@ -83,6 +84,10 @@ export interface ActivityProps {
     statusEvents?: TimelineStatusEvent[];
     /** 看的人能不能按確認留言上的「通過」：只有客戶端（能結案的一方）、單還沒完成。 */
     canApprove?: boolean;
+    /** 最新一則「請確認完成」留言的 id（含已收回的）：最新那則被收回後，「通過」鈕跟著消失，不退回舊的那則。 */
+    latestRequestId?: number | null;
+    /** 看的人自己的客戶帳號 id（團隊端與共用客戶身分是 null）：決定哪些留言旁有「⋯」選單（編輯、收回）。 */
+    viewerAccountId?: number | null;
 }
 
 function authorLabel(v: ViewContext, type: Message['author_type']): string {
@@ -106,9 +111,10 @@ const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
  * 狀態變更是置中的一行，團隊端另顯示是誰改的，客戶端只顯示改成什麼狀態。
  * 「請確認完成」的留言：客戶端（canApprove）在最新一則上看到「通過」按鈕，團隊端看不到也按不了。
  */
-export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact, statusEvents, canApprove }) => {
+export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact, statusEvents, canApprove, latestRequestId, viewerAccountId }) => {
     const entries = buildTimeline(messages, statusEvents ?? []);
-    const approveId = canApprove ? latestCompletionRequestId(messages) : null;
+    const approveId = canApprove ? (latestRequestId !== undefined ? latestRequestId : latestCompletionRequestId(messages)) : null;
+    const allowVideo = !(report.creator_type === 'public' && !viewerIsOwner);
     return (
     <ol class="grid grid-cols-[minmax(0,1fr)] gap-4" data-chat-messages>
         {entries.length === 0 ? (
@@ -129,6 +135,7 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
                 const [bubbleClass, nameClass] = BUBBLE_CLASSES[message.author_type] ?? BUBBLE_CLASSES.reporter;
                 const attachments = messageAttachments.get(message.id) ?? [];
                 const isRequest = message.is_completion_request === 1;
+                const manageable = canManageMessage(message, { isOwner: viewerIsOwner, clientAccountId: viewerAccountId ?? null });
                 return (
                     <li class={cx('flex', isMine ? 'justify-end' : 'justify-start')} data-chat-message data-author={message.author_type} data-side={isMine ? 'mine' : 'theirs'}>
                         <div class={cx('flex min-w-0 max-w-[88%] flex-col sm:max-w-[80%]', isMine ? 'items-end' : 'items-start')}>
@@ -137,10 +144,12 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
                                     {messageAuthorLabel(v, report, message, viewerIsOwner)}
                                 </span>
                                 <Time v={v} at={message.created_at} relative class="text-slate-500" />
+                                {manageable ? <MessageMenu slug={slug} publicId={report.public_id} messageId={message.id} /> : null}
                             </div>
                             <div class={cx('mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', bubbleClass, isMine ? 'rounded-tr-md' : 'rounded-tl-md')}>
                                 {isRequest ? <p class="mb-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800" data-completion-request-badge>請確認完成</p> : null}
                                 <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{message.body}</p>
+                                {manageable ? <MessageEditForm slug={slug} publicId={report.public_id} message={message} attachments={attachments} attachmentUrl={attachmentUrl} allowVideo={allowVideo} /> : null}
                                 {isRequest && approveId === message.id ? (
                                     <form method="post" action={paths.reportStatus(slug, report.public_id)} class="mt-2" data-completion-approve-form>
                                         <input type="hidden" name="_back" value={paths.report(slug, report.public_id)} />
@@ -149,7 +158,7 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
                                     </form>
                                 ) : null}
                                 {attachments.length > 0 ? (
-                                    <div class="mt-2 flex flex-wrap gap-2">
+                                    <div class="mt-2 flex flex-wrap gap-2" data-chat-attachments>
                                         {attachments.map((attachment) =>
                                             isVideoMime(attachment.mime_type) ? (
                                                 <div class="min-w-0 w-full max-w-md">
@@ -157,8 +166,8 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
                                                     <AttachmentCaption name={attachment.original_name} class="mt-0.5" />
                                                 </div>
                                             ) : (
-                                                <div class={`min-w-0 ${compact ? 'w-20' : 'w-24 sm:w-28'}`}>
-                                                <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`block ${compact ? 'size-20' : 'size-24 sm:size-28'} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
+                                                <div class="attachment-tile min-w-0">
+                                                <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class={`attachment-tile-thumb block overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`} data-lightbox-trigger data-lightbox-alt={attachment.original_name} title="放大預覽" data-chat-attachment>
                                                     <img src={attachmentUrl(attachment)} alt={attachment.original_name} class="size-full object-cover" loading="lazy" />
                                                 </a>
                                                 <AttachmentCaption name={attachment.original_name} class="mt-0.5" />
@@ -178,36 +187,89 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
 };
 
 /**
- * 相簿：這張單所有附件集中顯示（客戶原始附件＋每則留言的圖片與影片；草稿附件只有團隊看得到，見 lib/album.ts）。
- * 單頁、詳情視窗、右下角面板共用；縮圖直接用原檔、lazy 載入，點圖放大、點影片在燈箱播放，標示來自哪則留言與時間。
- * 預設收合，標題顯示張數；定時刷新時 data-keep-open 讓展開狀態保留。沒有附件就不顯示。
+ * 附件（相簿，照 Jira 的「附件」區）：這張單所有附件集中成縮圖格狀（客戶原始附件＋每則留言的圖片與影片；草稿附件只有團隊看得到，見 lib/album.ts）。
+ * 位置：詳情視窗與單頁放在說明下方、活動時間軸上方，預設展開，超過一排顯示「顯示全部」（client/album.js）；
+ * 右下角面板不放在對話串裡，改由標題列的相簿鈕切到面板內的附件頁（data-album-force-all：永遠全部顯示）。
+ * 縮圖直接用原檔、lazy 載入，點圖放大、點影片在燈箱播放；名稱完整換行，來源與時間在名稱下面。沒有附件就不顯示。
  */
-export const Album: FC<{ v: ViewContext; items: AlbumItem[] }> = ({ v, items }) =>
+export const Album: FC<{ v: ViewContext; publicId: string; items: AlbumItem[] }> = ({ v, publicId, items }) =>
     items.length === 0 ? null : (
-        <details class="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm" data-chat-album data-keep-open="album">
-            <summary class="cursor-pointer font-semibold text-slate-800">相簿 <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600" data-album-count>{items.length}</span></summary>
-            <ul class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5" data-album-grid>
+        <section class="grid gap-3 text-sm" data-chat-album data-album-key={publicId} aria-label="附件">
+            <h3 class="text-sm font-bold text-slate-900">附件（<span data-album-count>{items.length}</span>）</h3>
+            <ul class="album-grid grid grid-cols-[repeat(auto-fill,var(--attachment-tile-width))] justify-start gap-x-3" data-album-grid data-collapsed>
                 {items.map((item) => (
-                    <li class="min-w-0" data-album-item data-album-kind={item.kind}>
-                        <a href={item.url} target="_blank" rel="noreferrer" class="block aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-play data-lightbox-alt={item.name} title={item.isVideo ? '播放影片' : '放大預覽'}>
+                    <li class="attachment-tile min-w-0 pb-3" data-album-item data-album-kind={item.kind}>
+                        <a href={item.url} target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-play data-lightbox-alt={item.name} title={item.isVideo ? '播放影片' : '放大預覽'}>
                             <AttachmentMedia src={item.url} name={item.name} mime={item.isVideo ? 'video/mp4' : 'image/jpeg'} class="size-full object-cover" />
                         </a>
-                        <p class="mt-1 truncate text-[11px] leading-4 text-slate-600" title={item.source} data-album-source>
+                        <AttachmentCaption name={item.name} class="mt-1" />
+                        <p class="mt-0.5 truncate text-[11px] leading-4 text-slate-600" title={item.source} data-album-source>
                             {item.kind === 'draft' ? <span class="font-semibold text-amber-800">{item.source}（只有{v.cfg.labels.owner}看得到）</span> : item.source}
                         </p>
                         <Time v={v} at={item.at} relative class="block text-[11px] leading-4 text-slate-400" />
                     </li>
                 ))}
             </ul>
-        </details>
+            <button type="button" class="justify-self-start rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-album-toggle hidden>顯示全部</button>
+        </section>
     );
 
-/** 對話內容：相簿＋活動時間軸。單頁（activity 端點）、詳情視窗、右下角面板（對話端點）共用。 */
-export const Thread: FC<ActivityProps & { album: AlbumItem[] }> = ({ album, ...activity }) => (
+/** 對話內容：活動時間軸（附件相簿另放，見 Album）。單頁（activity 端點）、詳情視窗、右下角面板（對話端點）共用。 */
+export const Thread: FC<ActivityProps> = (activity) => (
     <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
-        <Album v={activity.v} items={album} />
         <Activity {...activity} />
     </div>
+);
+
+/**
+ * 留言旁的「⋯」選單（照 LINE、Slack）：編輯、收回自己發的留言。單頁、詳情視窗、右下角面板共用（Activity 放進每則自己的留言）。
+ * 編輯與收回都不留痕跡：沒有「已編輯」、收回後整則消失；動作由 client/message-edit.js 處理（沒有 JS 時收回照表單送出）。
+ */
+export const MessageMenu: FC<{ slug: string; publicId: string; messageId: number }> = ({ slug, publicId, messageId }) => (
+    <details class="relative" data-message-menu>
+        <summary class="grid size-6 cursor-pointer list-none place-items-center rounded-md text-base font-bold leading-none text-slate-500 transition hover:bg-black/5 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 [&::-webkit-details-marker]:hidden" aria-label="這則留言的選項" title="編輯、收回">⋯</summary>
+        <div class="absolute right-0 top-full z-20 mt-1 min-w-24 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left text-sm shadow-lg ring-1 ring-black/5">
+            <button type="button" class="block w-full px-3 py-1.5 text-left font-medium text-slate-800 hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-100" data-message-edit-open>編輯</button>
+            <form method="post" action={paths.messageWithdraw(slug, publicId, messageId)} data-message-withdraw-form>
+                <button type="submit" class="block w-full px-3 py-1.5 text-left font-medium text-rose-700 hover:bg-rose-50 focus:outline-none focus-visible:bg-rose-50">收回</button>
+            </form>
+        </div>
+    </details>
+);
+
+/**
+ * 編輯留言的表單（藏在留言泡泡裡，按選單的「編輯」才出現）：改內文、勾選要移除的附件、拖曳或選檔新增附件（沿用 attachment-composer，
+ * 檔案先各自 PUT 到上傳端點，表單只帶 upload_ids[]）。儲存後不顯示「已編輯」。預覽區的 id 由 message-edit.js 開啟時才產生。
+ */
+export const MessageEditForm: FC<{ slug: string; publicId: string; message: Message; attachments: Attachment[]; attachmentUrl: (attachment: Attachment) => string; allowVideo: boolean }> = ({ slug, publicId, message, attachments, attachmentUrl, allowVideo }) => (
+    <form method="post" action={paths.messageUpdate(slug, publicId, message.id)} class="grid min-w-[min(18rem,70vw)] gap-2" data-message-edit-form hidden>
+        <p class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800" role="alert" data-message-edit-error data-attachment-error hidden></p>
+        <label class="sr-only">留言內容<textarea name="body" rows={3} maxlength={10000} required class="mt-1 block max-h-60 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-message-edit-body>{message.body}</textarea></label>
+        {attachments.length > 0 ? (
+            <div class="flex flex-wrap gap-2" data-message-edit-existing>
+                {attachments.map((attachment) => (
+                    <label class="attachment-tile flex min-w-0 cursor-pointer flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 has-[:checked]:opacity-50 has-[:checked]:ring-2 has-[:checked]:ring-rose-400">
+                        <span class="attachment-tile-thumb block overflow-hidden rounded bg-slate-50">
+                            <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class="size-full object-cover" />
+                        </span>
+                        <AttachmentCaption name={attachment.original_name} />
+                        <span class="flex items-center gap-1.5 text-[11px] font-semibold text-rose-700"><input type="checkbox" name="remove_attachments[]" value={String(attachment.id)} class="rounded border-slate-300 text-rose-600 focus:ring-rose-600" />移除</span>
+                    </label>
+                ))}
+            </div>
+        ) : null}
+        <div class="flex flex-wrap items-start gap-2 empty:hidden" aria-live="polite" data-message-edit-preview></div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">
+                {allowVideo ? MESSAGE_UPLOAD_LABEL : '加入截圖'}
+                <input type="file" accept={allowVideo ? MESSAGE_ACCEPT : IMAGE_ACCEPT} multiple class="sr-only" data-message-edit-files data-upload-url={`${paths.uploads(slug)}?purpose=message&report=${encodeURIComponent(publicId)}`} data-upload-max="5" data-upload-max-bytes={String(allowVideo ? MAX_IMAGE_BYTES : PUBLIC_MAX_IMAGE_BYTES)} data-upload-allow-video={allowVideo ? '' : undefined} />
+            </label>
+            <div class="flex gap-2">
+                <button type="button" class="inline-flex min-h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-message-edit-cancel>取消</button>
+                <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 disabled:opacity-60" data-message-edit-save>儲存</button>
+            </div>
+        </div>
+    </form>
 );
 
 /**
@@ -230,7 +292,7 @@ export const PastNotes: FC<{ report: Report; adjustmentAttachments: Attachment[]
 };
 
 /** What the chat panel shows for one report: the past notes (collapsed, only when there are any), the album and the timeline. */
-export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; album: AlbumItem[] }> = (props) => {
+export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[] }> = (props) => {
     const { report, adjustmentAttachments } = props;
     return (
         <>
@@ -240,7 +302,7 @@ export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: A
     );
 };
 
-export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | 'compact' | 'slug'> {
+export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | 'slug'> {
     /** 相簿（客戶端不含待審留言的附件）。 */
     album: AlbumItem[];
     project: Project;
@@ -256,6 +318,8 @@ export interface ReportPageProps extends Omit<ActivityProps, 'viewerIsOwner' | '
     messageOld?: string;
     /** ETag of the activity fragment, so the first poll can already get 304. */
     activityEtag?: string;
+    /** ETag of the album fragment. */
+    albumEtag?: string;
     /** Who created the report (account name), shown to project members. */
     creatorLabel?: string;
     /** 專案的開單分類；空陣列表示不分類。 */
@@ -316,8 +380,8 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                                                 <AttachmentCaption name={file.original_name} class="mt-0.5" />
                                             </div>
                                         ) : (
-                                            <div class="min-w-0 w-24">
-                                            <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
+                                            <div class="attachment-tile min-w-0">
+                                            <a href={`${base}/${draft.id}/files/${index}`} target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt={file.original_name}>
                                                 <img src={`${base}/${draft.id}/files/${index}`} alt={file.original_name} class="size-full object-cover" loading="lazy" />
                                             </a>
                                             <AttachmentCaption name={file.original_name} class="mt-0.5" />
@@ -612,21 +676,15 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
 
                         <div class="mt-5" data-report-description><RichText text={report.description} /></div>
 
-                        {props.attachments.length > 0 ? (
-                            <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                {props.attachments.map((attachment) => (
-                                    <a href={attachmentUrl(attachment)} target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt={attachment.original_name}>
-                                        <AttachmentMedia src={attachmentUrl(attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" />
-                                        <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">{attachmentLinkTitle(attachment.mime_type)}</span>
-                                    </a>
-                                ))}
-                            </div>
-                        ) : null}
-
                         <div class="mt-5 empty:hidden" id="adjustment">
                             <PastNotes report={report} adjustmentAttachments={props.adjustmentAttachments} attachmentUrl={attachmentUrl} />
                         </div>
                     </section>
+
+                    {/* 附件（相簿）：說明下方、活動時間軸上方；沒有附件時整塊不顯示（album-region 沒有內容就隱藏），有新附件由 client/album.js 定時換新。 */}
+                    <div class="album-region rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-album-region data-refresh-url={`${paths.reportActivity(slug, report.public_id)}?part=album`} data-etag={props.albumEtag}>
+                        <Album v={v} publicId={report.public_id} items={props.album} />
+                    </div>
 
                     <section id="conversation" class="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm" data-conversation>
                         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
@@ -646,7 +704,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </div>
 
                         <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
-                            <Thread v={v} slug={slug} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} statusEvents={props.statusEvents} canApprove={props.canApprove} album={props.album} />
+                            <Thread v={v} slug={slug} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} statusEvents={props.statusEvents} canApprove={props.canApprove} latestRequestId={props.latestRequestId} viewerAccountId={props.viewerAccountId} />
                         </div>
 
                         {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} anchor /> : null}

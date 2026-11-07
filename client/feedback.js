@@ -1,11 +1,13 @@
 import './chat-panel.js';
+import './album.js';
+import './message-edit.js';
 import { bindPageAttachmentComposers } from './attachment-composer.js';
 import { bindPageMessageDrafts } from './message-drafts.js';
 import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
 import { reopenPendingReport } from './completion.js';
 import './row-link.js';
-import { replaceKeepingOpen } from './thread-details.js';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
 // Long portal pages send their rows as JSON; build them before anything below binds to the rows.
@@ -415,6 +417,7 @@ if (activity) {
     };
 
     const refresh = async () => {
+        window.clearTimeout(timer);
         try {
             const headers = { 'X-Requested-With': 'XMLHttpRequest' };
             if (etag) {
@@ -426,11 +429,16 @@ if (activity) {
             } else if (response.ok) {
                 // A full answer means something changed: show it and check again soon.
                 const html = await response.text();
-                // 使用者展開的相簿、過去的處理說明換新後維持展開。
-                replaceKeepingOpen(activity, () => {
-                    activity.innerHTML = html;
-                });
-                etag = response.headers.get('ETag');
+                // 正在編輯留言時先不換掉內容（免得打到一半的字被洗掉）；etag 不更新，編輯完下一輪再換。
+                if (!isEditingMessage(activity)) {
+                    // 使用者展開的過去的處理說明換新後維持展開。
+                    replaceKeepingOpen(activity, () => {
+                        activity.innerHTML = html;
+                    });
+                    etag = response.headers.get('ETag');
+                    // 附件區（相簿）的內容只會跟著活動一起變，通知 album.js 重新取。
+                    document.dispatchEvent(new CustomEvent('feedback:activity-changed'));
+                }
                 delay = minDelay;
             } else {
                 delay = Math.min(maxDelay, delay * 2);
@@ -441,6 +449,9 @@ if (activity) {
         }
         schedule();
     };
+
+    // 編輯、收回留言後馬上重新取（message-edit.js）。
+    document.addEventListener('feedback:messages-changed', refresh);
 
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {

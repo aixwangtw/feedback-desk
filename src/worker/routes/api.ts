@@ -344,6 +344,13 @@ api.post('/projects/:slug/reports/:ref/messages', async (c) => {
     return c.json(await team.postMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), message));
 });
 
+/** 編輯、收回團隊身分發的留言：團隊帳號限定；不顯示「已編輯」、收回後客戶端看不到任何痕跡。 */
+api.put('/projects/:slug/reports/:ref/messages/:id', async (c) => {
+    const input = await body<{ body?: string; upload_ids?: string[]; remove_attachment_ids?: unknown }>(c);
+    return c.json(await team.editTeamMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), c.req.param('id'), { body: String(input.body ?? ''), upload_ids: input.upload_ids, remove_attachment_ids: input.remove_attachment_ids }));
+});
+api.delete('/projects/:slug/reports/:ref/messages/:id', async (c) => c.json(await team.withdrawTeamMessage(ctx(c), c.req.param('slug'), c.req.param('ref'), c.req.param('id'))));
+
 /** 待審留言（草稿）：團隊帳號限定；客戶 token 一律 403。 */
 api.post('/projects/:slug/reports/:ref/drafts', async (c) => {
     const team_ = ctx(c);

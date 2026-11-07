@@ -9,7 +9,7 @@ import { fileProblem, MAX_FILES as DEFAULT_MAX_FILES_RULE } from '../src/shared/
 import { bindAttachmentComposer } from './attachment-composer.js';
 import { renderMessageDrafts } from './message-drafts.js';
 import { clearReportUnread } from './report-read.js';
-import { replaceKeepingOpen } from './thread-details.js';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details.js';
 
 const TAB_ACTIVE = ['border-teal-700', 'text-teal-800'];
 const TAB_IDLE = ['border-transparent', 'text-slate-500', 'hover:text-slate-900'];
@@ -54,6 +54,12 @@ if (root) {
     const errorBox = $('[data-chat-error]');
     // 待審留言（只有開發團隊的頁面有這個容器）：顯示在留言串最下面，與單頁、詳情視窗同一份（message-drafts.js）。
     const draftsBox = $('[data-chat-drafts]');
+    // 相簿鈕與附件頁：附件不放在對話串裡，點標題列的相簿鈕切到附件格狀頁，可返回對話。
+    const albumOpen = $('[data-chat-album-open]');
+    const albumCount = $('[data-chat-album-count]');
+    const albumPane = $('[data-chat-album-pane]');
+    const albumBody = $('[data-chat-album-body]');
+    const albumBack = $('[data-chat-album-back]');
 
     const state = {
         items: [],
@@ -62,6 +68,8 @@ if (root) {
         postUrl: null,
         uploadUrl: null,
         lastThreadHtml: '',
+        lastAlbumHtml: '',
+        albumFor: null,
         lastListFetch: 0,
         listRequest: 0,
         // 切到別張後才送失敗的留言內文，以單的 public_id 為鍵；回到那張時填回輸入框。
@@ -336,6 +344,13 @@ if (root) {
 
     const isNearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
 
+    // 對話或附件頁二選一：附件頁隱藏留言串與輸入框。
+    const setAlbumView = (show) => {
+        albumPane.hidden = !show;
+        scroller.hidden = show;
+        form.hidden = show;
+    };
+
     const applyThread = (data, { forceScroll }) => {
         threadNumber.textContent = `編號 ${data.number}`;
         threadStatus.textContent = data.status;
@@ -348,6 +363,16 @@ if (root) {
         state.maxFiles = data.max_files ?? DEFAULT_MAX_FILES;
         state.maxFileBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
         state.allowVideo = data.allow_video === true;
+        const albumTotal = data.album_count ?? 0;
+        albumOpen.hidden = albumTotal === 0;
+        albumCount.textContent = String(albumTotal);
+        if (typeof data.album_html === 'string' && data.album_html !== state.lastAlbumHtml) {
+            state.lastAlbumHtml = data.album_html;
+            albumBody.innerHTML = data.album_html;
+        }
+        if (albumTotal === 0 && !albumPane.hidden) {
+            setAlbumView(false);
+        }
         if (draftsBox && typeof data.drafts_html === 'string') {
             const openId = data.id;
             renderMessageDrafts(draftsBox, data.drafts_html, {
@@ -358,7 +383,7 @@ if (root) {
             });
         }
 
-        if (data.html !== state.lastThreadHtml) {
+        if (data.html !== state.lastThreadHtml && !isEditingMessage(thread)) {
             const stickToBottom = forceScroll || isNearBottom();
             if (state.lastThreadHtml !== '' && withoutTimes(data.html) === withoutTimes(state.lastThreadHtml)) {
                 // 只有「幾分鐘前」變了：就地更新時間文字，不重建留言與縮圖。
@@ -433,9 +458,16 @@ if (root) {
     };
 
     const openThread = (id) => {
+        if (!albumPane.hidden && state.albumFor !== id) {
+            setAlbumView(false);
+        }
+        state.albumFor = id;
         if (state.currentId !== id) {
             clearComposer();
             state.lastThreadHtml = '';
+            state.lastAlbumHtml = '';
+            albumBody.replaceChildren();
+            albumOpen.hidden = true;
             thread.replaceChildren(el('p', 'p-6 text-center text-sm text-slate-500', '載入中…'));
             threadTitle.textContent = state.items.find((item) => item.id === id)?.title ?? '';
             const draft = state.failedDrafts.get(id);
@@ -493,6 +525,16 @@ if (root) {
     ['wheel', 'touchmove', 'pointerdown', 'keydown', 'focusin'].forEach((type) => {
         threadPane.addEventListener(type, confirmRead, { passive: true });
     });
+
+    document.addEventListener('feedback:messages-changed', () => {
+        if (isOpen() && state.currentId !== null) {
+            loadThread(state.currentId);
+            loadList();
+        }
+    });
+
+    albumOpen.addEventListener('click', () => setAlbumView(true));
+    albumBack.addEventListener('click', () => setAlbumView(false));
 
     const showList = () => {
         setView('list');

@@ -23,7 +23,7 @@ async function setup() {
 
 const url = (seeded: SeededProject, report: Pick<Report, 'public_id'>, tail = '') => `/p/${seeded.project.slug}/reports/${report.public_id}${tail}`;
 const thread = async (browser: Browser, seeded: SeededProject, report: Pick<Report, 'public_id'>) =>
-    (await (await browser.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS)).json()) as Record<string, unknown> & { html: string; side_html: string; status_value: string };
+    (await (await browser.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS)).json()) as Record<string, unknown> & { html: string; side_html: string; status_value: string; album_html: string; album_count: number };
 const statusOf = async (report: Pick<Report, 'id'>) => (await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(report.id).first<{ status: string }>())?.status;
 
 async function seedDraft(report: Report, withFile = true): Promise<number> {
@@ -45,10 +45,11 @@ describe('客戶拿不到草稿（相簿也是）', () => {
 
         // Team: draft in the album (marked as team-only, with its source) and the draft section.
         const team = await thread(owner, seeded, report);
-        expect(team.html).toContain('data-album-kind="draft"');
-        expect(team.html).toContain(fileUrl);
-        expect(team.html).toContain('待審留言');
-        expect(team.html).toContain('只有開發團隊看得到');
+        expect(team.album_html).toContain('data-album-kind="draft"');
+        expect(team.album_html).toContain(fileUrl);
+        expect(team.album_html).toContain('待審留言');
+        expect(team.album_html).toContain('只有開發團隊看得到');
+        expect(team.html).not.toContain('data-chat-album');
         expect(String(team.drafts_html)).toContain(DRAFT_TEXT);
         expect((await owner.get(fileUrl)).status).toBe(200);
 
@@ -64,6 +65,7 @@ describe('客戶拿不到草稿（相簿也是）', () => {
         const pages = [
             await (await client.get(url(seeded, report))).text(),
             await (await client.get(url(seeded, report, '/activity'), { 'if-none-match': 'W/"stale"' })).text(),
+            await (await client.get(url(seeded, report, '/activity?part=album'), { 'if-none-match': 'W/"stale"' })).text(),
             await (await client.get(url(seeded, report, '/dialogs'))).text(),
             await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text(),
         ];
@@ -94,10 +96,15 @@ describe('相簿', () => {
         await seedAttachment(report, { kind: 'adjustment', name: '舊調整圖.png' });
 
         for (const browser of [owner, client]) {
-            const html = (await thread(browser, seeded, report)).html;
-            const album = html.slice(html.indexOf('data-chat-album'), html.indexOf('</details>', html.indexOf('data-chat-album')));
+            const data = await thread(browser, seeded, report);
+            // 附件不放在對話串裡：對話端點另給 album_html 與 album_count。
+            expect(data.html).not.toContain('data-chat-album');
+            expect(data.album_count).toBe(3);
+            const album = data.album_html;
             expect(album).toContain('data-album-count="true">3<');
-            expect(album).not.toMatch(/<details[^>]*\sopen/);
+            expect(album).toContain('附件（');
+            // 預設展開（data-collapsed 只是「只露一排」，超過一排才由 album.js 顯示「顯示全部」）。
+            expect(album).toContain('data-album-toggle');
             const base = `/p/${seeded.project.slug}/reports/${report.public_id}/attachments`;
             const order = [original, first, second].map((id) => album.indexOf(`${base}/${id}"`));
             expect(order.every((position) => position > 0)).toBe(true);
@@ -107,15 +114,15 @@ describe('相簿', () => {
             expect(album.match(/data-album-source[^>]*>([^<]*)</g)?.map((tag) => tag.replace(/.*>([^<]*)<$/, '$1'))).toEqual(['原始附件', '客戶 的留言', '開發團隊 的留言']);
             expect(album).toContain('loading="lazy"');
             expect(album).toContain('data-lightbox-play');
-            expect(album).not.toMatch(/thumb|resize/i);
+            expect(album).not.toMatch(/thumbnail|resize/i);
         }
     });
 
-    it('is absent without any attachment and keeps its open state keys for the refresh', async () => {
+    it('is absent without any attachment and keyed by the report for the refresh', async () => {
         const { seeded, report, owner } = await setup();
-        expect((await thread(owner, seeded, report)).html).not.toContain('data-chat-album');
+        expect((await thread(owner, seeded, report)).album_html).toBe('');
         await seedAttachment(report);
-        expect((await thread(owner, seeded, report)).html).toContain('data-keep-open="album"');
+        expect((await thread(owner, seeded, report)).album_html).toContain(`data-album-key="${report.public_id}"`);
     });
 });
 

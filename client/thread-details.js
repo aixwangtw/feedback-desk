@@ -23,3 +23,6 @@ export const replaceKeepingOpen = (root, replace) => {
     replace();
     restoreOpenKeys(root, keys);
 };
+
+/** 這個範圍裡有沒有正在編輯的留言：有的話定時刷新先不要換掉內容，免得打到一半的字被洗掉。 */
+export const isEditingMessage = (root) => Boolean(root?.querySelector('[data-message-edit-form]:not([hidden])'));

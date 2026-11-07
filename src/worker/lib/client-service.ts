@@ -85,8 +85,8 @@ export async function listOwnReports(ctx: ClientContext, slug: string) {
             SELECT r.*, ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) AS number, ${viewerReadAtColumnSql('r', ctx.account)} FROM reports r WHERE project_id = ? AND ${CLIENT_VISIBLE_SQL}
         )
         SELECT n.*, ${viewerUnreadSql('n', false, ctx.account, true)} AS unread_count, ${latestMessageSql('n')} AS latest_message_at, ${creatorClientNameSql('n')} AS creator_client_name,
-            (SELECT COUNT(*) FROM messages m WHERE m.report_id = n.id) AS messages_count,
-            (SELECT COUNT(*) FROM attachments a WHERE a.report_id = n.id) AS attachments_count
+            (SELECT COUNT(*) FROM messages m WHERE m.deleted_at IS NULL AND m.report_id = n.id) AS messages_count,
+            (SELECT COUNT(*) FROM attachments a WHERE a.report_id = n.id AND (a.message_id IS NULL OR a.message_id IN (SELECT id FROM messages WHERE deleted_at IS NULL))) AS attachments_count
         FROM numbered n WHERE client_deleted_at IS NULL ORDER BY created_at DESC, id DESC`,
     )
         .bind(project.id)

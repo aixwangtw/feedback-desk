@@ -282,6 +282,33 @@ export function createServer(ctx: team.TeamContext): McpServer {
     );
 
     server.registerTool(
+        'edit_message',
+        {
+            title: '編輯團隊留言',
+            description: '編輯團隊身分發的留言（任何開發者都可以改；不能改客戶的留言）。改完不顯示「已編輯」，不改單的狀態。body 是新的完整內容；upload_ids 新增附圖；remove_attachment_ids 填要移除的附件 id。message_id 在 get_report 的 messages 裡。',
+            inputSchema: z.object({
+                project: PROJECT,
+                report: REPORT.describe('public_id 或團隊端清單編號'),
+                message_id: z.number().int().min(1),
+                body: z.string().min(1).max(MAX_MESSAGE),
+                upload_ids: UPLOAD_IDS,
+                remove_attachment_ids: z.array(z.number().int()).optional(),
+            }),
+        },
+        async (input) => run(async () => wrapTitle(await team.editTeamMessage(ctx, input.project, input.report, input.message_id, { body: input.body, upload_ids: input.upload_ids, remove_attachment_ids: input.remove_attachment_ids }))),
+    );
+
+    server.registerTool(
+        'withdraw_message',
+        {
+            title: '收回團隊留言',
+            description: '收回團隊身分發的留言（任何開發者都可以收回；不能收回客戶的留言）。收回後客戶端的畫面、API、未讀數、通知都完全看不到那則留言與附件，不留痕跡；不改單的狀態。',
+            inputSchema: z.object({ project: PROJECT, report: REPORT.describe('public_id 或團隊端清單編號'), message_id: z.number().int().min(1) }),
+        },
+        async (input) => run(async () => wrapTitle(await team.withdrawTeamMessage(ctx, input.project, input.report, input.message_id))),
+    );
+
+    server.registerTool(
         'claim_report',
         {
             title: '認領回報單',

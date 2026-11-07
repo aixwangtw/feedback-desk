@@ -4,7 +4,7 @@ import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
 import type { PortalTab } from '../lib/reports';
 import { paths } from '../routes/paths';
-import { AttachmentMedia, cx, ErrorList, Layout, Pagination, Thumb, type ViewContext } from './components';
+import { AttachmentMedia, cx, ErrorList, Layout, Pagination, type ViewContext } from './components';
 import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastNotes, RequestCompletionDialog } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
@@ -24,11 +24,12 @@ export interface PortalRow {
      * changed adjustment for the client. The number of the small red dot beside the title.
      */
     unread: number;
+    /** 這張單自己的附件（不含留言的附件）；清單的附件欄與看板卡片的縮圖用。 */
+    attachments: Attachment[];
 }
 
-/** 詳情視窗要的資料：清單列再加上這張單的附件（清單本身不載入附件）。 */
+/** 詳情視窗要的資料：清單列再加上舊的調整重點附件（清單本身不載入）。 */
 export interface DialogRow extends PortalRow {
-    attachments: Attachment[];
     adjustmentAttachments: Attachment[];
 }
 
@@ -172,7 +173,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const categories = projectCategories(project);
     const showCategory = categories.length > 0;
-    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath };
+    const rowContext: RowContext = { v, slug, isOwner, backPath: props.backPath, showCategory, categories };
     // Long pages hand row rendering to the browser (same row builders) to stay within the CPU budget.
     const clientRender = rows.length > SERVER_ROW_LIMIT;
     const sortHeader = (column: string, label: string, thClass: string) => (
@@ -302,19 +303,23 @@ export const PortalPage: FC<PortalProps> = (props) => {
 
                 {viewMode === 'list' ? (
                     <div class="sm:overflow-x-auto" data-list-view>
-                        <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[40rem]" data-report-table>
+                        <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[60rem]" data-report-table>
                             <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                                 <tr>
                                     <th class="whitespace-nowrap min-w-16 w-16 px-4 text-center py-3.5">編號</th>
                                     {sortHeader('title', '標題', 'whitespace-nowrap px-4 text-left py-3.5')}
                                     {sortHeader('status', '狀態', 'whitespace-nowrap min-w-36 px-4 py-3.5 text-center')}
+                                    {showCategory ? <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th> : null}
+                                    <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
                                     <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">建立者</th>
+                                    {sortHeader('created_at', '建立日期', 'whitespace-nowrap w-32 px-4 text-center py-3.5')}
                                     {sortHeader('latest_activity_at', '最後更新', 'whitespace-nowrap w-32 px-4 py-3.5 text-center')}
+                                    <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
                                 </tr>
                             </thead>
                             <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                                 {rows.length === 0 ? (
-                                    <tr class="block sm:table-row"><td colspan={5} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
+                                    <tr class="block sm:table-row"><td colspan={showCategory ? 9 : 8} class="block px-6 sm:table-cell py-14 text-center text-sm text-slate-500">目前沒有問題，請按「新增問題」登記第一筆。</td></tr>
                                 ) : (
                                     clientRender ? null : raw(rows.map((row) => listRowHtml(rowContext, row)).join(''))
                                 )}
@@ -408,13 +413,8 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
 
                         <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5 lg:col-start-1 lg:row-start-2">
                             <div data-report-description><RichText text={report.description} compact /></div>
-                            {row.attachments.length > 0 ? (
-                                <div class="flex flex-wrap gap-2" data-detail-attachments>
-                                    {row.attachments.map((attachment) => (
-                                        <Thumb href={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} size="size-20" />
-                                    ))}
-                                </div>
-                            ) : null}
+                            {/* 附件（相簿）：說明下方、活動時間軸上方，隨對話端點的 album_html 載入（client/report-dialog-thread.js）。 */}
+                            <div class="album-region" data-dialog-album></div>
                             <PastNotes report={report} adjustmentAttachments={row.adjustmentAttachments} attachmentUrl={(attachment) => attachmentUrl(report, attachment)} />
                             {/* The thread comes from the same JSON the chat panel uses (server-escaped HTML); loading it marks the report read. */}
                             <section

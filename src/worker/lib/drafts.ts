@@ -58,7 +58,7 @@ export function validatedDraftBody(body: string): string {
 /** Only a team message (people or AI) on this report can be replaced; client messages never. */
 export async function replaceableMessage(db: D1Database, report: Pick<Report, 'id'>, messageId: number): Promise<{ id: number; body: string }> {
     const message = Number.isSafeInteger(messageId)
-        ? await db.prepare("SELECT id, body FROM messages WHERE id = ? AND report_id = ? AND author_type IN ('owner', 'agent')").bind(messageId, report.id).first<{ id: number; body: string }>()
+        ? await db.prepare("SELECT id, body FROM messages WHERE id = ? AND report_id = ? AND deleted_at IS NULL AND author_type IN ('owner', 'agent')").bind(messageId, report.id).first<{ id: number; body: string }>()
         : null;
     if (!message) {
         throw new ServiceError('message_not_replaceable', '要修改的留言必須是這張單上的團隊留言。', 422);

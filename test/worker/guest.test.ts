@@ -82,7 +82,7 @@ describe('guest client entry', () => {
         expect((await new Browser().get(`/p/${slug}?tab=all`)).status).toBe(302);
     });
 
-    it('filters by category, including uncategorized (the list has no category column any more)', async () => {
+    it('filters by category, including uncategorized (the list has a category column again)', async () => {
         const { seeded, slug, browser, vars } = await guestSetup();
         const visitor = browser();
         await visitor.post(`/p/${slug}/reports`, { 'issues[0][title]': '排版單', 'issues[0][description]': 'd', 'issues[0][category]': '經典排版' });
@@ -92,7 +92,7 @@ describe('guest client entry', () => {
 
         const all = await html('');
         expect(all).toContain('data-category-filter');
-        expect(all).not.toContain('data-report-category');
+        expect(all).toContain('data-report-category');
         expect(all).toContain('排版單');
         expect(all).toContain('舊單');
 
@@ -168,17 +168,15 @@ describe('guest client entry', () => {
         }
     });
 
-    it('lists only number, title, status, creator and last update', async () => {
+    it('lists the pre-redesign columns without the title tags, chat button and adjustment column', async () => {
         const { seeded, slug, browser } = await guestSetup();
         await seedReport(seeded.project);
         const html = await (await browser().get(`/p/${slug}?tab=all`)).text();
         const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-        const order = ['編號', '標題', '狀態', '建立者', '最後更新'].map((label) => head.indexOf(label));
+        const order = ['編號', '標題', '狀態', '附件', '建立者', '建立日期', '最後更新', '操作'].map((label) => head.indexOf(label));
         expect(order.every((index) => index >= 0)).toBe(true);
         expect([...order].sort((a, b) => a - b)).toEqual(order);
-        for (const gone of ['分類', '附件', '調整重點', '建立日期', '操作']) {
-            expect(head, gone).not.toContain(gone);
-        }
+        expect(head).not.toContain('調整重點');
         const row = html.slice(html.indexOf('data-report-row='));
         expect(row.indexOf('data-report-creator')).toBeGreaterThan(row.indexOf('data-status-text'));
     });

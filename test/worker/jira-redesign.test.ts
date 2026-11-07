@@ -126,41 +126,69 @@ describe('相簿', () => {
     });
 });
 
-describe('活動時間軸（留言與狀態變更）', () => {
-    it('shows status changes between the messages: who changed it for the team, only the new status for the client', async () => {
+describe('留言時間軸（只有留言，沒有狀態變更紀錄）', () => {
+    it('lists only messages for both sides, with the team shown by name and no AI tool name', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);
-        const { developer, password } = await seedDeveloper(undefined, undefined, '王小明');
+        const { developer, password } = await seedDeveloper(undefined, undefined, 'Nick');
         const team = new Browser();
         await team.loginAs(seeded.project.slug, developer.username, password);
         const client = await new Browser().asClient(seeded);
         expect((await client.post(url(seeded, report, '/messages'), { body: '客戶先問' }, JSON_HEADERS)).status).toBe(201);
         await new Promise((resolve) => setTimeout(resolve, 1100));
-        // The team replies: new → needs_input, recorded as a status event by 王小明.
+        // The team replies: new → needs_input is still recorded as a status event, but the timeline does not list it.
         expect((await team.post(url(seeded, report, '/messages'), { body: '團隊回覆' }, JSON_HEADERS)).status).toBe(201);
 
-        const teamHtml = (await thread(team, seeded, report)).html;
-        const clientHtml = (await thread(client, seeded, report)).html;
-        expect(teamHtml).toContain('data-chat-event="status"');
-        expect(teamHtml).toContain('王小明 將狀態改為「<span class="font-semibold text-slate-800">等客戶</span>」');
-        expect(clientHtml).toContain('將狀態改為「<span class="font-semibold text-slate-800">等客戶</span>」');
-        expect(clientHtml).not.toContain('王小明 將狀態改為');
-        // The event sits right after the message that caused it, centred; messages keep their side bubbles.
-        for (const html of [teamHtml, clientHtml]) {
-            expect(html.indexOf('團隊回覆')).toBeLessThan(html.indexOf('data-chat-event="status"'));
-            expect(html.indexOf('客戶先問')).toBeLessThan(html.indexOf('團隊回覆'));
-            expect(html).toContain('<li class="flex justify-center" data-chat-event="status"');
+        const teamData = await thread(team, seeded, report);
+        const clientData = await thread(client, seeded, report);
+        for (const data of [teamData, clientData]) {
+            expect(data.html).not.toContain('data-chat-event');
+            expect(data.html).not.toContain('將狀態改為');
+            expect(data.html.indexOf('客戶先問')).toBeLessThan(data.html.indexOf('團隊回覆'));
+            expect(data.html).toContain('data-chat-author="true">Nick<');
+            expect(data.html).not.toContain('（Claude Code）');
+            expect(data.html).not.toContain('開發者');
+            // the status still shows in the side column
+            expect(data.side_html).toContain('data-report-status-badge');
         }
-        expect(teamHtml).toMatch(/data-author="owner" data-side="mine"/);
-        expect(clientHtml).toMatch(/data-author="owner" data-side="theirs"/);
+        expect(teamData.html).toMatch(/data-author="owner" data-side="mine"/);
+        expect(clientData.html).toMatch(/data-author="owner" data-side="theirs"/);
     });
 
-    it('sorts by time with the message first inside the same second (pure function)', () => {
-        const entries = buildTimeline(
-            [{ id: 2, created_at: '2026-11-07T01:00:05.900Z' }, { id: 1, created_at: '2026-11-07T01:00:00.000Z' }],
-            [{ id: 9, detail: 'new>needs_input', actor_name: 'x', agent: null, created_at: '2026-11-07T01:00:05.100Z' }, { id: 10, detail: 'bad', actor_name: 'x', agent: null, created_at: '2026-11-07T01:00:01.000Z' }],
-        );
-        expect(entries.map((entry) => (entry.type === 'message' ? `m${entry.message.id}` : `s${entry.id}`))).toEqual(['m1', 'm2', 's9']);
+    it('shows the shared team identity (and AI tools acting for it) as the configured name', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project);
+        await env.DB.prepare("INSERT INTO messages (report_id, author_type, author_name, author_agent, body, created_at, updated_at) VALUES (?, 'owner', '開發團隊', 'Claude Code', '共用身分代發', '2026-11-07T01:00:00.000Z', '2026-11-07T01:00:00.000Z')").bind(report.id).run();
+        const vars = { FEEDBACK_SHARED_OWNER_NAME: 'Alex' };
+        const owner = await new Browser(undefined, vars).asOwner(seeded);
+        const client = await new Browser(undefined, vars).asClient(seeded);
+        for (const browser of [owner, client]) {
+            const data = await thread(browser, seeded, report);
+            expect(data.html).toContain('data-chat-author="true">Alex<');
+            expect(data.html).not.toContain('（Claude Code）');
+            expect(data.html).not.toContain('開發團隊<');
+        }
+        expect((await thread(owner, seeded, report)).album_html).toBe('');
+    });
+
+    it('shows the creator of a team-opened report by name in the list and the side column, never as 開發者 or with an AI tool', async () => {
+        const seeded = await seedProject();
+        const { report } = await seedReport(seeded.project, { title: '團隊開的單', creator: 'owner_shared' });
+        await env.DB.prepare("UPDATE reports SET creator_agent = 'Claude Code' WHERE id = ?").bind(report.id).run();
+        const owner = await new Browser(undefined, { FEEDBACK_SHARED_OWNER_NAME: 'Alex', FEEDBACK_LABEL_OWNER: '開發者' }).asOwner(seeded);
+        const list = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
+        expect(list).toMatch(/data-report-creator="true"><span[^>]*>建立者：<\/span>Alex<\/td>/);
+        const side = (await thread(owner, seeded, report)).side_html;
+        expect(side).toContain('data-report-creator="true">Alex<');
+        for (const html of [list, side]) {
+            expect(html).not.toContain('（Claude Code）');
+            expect(html).not.toContain('>開發者<');
+        }
+    });
+
+    it('sorts messages by time (pure function)', () => {
+        const entries = buildTimeline([{ id: 2, created_at: '2026-11-07T01:00:05.900Z' }, { id: 1, created_at: '2026-11-07T01:00:00.000Z' }]);
+        expect(entries.map((entry) => `m${entry.message.id}`)).toEqual(['m1', 'm2']);
         expect(latestCompletionRequestId([{ id: 1, is_completion_request: 1 }, { id: 4, is_completion_request: 0 }, { id: 3, is_completion_request: 1 }])).toBe(3);
         expect(latestCompletionRequestId([{ id: 1 }])).toBeNull();
     });

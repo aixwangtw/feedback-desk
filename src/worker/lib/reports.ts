@@ -592,16 +592,15 @@ export function creatorLabel(
     developerName: string | null,
     clientAccountName: string | null = null,
 ): string {
-    const labels = config(env).labels;
     switch (report.creator_type) {
         case 'client':
             return clientAccountName ?? clientLabel(env, project);
         case 'developer':
-            return developerName ?? labels.owner;
+            return developerName ?? config(env).sharedOwnerName;
         case 'public':
             return report.reporter_name ? `公開回報（${report.reporter_name}）` : '公開回報';
         default:
-            return labels.owner;
+            return config(env).sharedOwnerName;
     }
 }
 
@@ -613,7 +612,7 @@ export function clientLabel(env: Env, project: Pick<Project, 'client_display_nam
 export function messageAuthorName(env: Env, report: Report, isOwner: boolean, developerName: string | null, clientAccountName: string | null = null): string {
     const labels = config(env).labels;
     if (isOwner) {
-        return report.creator_type === 'public' ? labels.owner : developerName ?? labels.owner;
+        return report.creator_type === 'public' ? labels.owner : developerName ?? config(env).sharedOwnerName;
     }
     if (report.creator_type === 'public') {
         return report.reporter_name || '公開回報者';

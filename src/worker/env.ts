@@ -12,6 +12,8 @@ export interface Env {
 
 export interface FeedbackConfig {
     labels: { client: string; owner: string };
+    /** 共用團隊身分（共用 owner 帳號、AI 工具代發）在畫面上顯示成誰（FEEDBACK_SHARED_OWNER_NAME，例如 Alex）；沒設定時退回 labels.owner。開發者個人帳號一律顯示帳號的 name。 */
+    sharedOwnerName: string;
     /** 狀態顯示名稱（等工程師／等{客戶稱呼}／已完成），跟著 labels.client。 */
     statusLabels: StatusLabels;
     portalTitle: string;
@@ -79,6 +81,7 @@ export function config(env: Env): FeedbackConfig {
     const ownerLabel = str(env, 'FEEDBACK_LABEL_OWNER', '開發團隊');
     const value: FeedbackConfig = {
         labels: { client: clientLabel, owner: ownerLabel },
+        sharedOwnerName: str(env, 'FEEDBACK_SHARED_OWNER_NAME', '') || ownerLabel,
         statusLabels: statusLabelsFor(clientLabel),
         portalTitle: str(env, 'FEEDBACK_PORTAL_TITLE', '問題回報追蹤'),
         home: {

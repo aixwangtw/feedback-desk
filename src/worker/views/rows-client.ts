@@ -4,7 +4,7 @@
  */
 import type { ReportStatus, StatusLabels } from '../../shared/status';
 import type { FeedbackConfig } from '../env';
-import type { Attachment, Report } from '../lib/models';
+import type { Report } from '../lib/models';
 import type { PortalRow } from './portal';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 
@@ -12,8 +12,6 @@ import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 export const SERVER_ROW_LIMIT = 20;
 
 export const PORTAL_ROWS_ELEMENT_ID = 'portal-rows-data';
-
-type CompactAttachment = Pick<Attachment, 'id' | 'original_name' | 'mime_type'>;
 
 export interface PortalRowsPayload {
     view: 'list' | 'board';
@@ -31,7 +29,8 @@ export interface PortalRowsPayload {
         report: Pick<Report, 'public_id' | 'title' | 'category' | 'status' | 'client_deleted_at' | 'latest_activity_at' | 'created_at'>;
         number: number;
         creatorLabel: string;
-        attachments: CompactAttachment[];
+        thumbs: PortalRow['thumbs'];
+        thumbTotal: number;
         unread: number;
     }>;
 }
@@ -61,7 +60,8 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             },
             number: row.number,
             creatorLabel: row.creatorLabel,
-            attachments: row.attachments.map((item) => ({ id: item.id, original_name: item.original_name, mime_type: item.mime_type })),
+            thumbs: row.thumbs,
+            thumbTotal: row.thumbTotal,
             // Already computed for this viewer side (the team's unread state never reaches the client).
             unread: row.unread,
         })),

@@ -408,7 +408,7 @@ export class Access {
         const labels = config(this.env).labels;
         if (await this.isOwner(project)) {
             const developer = await this.currentDeveloper(project);
-            return { developerId: developer?.id ?? null, clientAccountId: null, name: developer?.name ?? labels.owner, agent: null };
+            return { developerId: developer?.id ?? null, clientAccountId: null, name: developer?.name ?? config(this.env).sharedOwnerName, agent: null };
         }
         const account = await this.currentClientAccount(project);
         return { developerId: null, clientAccountId: account?.id ?? null, name: account?.name ?? labels.client, agent: null };

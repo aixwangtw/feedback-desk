@@ -3,7 +3,7 @@ import { isStatus, statusLabel, STATUSES, type ReportStatus } from '../../shared
 import { charLength, charSlice } from '../../shared/text';
 import { config, turnstileEnabled } from '../env';
 import { DUMMY_PASSWORD_HASH, sha256Hex, timingSafeEqualString, verifyPassword } from '../lib/crypto';
-import { attachmentsForReport, statusEventsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
+import { attachmentsForReport, findClientAccount, findClientAccountInProject, findDeveloper, findDeveloperByUsername, findProjectBySlug, listClientAccounts, findReportInProject, likeContains, listDevelopers, listProjects, messagesForReport, placeholders } from '../lib/db';
 import { CLIENT_VISIBLE_SQL, isPublicReport, type Attachment, type ClientAccount, type Developer, type Message, type Project, type Report } from '../lib/models';
 import { attempt, clear, clientIp, hit, tooManyAttempts, type Limit } from '../lib/rate-limit';
 import {
@@ -63,7 +63,8 @@ import { isAwaitingReply } from '../../shared/chat-tabs';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, editCategoryOptions, type DialogRow, type PortalFormState, type PortalRow } from '../views/portal';
 import { Album, ConversationFragment, DetailSide, DraftsSection, messageAuthorLabel, ReportPage, Thread } from '../views/report';
-import { albumItems } from '../lib/album';
+import { albumItems, listThumbsForReports } from '../lib/album';
+import { attachmentThumbsHtml } from '../views/rows';
 import { ADJUSTMENT_WEB_DISABLED, completionSentNotice } from '../../shared/completion';
 import { requestCompletion } from '../lib/completion';
 import { isSafeLocalPath } from '../lib/access';
@@ -685,25 +686,15 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         }
     }
 
-    // 清單的附件欄與看板卡片縮圖：一次載入這一頁各單自己的附件（不含留言的附件、不含舊的調整重點附件）。
-    const listAttachments = new Map<number, Attachment[]>();
-    if (reports.length > 0) {
-        const found = await db
-            .prepare(`SELECT * FROM attachments WHERE message_id IS NULL AND kind = 'feedback' AND report_id IN (${placeholders(reports.length)}) ORDER BY id`)
-            .bind(...reports.map((report) => report.id))
-            .all<Attachment>();
-        for (const attachment of found.results) {
-            const list = listAttachments.get(attachment.report_id) ?? [];
-            list.push(attachment);
-            listAttachments.set(attachment.report_id, list);
-        }
-    }
+    // 清單的附件欄與看板卡片縮圖：這張單所有附件（原始＋留言，收回的不算、不含草稿），與詳情的相簿同一套規則（lib/album.ts）。
+    const listThumbs = await listThumbsForReports(db, project.slug, reports);
     const rows: PortalRow[] = reports.map((report) => ({
         report,
         number: report.seq,
         creatorLabel: withAgent(creatorLabel(c.env, report, project, report.creator_developer_id ? developerNames.get(report.creator_developer_id) ?? null : null, report.creator_client_name), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         unread: report.unread_count,
-        attachments: listAttachments.get(report.id) ?? [],
+        thumbs: listThumbs.get(report.id)?.thumbs ?? [],
+        thumbTotal: listThumbs.get(report.id)?.total ?? 0,
     }));
     // 編輯失敗重新顯示：被編輯的那張單要帶著錯誤重開對話框，所以只為它載入附件。
     const editingReport = form?.bag === 'editReport' ? reports.find((report) => report.public_id === form.editing?.publicId) : undefined;
@@ -969,10 +960,9 @@ async function loadThread(c: AppContext, project: Project, report: Report, isOwn
     const db = c.env.DB;
     const access = c.get('access');
     const v = viewContext(c);
-    const [attachments, messages, statusEvents, drafts, canManage] = await Promise.all([
+    const [attachments, messages, drafts, canManage] = await Promise.all([
         attachmentsForReport(db, report.id),
         messagesForReport(db, report.id),
-        statusEventsForReport(db, report.id),
         isOwner ? (knownDrafts ? Promise.resolve(knownDrafts) : draftsForReport(db, report.id)) : Promise.resolve([] as DraftView[]),
         access.canManage(project),
     ]);
@@ -1000,7 +990,6 @@ async function loadThread(c: AppContext, project: Project, report: Report, isOwn
         attachments,
         messages,
         messageAttachments,
-        statusEvents,
         drafts,
         album,
         latestRequestId: latestRequest?.id ?? null,
@@ -1059,7 +1048,6 @@ async function renderReport(
             adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
             messages={thread.messages}
             messageAttachments={thread.messageAttachments}
-            statusEvents={thread.statusEvents}
             album={thread.album}
             canApprove={thread.canApprove}
             latestRequestId={thread.latestRequestId}
@@ -1146,7 +1134,6 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
             messageAttachments={thread.messageAttachments}
             attachmentUrl={attachmentUrlFor(project, report)}
             viewerIsOwner={isOwner}
-            statusEvents={thread.statusEvents}
             canApprove={thread.canApprove}
             latestRequestId={thread.latestRequestId}
             viewerAccountId={thread.viewerAccountId}
@@ -1258,6 +1245,38 @@ web.get('/p/:slug/conversations', async (c) => {
     return c.json({ items, unread_total: unreadTotal, awaiting_total: awaitingTotal, ...(isOwner ? { drafts_total: draftsTotal } : {}) }, 200, cacheHeaders);
 });
 
+/**
+ * 清單、看板附件縮圖的輪詢端點：有人上傳新附件（原始或留言）時，清單那一格跟著更新。
+ * 與詳情相簿同一套規則（lib/album.ts 的 listThumbsForReports）；不含草稿，客戶端也看不到客戶不可見的單。
+ */
+web.get('/p/:slug/attachment-thumbs', async (c) => {
+    const project = await projectOr404(c);
+    const access = c.get('access');
+    if (!(await access.canManage(project))) {
+        return deny(c, project);
+    }
+    const isOwner = await access.isOwner(project);
+    const ids = [...new Set(c.req.queries('ids[]') ?? c.req.queries('ids') ?? [])].filter((id) => id !== '').slice(0, 100);
+    if (ids.length === 0) {
+        return c.json({ reports: {} }, 200, { 'Cache-Control': 'private, no-store' });
+    }
+    const scope = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
+    const { results } = await c.env.DB.prepare(`SELECT id, public_id, created_at FROM reports WHERE project_id = ? AND public_id IN (${placeholders(ids.length)}) ${scope}`)
+        .bind(project.id, ...ids)
+        .all<Pick<Report, 'id' | 'public_id' | 'created_at'>>();
+    const thumbs = await listThumbsForReports(c.env.DB, project.slug, results);
+    const reports: Record<string, { count: number; row_html: string; card_html: string }> = {};
+    for (const report of results) {
+        const found = thumbs.get(report.id) ?? { thumbs: [], total: 0 };
+        reports[report.public_id] = {
+            count: found.total,
+            row_html: attachmentThumbsHtml(report.public_id, found.thumbs, found.total),
+            card_html: attachmentThumbsHtml(report.public_id, found.thumbs, found.total, true),
+        };
+    }
+    return c.json({ reports }, 200, { 'Cache-Control': 'private, no-store' });
+});
+
 /** Version of a report's drafts for the team's thread ETag; '' without drafts. */
 async function draftsVersion(db: D1Database, reportId: number): Promise<string> {
     const row = await db
@@ -1309,7 +1328,6 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             messages={thread.messages}
             messageAttachments={thread.messageAttachments}
             adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
-            statusEvents={thread.statusEvents}
             canApprove={thread.canApprove}
             latestRequestId={thread.latestRequestId}
             viewerAccountId={thread.viewerAccountId}
@@ -1394,6 +1412,8 @@ async function dialogRow(c: AppContext, project: Project, report: Report, isOwne
         attachments: attachments.results.filter((attachment) => attachment.kind === 'feedback'),
         adjustmentAttachments: attachments.results.filter((attachment) => attachment.kind === 'adjustment'),
         unread: counts.unread,
+        thumbs: [],
+        thumbTotal: 0,
     };
 }
 

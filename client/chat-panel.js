@@ -69,6 +69,9 @@ if (root) {
         uploadUrl: null,
         lastThreadHtml: '',
         lastAlbumHtml: '',
+        albumCounts: new Map(),
+        savedScroll: null,
+        albumFlashTimer: null,
         albumFor: null,
         lastListFetch: 0,
         listRequest: 0,
@@ -345,10 +348,35 @@ if (root) {
     const isNearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
 
     // 對話或附件頁二選一：附件頁隱藏留言串與輸入框。
+    // 切到附件頁前記下對話的捲動位置（隱藏後瀏覽器會把捲動歸零），返回時還原；原本在最底就回到最底（含期間新來的留言）。
     const setAlbumView = (show) => {
+        if (show && scroller.hidden === false) {
+            state.savedScroll = { top: scroller.scrollTop, atBottom: isNearBottom() };
+        }
         albumPane.hidden = !show;
         scroller.hidden = show;
         form.hidden = show;
+        if (!show && state.savedScroll) {
+            const { top, atBottom } = state.savedScroll;
+            state.savedScroll = null;
+            scroller.scrollTop = atBottom ? scroller.scrollHeight : top;
+        }
+    };
+
+    // 有新附件時：數字更新、徽章短暫變色並顯示「有新附件」（同一張單的對話裡比較，換單不提示）。
+    const noteAlbumCount = (id, total) => {
+        const previous = state.albumCounts.get(id);
+        state.albumCounts.set(id, total);
+        albumCount.textContent = String(total);
+        if (previous !== undefined && total > previous) {
+            albumOpen.dataset.albumNew = '1';
+            albumOpen.title = `有 ${total - previous} 個新附件`;
+            window.clearTimeout(state.albumFlashTimer);
+            state.albumFlashTimer = window.setTimeout(() => {
+                delete albumOpen.dataset.albumNew;
+                albumOpen.title = '';
+            }, 4000);
+        }
     };
 
     const applyThread = (data, { forceScroll }) => {
@@ -364,14 +392,10 @@ if (root) {
         state.maxFileBytes = data.max_bytes ?? DEFAULT_MAX_FILE_BYTES;
         state.allowVideo = data.allow_video === true;
         const albumTotal = data.album_count ?? 0;
-        albumOpen.hidden = albumTotal === 0;
-        albumCount.textContent = String(albumTotal);
+        noteAlbumCount(data.id, albumTotal);
         if (typeof data.album_html === 'string' && data.album_html !== state.lastAlbumHtml) {
             state.lastAlbumHtml = data.album_html;
-            albumBody.innerHTML = data.album_html;
-        }
-        if (albumTotal === 0 && !albumPane.hidden) {
-            setAlbumView(false);
+            albumBody.innerHTML = data.album_html === '' ? '<p class="py-10 text-center text-sm text-slate-500" data-album-empty>這張單還沒有附件。</p>' : data.album_html;
         }
         if (draftsBox && typeof data.drafts_html === 'string') {
             const openId = data.id;
@@ -467,7 +491,8 @@ if (root) {
             state.lastThreadHtml = '';
             state.lastAlbumHtml = '';
             albumBody.replaceChildren();
-            albumOpen.hidden = true;
+            albumCount.textContent = '0';
+            delete albumOpen.dataset.albumNew;
             thread.replaceChildren(el('p', 'p-6 text-center text-sm text-slate-500', '載入中…'));
             threadTitle.textContent = state.items.find((item) => item.id === id)?.title ?? '';
             const draft = state.failedDrafts.get(id);

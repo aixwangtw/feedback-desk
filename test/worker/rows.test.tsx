@@ -8,16 +8,16 @@ import { workerEnv } from './helpers';
 
 const png: Attachment = { id: 11, report_id: 1, message_id: null, kind: 'feedback', object_key: 'k', original_name: '圖一 <紅框>.png', mime_type: 'image/png', size: 5, uploader_client_account_id: null, uploader_developer_id: null, created_at: '' };
 const mp4: Attachment = { ...png, id: 12, original_name: '操作.mp4', mime_type: 'video/mp4' };
-const attachmentUrl = (report: Report, attachment: Attachment) => `/p/demo/reports/${report.public_id}/attachments/${attachment.id}`;
+const thumbOf = (attachment: Attachment) => ({ url: `/p/demo/reports/0199c3a1-0000-4000-8000-000000000001/attachments/${attachment.id}`, name: attachment.original_name, isVideo: attachment.mime_type.startsWith('video/') });
 
-function row(overrides: Partial<Report>, unread = 0, attachments: Attachment[] = []): PortalRow {
+function row(overrides: Partial<Report>, unread = 0, attachments: Attachment[] = [], extraTotal = 0): PortalRow {
     const report: Report = {
         id: 1, project_id: 1, public_id: '0199c3a1-0000-4000-8000-000000000001', reporter_token_hash: '', reporter_name: null, category: null, creator_type: 'client', creator_developer_id: null, creator_client_account_id: null, creator_agent: null, claimed_by_developer_id: null, claimed_agent: null, claimed_at: null,
         title: '標題 <b>"引號" & \'單引號\'</b>', description: 'd', adjustment_note: null, page_url: null, status: 'needs_input', completed_at: null, client_deleted_at: null, shared_with_client: 0,
         latest_activity_at: '2026-10-14T02:30:00.000Z', owner_last_read_at: null, client_last_read_at: null, adjustment_updated_at: null,
         created_at: '2026-10-13T02:30:00.000Z', updated_at: '', ...overrides,
     };
-    return { report, number: 7, creatorLabel: '王老師 & <客戶>', unread, attachments };
+    return { report, number: 7, creatorLabel: '王老師 & <客戶>', unread, thumbs: attachments.map(thumbOf), thumbTotal: attachments.length + extraTotal };
 }
 
 const cases: Array<[string, PortalRow]> = [
@@ -28,6 +28,7 @@ const cases: Array<[string, PortalRow]> = [
     ['unread', row({}, 2)],
     ['with an image and a video', row({ category: '版面 & 字型' }, 0, [png, mp4])],
     ['an unlisted category', row({ category: '舊分類' }, 1, [png])],
+    ['with a plus counter', row({}, 0, [png, mp4], 4)],
     ['over 99 unread', row({}, 120)],
     ['a long title and creator with markup', row({ title: '很長的標題 '.repeat(20) })],
 ];
@@ -42,10 +43,10 @@ describe('string-rendered rows match the JSX reference', () => {
                 for (const categories of [[], ['版面 & 字型', '其他']]) {
                     const showCategory = categories.length > 0;
                     const ctx = { v, slug: 'demo', isOwner, backPath, showCategory, categories };
-                    const jsxRow = String(<ListRow v={v} row={portalRow} slug="demo" isOwner={isOwner} backPath={backPath} showCategory={showCategory} categories={categories} attachmentUrl={attachmentUrl} />);
+                    const jsxRow = String(<ListRow v={v} row={portalRow} slug="demo" isOwner={isOwner} backPath={backPath} showCategory={showCategory} categories={categories} />);
                     expect(jsxRow.length).toBeGreaterThan(800);
                     expect(listRowHtml(ctx, portalRow)).toBe(jsxRow);
-                    const jsxCard = String(<BoardCard v={v} row={portalRow} order={3} slug="demo" isOwner={isOwner} backPath={backPath} categories={categories} attachmentUrl={attachmentUrl} />);
+                    const jsxCard = String(<BoardCard v={v} row={portalRow} order={3} slug="demo" isOwner={isOwner} backPath={backPath} categories={categories} />);
                     expect(boardCardHtml(ctx, portalRow, 3)).toBe(jsxCard);
                 }
             });
@@ -70,31 +71,39 @@ describe('Jira-style list rows and board cards', () => {
         expect(html).toContain('data-dialog-open="edit-report-');
         expect(html).toContain('data-delete-report');
         // image thumbnail and a video thumbnail with a play icon
-        expect(html.match(/data-lightbox-trigger/g)).toHaveLength(2);
+        expect(html.match(/data-open-album/g)).toHaveLength(2);
         expect(html).toContain('data-attachment-video');
         // the order follows the pre-redesign table
-        const order = ['data-report-number', 'data-status-text', 'data-report-category', 'data-lightbox-trigger', 'data-report-creator', '建立：', '最後更新：', 'data-dialog-open="edit-report-'];
+        const order = ['data-report-number', 'data-status-text', 'data-report-category', 'data-attachment-thumbs', 'data-report-creator', '建立：', '最後更新：', 'data-dialog-open="edit-report-'];
         const positions = order.map((needle) => html.indexOf(needle));
         expect(positions).toEqual([...positions].sort((a, b) => a - b));
         expect(positions.every((position) => position >= 0)).toBe(true);
 
         const card = boardCardHtml(catCtx, row({ category: '版面 & 字型' }, 3, [png, mp4]), 0);
-        for (const needle of ['data-card-action', 'data-lightbox-trigger', 'data-category-autosave', 'data-dialog-open="edit-report-', 'data-delete-report', '2 張附件']) {
+        for (const needle of ['data-card-action', 'data-attachment-thumbs', 'data-category-autosave', 'data-dialog-open="edit-report-', 'data-delete-report']) {
             expect(card, needle).toContain(needle);
         }
         for (const gone of ['data-chat-open', '調整重點']) {
             expect(card, gone).not.toContain(gone);
         }
-        // the client side also gets the complete button; the team does not
-        expect(listRowHtml({ ...ctx, isOwner: false }, row({}))).toContain('data-complete-report');
-        expect(listRowHtml(ctx, row({}))).not.toContain('data-complete-report');
+        // both sides get the complete button; the team's opens the request-completion dialog, the client's is a status form
+        const clientRow = listRowHtml({ ...ctx, isOwner: false }, row({}));
+        expect(clientRow).toContain('data-complete-report');
+        expect(clientRow).not.toContain('data-request-completion');
+        const teamRow = listRowHtml(ctx, row({}));
+        expect(teamRow).toContain('data-request-completion="0199c3a1-0000-4000-8000-000000000001"');
+        expect(teamRow).toContain('data-dialog-open="request-completion-0199c3a1-0000-4000-8000-000000000001"');
+        expect(boardCardHtml(ctx, row({}), 0)).toContain('data-request-completion=');
+        // a completed report has no button on either side
+        expect(listRowHtml(ctx, row({ status: 'completed' }))).not.toContain('data-complete-report');
+        expect(boardCardHtml(ctx, row({ status: 'completed' }), 0)).not.toContain('data-complete-report');
     });
 
     it('row click ignores the action buttons and thumbnails (they are links, buttons or forms)', () => {
         const html = listRowHtml({ ...ctx, isOwner: false }, row({}, 0, [png]));
         // every clickable control sits in an <a>, <button> or <form>, which row-link.js already skips
         expect(html).toContain('<a href="/p/demo/reports/');
-        expect(html).toMatch(/<a [^>]*data-lightbox-trigger/);
+        expect(html).toMatch(/<button [^>]*data-open-album/);
         expect(html).toMatch(/<button [^>]*data-dialog-open="edit-report-/);
     });
 

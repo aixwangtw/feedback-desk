@@ -80,18 +80,6 @@ export async function messagesForReport(db: D1Database, reportId: number): Promi
     return results;
 }
 
-/**
- * 狀態變更紀錄（活動時間軸用）：report_events 裡 kind = 'status' 的列，detail 是「new>needs_input」。
- * 沒記到動作者的狀態變更不會有紀錄，也就不會出現在時間軸。
- */
-export async function statusEventsForReport(db: D1Database, reportId: number): Promise<StatusEventRow[]> {
-    const { results } = await db
-        .prepare("SELECT id, detail, actor_name, agent, developer_id, created_at FROM report_events WHERE report_id = ? AND kind = 'status' ORDER BY id")
-        .bind(reportId)
-        .all<StatusEventRow>();
-    return results;
-}
-
 export interface StatusEventRow {
     id: number;
     detail: string | null;

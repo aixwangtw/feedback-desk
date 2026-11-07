@@ -7,6 +7,7 @@ import { fileProblem, isVideoMime } from '../src/shared/attachment-rules';
 import { openDialogThread } from './report-dialog-thread.js';
 import { reopenPendingReport } from './completion.js';
 import './row-link.js';
+import './attachment-thumbs.js';
 import { isEditingMessage, replaceKeepingOpen } from './thread-details.js';
 import { boardColumnHtml, listHtml, PORTAL_ROWS_ELEMENT_ID } from '../src/worker/views/rows-client';
 
@@ -482,6 +483,15 @@ const loadReportDialogs = async (opener) => {
     }
     await source.dialogsLoading;
 };
+
+// 詳情窄欄的「⋯」選單：點選單外面或選了選單裡的動作就收起來。
+document.addEventListener('click', (event) => {
+    document.querySelectorAll('details[data-action-menu][open]').forEach((menu) => {
+        if (!menu.contains(event.target) || event.target.closest('[data-dialog-open], [data-chat-open], button[type=submit]')) {
+            menu.open = false;
+        }
+    });
+});
 
 document.addEventListener('click', async (event) => {
     const opener = event.target.closest('[data-dialog-open]');

@@ -253,7 +253,7 @@ describe('new replies on the client side', () => {
         expect(clientPage).toContain('data-chat-root');
 
         const ownerPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
-        expect(ownerPage).toContain('<h2 class="text-base font-semibold text-slate-950">活動</h2>');
+        expect(ownerPage).toContain('<h2 class="text-base font-semibold text-slate-950">留言</h2>');
         expect(ownerPage).not.toContain('留言給開發團隊');
         expect(ownerPage).not.toContain('我們會看到並回覆');
 

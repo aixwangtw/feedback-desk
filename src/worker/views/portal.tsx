@@ -9,6 +9,7 @@ import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastN
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
+import { THREAD_HEADING, type RowThumb } from '../../shared/album-thumbs';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
@@ -24,12 +25,16 @@ export interface PortalRow {
      * changed adjustment for the client. The number of the small red dot beside the title.
      */
     unread: number;
-    /** 這張單自己的附件（不含留言的附件）；清單的附件欄與看板卡片的縮圖用。 */
-    attachments: Attachment[];
+    /** 清單的附件欄與看板卡片的縮圖：這張單所有附件（原始＋留言，收回的不算、不含草稿）最新的排最前，最多 LIST_THUMB_LIMIT 張（lib/album.ts）。 */
+    thumbs: RowThumb[];
+    /** 這張單所有附件的數量（縮圖之外用「+N」表示）。 */
+    thumbTotal: number;
 }
 
 /** 詳情視窗要的資料：清單列再加上舊的調整重點附件（清單本身不載入）。 */
 export interface DialogRow extends PortalRow {
+    /** 這張單自己的附件（不含留言的附件）；編輯視窗的「移除附件」用。 */
+    attachments: Attachment[];
     adjustmentAttachments: Attachment[];
 }
 
@@ -361,6 +366,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
             {/* Per-report dialogs are fetched from /dialogs the first time one is opened, which keeps the
                 page small enough to render within the Workers CPU budget. After a failed edit, that
                 report's dialogs are rendered here directly so the edit dialog can reopen with errors. */}
+            <div hidden data-attachment-thumbs-url={paths.attachmentThumbs(project.slug)}></div>
             <div id="report-dialogs" data-report-dialogs>
                 {props.editingRow ? (
                     <ReportDialogs v={v} row={props.editingRow} slug={slug} isOwner={isOwner} backPath={props.backPath} attachmentUrl={attachmentUrl} categories={categories} form={form} />
@@ -419,12 +425,12 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                             {/* The thread comes from the same JSON the chat panel uses (server-escaped HTML); loading it marks the report read. */}
                             <section
                                 class="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-slate-100 pt-4"
-                                aria-label="活動"
+                                aria-label={THREAD_HEADING}
                                 data-dialog-thread
                                 data-thread-url={paths.conversation(slug, report.public_id)}
                                 data-report-id={report.public_id}
                             >
-                                <h3 class="text-sm font-bold text-slate-900">活動</h3>
+                                <h3 class="text-sm font-bold text-slate-900">{THREAD_HEADING}</h3>
                                 {isOwner ? null : <p class="rounded-lg bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-900" data-message-hint>有問題或補充，可以在下方直接留言給{v.cfg.labels.owner}。</p>}
                                 <div aria-live="polite" data-dialog-thread-body>
                                     <p class="py-4 text-center text-sm text-slate-500">留言載入中…</p>

@@ -59,3 +59,19 @@ export function isDeveloperSideAuthor(message: { author_type: string; author_cli
 export function isDeveloperSideCreator(creatorType: string): boolean {
     return creatorType !== 'client' && creatorType !== 'public';
 }
+
+/**
+ * 留言作者在畫面上的名字：開發團隊一律顯示人名——有開發者帳號就用帳號的名字（messages 查詢已換成帳號目前的 name），
+ * 共用身分（含 AI 工具代發）顯示 FEEDBACK_SHARED_OWNER_NAME（例如 Alex），不顯示「開發者」、不加 AI 工具名稱。
+ * 陌生人寫的公開單維持寫入時的團隊稱呼（不讓回報者知道團隊是誰）。
+ */
+export function teamMessageName(
+    cfg: { labels: { client: string; owner: string }; sharedOwnerName: string },
+    report: { creator_type: string },
+    message: { author_type: string; author_name: string | null; author_client_account_id?: number | null; author_developer_id?: number | null },
+): string {
+    if (isDeveloperSideAuthor(message) && report.creator_type !== 'public') {
+        return (message.author_developer_id ?? null) !== null && message.author_name ? message.author_name : cfg.sharedOwnerName;
+    }
+    return message.author_name || (message.author_type === 'owner' ? cfg.labels.owner : message.author_type === 'agent' ? 'Vibe coding' : cfg.labels.client);
+}

@@ -9,6 +9,10 @@ import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
 import { attachmentTitle } from '../../shared/attachment-list';
+import { LIST_THUMB_LIMIT, type RowThumb } from '../../shared/album-thumbs';
+import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
+import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
+import { COMPLETE_CONFIRM } from '../../shared/status';
 import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { CHAT_ICON_PATHS, REPORT_LINK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
 
@@ -421,10 +425,10 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
                                 <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{v.cfg.labels.client}已刪除</span></p>
                                 <h3 class="truncate text-sm font-bold text-slate-950" data-chat-thread-title></h3>
                             </div>
-                            {/* 相簿鈕（照 LINE、Messenger 的「相片與影片」）：切到面板內這張單的附件格狀頁，有附件才顯示；附件不放在對話串裡。 */}
-                            <button type="button" class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="相簿" data-chat-album-open hidden>
+                            {/* 相簿鈕（照 LINE、Messenger 的「相片與影片」）：固定在標題列（捲動對話不會消失），徽章顯示附件數、有新附件時變色提示；切到面板內的附件頁，可返回對話並回到原本的捲動位置；附件不放在對話串裡。 */}
+                            <button type="button" class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="相簿" data-chat-album-open>
                                 <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m21 16-5-5-8 8" /></svg>
-                                相簿 <span class="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600" data-chat-album-count>0</span>
+                                相簿 <span class="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600" data-chat-album-count>0</span><span class="album-new-hint hidden text-[11px] font-bold text-teal-800" data-chat-album-new-hint>有新附件</span>
                             </button>
                             <a href="#" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-page-link>開啟完整頁</a>
                         </div>
@@ -464,3 +468,49 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
         </section>
     </div>
 );
+
+/**
+ * 「完成」鈕：清單、看板卡片、詳情右側窄欄共用（清單用字串版 rows.ts 的 completeButtonHtml，測試逐位元比對）。
+ * 客戶端：確認後把單改成已完成；開發團隊端：跳出確認留言視窗（RequestCompletionDialog），單維持等客戶。已完成的單不顯示。
+ */
+export const CompleteButton: FC<{ slug: string; publicId: string; status: ReportStatus; isOwner: boolean; clientLabel: string; backPath: string; compact?: boolean; cardAction?: boolean; approveForm?: boolean }> = ({ slug, publicId, status, isOwner, clientLabel, backPath, compact = false, cardAction = false, approveForm = false }) => {
+    if (status === 'completed') {
+        return null;
+    }
+    if (isOwner) {
+        return (
+            <button type="button" class={completeButtonClass(compact)} data-dialog-open={`request-completion-${publicId}`} data-request-completion={publicId} data-card-action={cardAction ? true : undefined} title={teamCompleteTitle(clientLabel, COMPLETION_APPROVE_LABEL)}>完成</button>
+        );
+    }
+    return (
+        <form method="post" action={paths.reportStatus(slug, publicId)} data-confirm={COMPLETE_CONFIRM} data-completion-approve-form={approveForm ? true : undefined}>
+            <input type="hidden" name="_back" value={backPath} />
+            <input type="hidden" name="status" value="completed" />
+            <button type="submit" class={completeButtonClass(compact)} data-complete-report data-card-action={cardAction ? true : undefined} title="確認沒問題，改成已完成">完成</button>
+        </form>
+    );
+};
+
+const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+
+/**
+ * 清單、看板的附件縮圖（最多 3 張＋「+N」）：點縮圖或「+N」打開該單詳情並捲到相簿。
+ * 清單用字串版 rows.ts 的 attachmentThumbsHtml（測試逐位元比對），輪詢端點也回傳同一份。
+ */
+export const AttachmentThumbs: FC<{ publicId: string; thumbs: RowThumb[]; total: number; card?: boolean }> = ({ publicId, thumbs, total, card = false }) => {
+    const shown = thumbs.slice(0, LIST_THUMB_LIMIT);
+    const more = total - shown.length;
+    return (
+        <div class={`flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}`} data-attachment-thumbs={publicId} data-attachment-count={total} data-card-action={card ? true : undefined} hidden={card && total === 0 ? true : undefined}>
+            {shown.map((thumb) => (
+                <button type="button" class={THUMB_TILE} data-dialog-open={`detail-report-${publicId}`} data-open-album title={`${thumb.isVideo ? '影片：' : ''}${thumb.name}（開啟相簿）`} aria-label={`開啟相簿：${thumb.name}`}>
+                    <AttachmentMedia src={thumb.url} name={thumb.name} mime={thumb.isVideo ? 'video/mp4' : 'image/jpeg'} class="size-full object-cover" />
+                </button>
+            ))}
+            {shown.length === 0 && !card ? <span class="text-xs text-slate-400">—</span> : null}
+            {more > 0 ? (
+                <button type="button" class={`${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200`} data-dialog-open={`detail-report-${publicId}`} data-open-album aria-label={`還有 ${more} 個附件，開啟相簿`} title="開啟相簿">+{more}</button>
+            ) : null}
+        </div>
+    );
+};

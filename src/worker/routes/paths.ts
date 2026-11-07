@@ -15,6 +15,7 @@ export const paths = {
     projectCategories: (slug: string) => `/p/${enc(slug)}/settings/categories`,
     uploads: (slug: string) => `/p/${enc(slug)}/uploads`,
     reportsStore: (slug: string) => `/p/${enc(slug)}/reports`,
+    attachmentThumbs: (slug: string) => `/p/${enc(slug)}/attachment-thumbs`,
     conversations: (slug: string) => `/p/${enc(slug)}/conversations`,
     conversation: (slug: string, publicId: string) => `/p/${enc(slug)}/conversations/${enc(publicId)}`,
     report: (slug: string, publicId: string) => `/p/${enc(slug)}/reports/${enc(publicId)}`,

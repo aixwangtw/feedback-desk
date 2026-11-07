@@ -9,7 +9,7 @@ import { charLength } from '../../shared/text';
 import type { Env } from '../env';
 import { config } from '../env';
 import type { Author } from './access';
-import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
+import { isDeveloperSideAuthor, isDeveloperSideCreator, teamMessageName, withAgent } from './agents';
 import { attachmentsForReport, findClientAccount, findProjectBySlug, messagesForReport } from './db';
 import { CLIENT_VISIBLE_SQL, type Attachment, type ClientAccount, type Project, type Report } from './models';
 import {
@@ -138,7 +138,6 @@ export async function getOwnReport(ctx: ClientContext, slug: string, identifier:
         report.creator_client_account_id ? findClientAccount(ctx.env.DB, report.creator_client_account_id) : Promise.resolve(null),
         clientReadAt(ctx.env.DB, report, ctx.account),
     ]);
-    const labels = config(ctx.env).labels;
     return {
         number: await sequenceNumber(ctx.env.DB, report, true),
         public_id: report.public_id,
@@ -158,7 +157,7 @@ export async function getOwnReport(ctx: ClientContext, slug: string, identifier:
         messages: await Promise.all(
             messages.map(async (message) => ({
                 author_type: message.author_type,
-                author: withAgent(message.author_name || (message.author_type === 'reporter' ? labels.client : labels.owner), message.author_agent, isDeveloperSideAuthor(message)),
+                author: withAgent(teamMessageName(config(ctx.env), report, message), message.author_agent, isDeveloperSideAuthor(message)),
                 created_at: message.created_at,
                 body: message.body,
                 attachments: await attachmentData(ctx, attachments.filter((a) => a.message_id === message.id)),

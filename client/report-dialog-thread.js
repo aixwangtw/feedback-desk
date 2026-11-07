@@ -113,6 +113,13 @@ const setupThread = (section) => {
             if (albumBox && typeof data.album_html === 'string' && data.album_html !== state.lastAlbum) {
                 state.lastAlbum = data.album_html;
                 albumBox.innerHTML = data.album_html;
+                // 清單上的縮圖格跟著同步。
+                document.dispatchEvent(new CustomEvent('feedback:album-changed', { detail: { id: section.dataset.reportId } }));
+            }
+            // 從清單縮圖點進來：相簿一載入就捲到相簿。
+            if (albumBox && document.documentElement.dataset.scrollAlbumFor === section.dataset.reportId && albumBox.childElementCount > 0) {
+                delete document.documentElement.dataset.scrollAlbumFor;
+                albumBox.scrollIntoView({ block: 'start', behavior: 'smooth' });
             }
             if (data.html !== state.lastHtml && !isEditingMessage(body)) {
                 const template = document.createElement('template');

@@ -9,11 +9,14 @@
  * 其餘欄位照改版前：編號、標題、狀態、分類、附件、建立者、建立日期、最後更新、操作（編輯、刪除；客戶端另有完成）。
  * 整列、整張卡片都能點開詳情（client/row-link.js）；編號與標題是藍色連結。
  */
+import { LIST_THUMB_LIMIT, type RowThumb } from '../../shared/album-thumbs';
 import { isVideoMime } from '../../shared/attachment-rules';
+import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
+import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
 import { COMPLETE_CONFIRM, statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, unreadDotLabel } from '../../shared/conversation';
 import { formatAbsolute, formatRelative } from '../../shared/time';
-import type { Attachment, Report } from '../lib/models';
+import type { Report } from '../lib/models';
 import { paths } from '../routes/paths';
 import { CARD_HOVER_CLASS, REPORT_LINK_CLASS, ROW_CLICK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
 import type { ViewContext } from './components';
@@ -72,9 +75,38 @@ export function attachmentMediaHtml(src: string, name: string, mime: string | nu
     return `<span class="relative block overflow-hidden bg-slate-900 ${className}" data-attachment-video="true"><video muted="" playsinline="" preload="metadata" src="${esc(`${src}#t=0.1`)}" class="pointer-events-none size-full object-cover" aria-hidden="true" tabindex="-1"></video><span class="pointer-events-none absolute inset-0 grid place-items-center"><span class="grid size-7 place-items-center rounded-full bg-black/60 text-white ring-2 ring-white/80"><svg class="ml-0.5 size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></span></span><span class="sr-only">影片：${esc(name)}</span></span>`;
 }
 
-function thumb(href: string, attachment: Pick<Attachment, 'original_name' | 'mime_type'>): string {
-    const name = attachment.original_name;
-    return `<a href="${esc(href)}" target="_blank" rel="noreferrer" class="block size-10 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger="true" data-lightbox-alt="${esc(name)}" title="${isVideoMime(attachment.mime_type) ? '開新分頁播放' : '放大預覽'}">${attachmentMediaHtml(href, name, attachment.mime_type, 'size-full object-cover')}</a>`;
+/** CompleteButton（components.tsx）的字串版：清單、看板卡片用，已完成的單不顯示。 */
+export function completeButtonHtml(input: { slug: string; publicId: string; status: ReportStatus; isOwner: boolean; clientLabel: string; backPath: string; compact?: boolean; cardAction?: boolean; approveForm?: boolean }): string {
+    const { slug, publicId, status, isOwner, clientLabel, backPath, compact = false, cardAction = false, approveForm = false } = input;
+    if (status === 'completed') {
+        return '';
+    }
+    const id = esc(publicId);
+    const card = cardAction ? ' data-card-action="true"' : '';
+    if (isOwner) {
+        return `<button type="button" class="${completeButtonClass(compact)}" data-dialog-open="request-completion-${id}" data-request-completion="${id}"${card} title="${esc(teamCompleteTitle(clientLabel, COMPLETION_APPROVE_LABEL))}">完成</button>`;
+    }
+    return `<form method="post" action="${esc(paths.reportStatus(slug, publicId))}" data-confirm="${COMPLETE_CONFIRM}"${approveForm ? ' data-completion-approve-form="true"' : ''}><input type="hidden" name="_back" value="${esc(backPath)}"/><input type="hidden" name="status" value="completed"/><button type="submit" class="${completeButtonClass(compact)}" data-complete-report="true"${card} title="確認沒問題，改成已完成">完成</button></form>`;
+}
+
+const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+
+/** AttachmentThumbs（components.tsx）的字串版：清單、看板的附件縮圖（最多 3 張＋「+N」），輪詢端點也回傳這份。 */
+export function attachmentThumbsHtml(publicId: string, thumbs: RowThumb[], total: number, card = false): string {
+    const id = esc(publicId);
+    const shown = thumbs.slice(0, LIST_THUMB_LIMIT);
+    const more = total - shown.length;
+    let html = `<div class="flex flex-wrap items-center gap-1 ${card ? 'mt-3' : 'sm:justify-center'}" data-attachment-thumbs="${id}" data-attachment-count="${total}"${card ? ' data-card-action="true"' : ''}${card && total === 0 ? ' hidden=""' : ''}>`;
+    for (const thumb of shown) {
+        html += `<button type="button" class="${THUMB_TILE}" data-dialog-open="detail-report-${id}" data-open-album="true" title="${esc(`${thumb.isVideo ? '影片：' : ''}${thumb.name}（開啟相簿）`)}" aria-label="${esc(`開啟相簿：${thumb.name}`)}">${attachmentMediaHtml(thumb.url, thumb.name, thumb.isVideo ? 'video/mp4' : 'image/jpeg', 'size-full object-cover')}</button>`;
+    }
+    if (shown.length === 0 && !card) {
+        html += '<span class="text-xs text-slate-400">—</span>';
+    }
+    if (more > 0) {
+        html += `<button type="button" class="${THUMB_TILE} grid place-items-center bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200" data-dialog-open="detail-report-${id}" data-open-album="true" aria-label="${esc(`還有 ${more} 個附件，開啟相簿`)}" title="開啟相簿">+${more}</button>`;
+    }
+    return `${html}</div>`;
 }
 
 function dialogsSrc(ctx: RowContext, publicId: string): string {
@@ -101,7 +133,6 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     const report = row.report;
     const id = esc(report.public_id);
     const deleted = report.client_deleted_at !== null;
-    const url = (attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<tr class="block ${ROW_CLICK_CLASS} space-y-1 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle${deleted ? ' bg-slate-50 text-slate-500' : ''}" data-report-row="${id}" data-row-link="detail-report-${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
     html += `<td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-3 sm:align-middle">${reportLinkHtml(ctx, report.public_id, `<span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span>`)}</td>`;
@@ -114,22 +145,12 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     if (ctx.showCategory) {
         html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-category="true"><span class="font-semibold text-slate-500 sm:hidden">分類：</span>${(ctx.categories ?? []).length > 0 ? categorySelectHtml(ctx, report, 'row-category', 'justify-start sm:justify-center') : esc(report.category || '未分類')}</td>`;
     }
-    html += '<td class="block empty:hidden sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">';
-    if (row.attachments.length > 0) {
-        html += '<div class="flex flex-wrap gap-1 sm:justify-center">';
-        for (const attachment of row.attachments) html += thumb(url(attachment), attachment);
-        html += '</div>';
-    } else {
-        html += '<span class="text-xs text-slate-400">—</span>';
-    }
-    html += '</td>';
+    html += `<td class="block sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">${attachmentThumbsHtml(report.public_id, row.thumbs, row.thumbTotal)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator="true"><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>${esc(row.creatorLabel)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
     html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center"><div class="flex flex-wrap gap-2 sm:justify-center"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
-    if (!isOwner && report.status !== 'completed') {
-        html += `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" data-confirm="${COMPLETE_CONFIRM}">${back}<input type="hidden" name="status" value="completed"/><button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report="true">完成</button></form>`;
-    }
+    html += completeButtonHtml({ slug, publicId: report.public_id, status: report.status, isOwner, clientLabel: v.cfg.labels.client, backPath: ctx.backPath });
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report="true">還原</button></form>`;
     }
@@ -145,7 +166,6 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     const report = row.report;
     const id = esc(report.public_id);
     const title = esc(report.title);
-    const url = (attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     const deleted = report.client_deleted_at !== null;
     let html = `<article class="${ROW_CLICK_CLASS} rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm ${CARD_HOVER_CLASS}${deleted ? ' opacity-70' : ''}" data-kanban-card="true" data-report-id="${id}" data-status="${report.status}" data-board-order="${order}" data-row-link="detail-report-${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
@@ -154,10 +174,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         html += categorySelectHtml(ctx, report, 'card-category', 'mt-1');
     }
     html += '</div>';
-    const complete =
-        !isOwner && report.status !== 'completed'
-            ? `<form method="post" action="${esc(paths.reportStatus(slug, report.public_id))}" data-confirm="${COMPLETE_CONFIRM}">${back}<input type="hidden" name="status" value="completed"/><button type="submit" class="inline-flex h-8 cursor-pointer items-center rounded-lg px-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-card-action="true" data-complete-report="true">完成</button></form>`
-            : '';
+    const complete = completeButtonHtml({ slug, publicId: report.public_id, status: report.status, isOwner, clientLabel: v.cfg.labels.client, backPath: ctx.backPath, compact: true, cardAction: true });
     html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${complete}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「${title}」" title="還原" data-card-action="true" data-restore-report="true"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button></form>`;
@@ -170,10 +187,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
     if (isOwner && deleted) {
         html += `<span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted="true">${esc(v.cfg.labels.client)}已刪除</span>`;
     }
-    const first = row.attachments[0];
-    if (first) {
-        html += `<div class="mt-3 flex items-center gap-2">${thumb(url(first), first)}<span class="text-xs font-medium text-slate-500">${row.attachments.length} 張附件</span></div>`;
-    }
+    html += attachmentThumbsHtml(report.public_id, row.thumbs, row.thumbTotal, true);
     html += `<p class="mt-3 text-xs text-slate-500" data-report-creator="true">建立者：${esc(row.creatorLabel)}</p>`;
     html += `<p class="mt-1 text-xs text-slate-500">更新於 ${time(v, report.latest_activity_at, true)}</p>`;
     html += '</article>';

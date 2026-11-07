@@ -2,16 +2,17 @@ import type { FC } from 'hono/jsx';
 import type { Attachment, Message, Project, Report } from '../lib/models';
 import type { DraftView } from '../lib/drafts';
 import type { Notifications } from '../lib/notifications';
-import { COMPLETE_CONFIRM, isStatus, statusLabel, type StatusLabels } from '../../shared/status';
+import { isStatus, statusLabel, type StatusLabels } from '../../shared/status';
 import { COMPLETION_APPROVE_LABEL, defaultCompletionBody } from '../../shared/completion';
-import { buildTimeline, latestCompletionRequestId, type TimelineStatusEvent } from '../../shared/timeline';
+import { buildTimeline, latestCompletionRequestId } from '../../shared/timeline';
 import type { AlbumItem } from '../lib/album';
 import { canManageMessage } from '../../shared/message-manage';
-import { isDeveloperSideAuthor, withAgent } from '../lib/agents';
+import { isDeveloperSideAuthor, teamMessageName, withAgent } from '../lib/agents';
 import { MAX_MESSAGE } from '../lib/reports';
 import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES, MAX_IMAGE_BYTES } from '../lib/uploads';
 import { paths } from '../routes/paths';
-import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, cx, Layout, StatusBadge, Time, type ViewContext } from './components';
+import { THREAD_HEADING } from '../../shared/album-thumbs';
+import { AttachmentCaption, AttachmentMedia, attachmentLinkTitle, CompleteButton, cx, Layout, StatusBadge, Time, type ViewContext } from './components';
 import { IMAGE_ACCEPT, isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { RichText } from './rich-text';
 
@@ -81,7 +82,6 @@ export interface ActivityProps {
     /** Smaller thumbnails, for the chat panel. */
     compact?: boolean;
     /** 狀態變更（時間軸裡置中的一行）；沒給就只有留言。 */
-    statusEvents?: TimelineStatusEvent[];
     /** 看的人能不能按確認留言上的「通過」：只有客戶端（能結案的一方）、單還沒完成。 */
     canApprove?: boolean;
     /** 最新一則「請確認完成」留言的 id（含已收回的）：最新那則被收回後，「通過」鈕跟著消失，不退回舊的那則。 */
@@ -90,14 +90,10 @@ export interface ActivityProps {
     viewerAccountId?: number | null;
 }
 
-function authorLabel(v: ViewContext, type: Message['author_type']): string {
-    return type === 'owner' ? v.cfg.labels.owner : type === 'agent' ? 'Vibe coding' : v.cfg.labels.client;
-}
-
 /** 留言作者顯示名稱（留言泡泡與相簿來源共用）；陌生人寫的公開單不讓看的人知道是哪個 AI 工具回的。 */
 export function messageAuthorLabel(v: ViewContext, report: Pick<Report, 'creator_type'>, message: Message, viewerIsOwner: boolean): string {
     const hideAgents = report.creator_type === 'public' && !viewerIsOwner;
-    return withAgent(message.author_name || authorLabel(v, message.author_type), hideAgents ? null : message.author_agent, isDeveloperSideAuthor(message));
+    return withAgent(teamMessageName(v.cfg, report, message), hideAgents ? null : message.author_agent, isDeveloperSideAuthor(message));
 }
 
 const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
@@ -107,12 +103,12 @@ const BUBBLE_CLASSES: Record<Message['author_type'], [string, string]> = {
 };
 
 /**
- * 活動時間軸：留言泡泡與狀態變更依時間排在一起，單頁、詳情視窗、右下角面板共用。自己這一方的留言靠右；
- * 狀態變更是置中的一行，團隊端另顯示是誰改的，客戶端只顯示改成什麼狀態。
+ * 留言時間軸（留言泡泡），單頁、詳情視窗、右下角面板共用。自己這一方的留言靠右；
+ * 不列狀態變更紀錄（單目前的狀態在右側欄）；團隊一律顯示人名（lib/agents.ts 的 teamName），不顯示「開發者」或 AI 工具名稱。
  * 「請確認完成」的留言：客戶端（canApprove）在最新一則上看到「通過」按鈕，團隊端看不到也按不了。
  */
-export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact, statusEvents, canApprove, latestRequestId, viewerAccountId }) => {
-    const entries = buildTimeline(messages, statusEvents ?? []);
+export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, messageAttachments, attachmentUrl, viewerIsOwner, compact, canApprove, latestRequestId, viewerAccountId }) => {
+    const entries = buildTimeline(messages);
     const approveId = canApprove ? (latestRequestId !== undefined ? latestRequestId : latestCompletionRequestId(messages)) : null;
     const allowVideo = !(report.creator_type === 'public' && !viewerIsOwner);
     return (
@@ -121,15 +117,6 @@ export const Activity: FC<ActivityProps> = ({ v, slug, report, messages, message
             <li class="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500" data-chat-empty>還沒有留言，新的處理進度會顯示在這裡。</li>
         ) : (
             entries.map((entry) => {
-                if (entry.type === 'status') {
-                    const to = isStatus(entry.to) ? statusLabel(entry.to, v.cfg.statusLabels) : entry.to;
-                    const who = viewerIsOwner ? `${withAgent(entry.actor, entry.agent, entry.developerSide)} ` : '';
-                    return (
-                        <li class="flex justify-center" data-chat-event="status" data-status-to={entry.to}>
-                            <p class="max-w-full rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-600">{who}將狀態改為「<span class="font-semibold text-slate-800">{to}</span>」 <Time v={v} at={entry.at} relative class="text-slate-400" /></p>
-                        </li>
-                    );
-                }
                 const message = entry.message;
                 const isMine = viewerIsOwner === (message.author_type !== 'reporter');
                 const [bubbleClass, nameClass] = BUBBLE_CLASSES[message.author_type] ?? BUBBLE_CLASSES.reporter;
@@ -214,7 +201,7 @@ export const Album: FC<{ v: ViewContext; publicId: string; items: AlbumItem[] }>
         </section>
     );
 
-/** 對話內容：活動時間軸（附件相簿另放，見 Album）。單頁（activity 端點）、詳情視窗、右下角面板（對話端點）共用。 */
+/** 對話內容：留言時間軸（附件相簿另放，見 Album）。單頁（activity 端點）、詳情視窗、右下角面板（對話端點）共用。 */
 export const Thread: FC<ActivityProps> = (activity) => (
     <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
         <Activity {...activity} />
@@ -358,7 +345,7 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
                     return (
                         <li class="rounded-xl border border-dashed border-amber-400 bg-white p-3.5 shadow-sm" data-message-draft={String(draft.id)} data-draft-send-url={paths.draftSend(slug, publicId, draft.id)}>
                             <div class="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
-                                <span class="font-semibold text-amber-900">{withAgent(draft.display_author, draft.author_agent, true)}</span>
+                                <span class="font-semibold text-amber-900">{withAgent(draft.author_developer_id === null ? v.cfg.sharedOwnerName : draft.display_author, draft.author_agent, true)}</span>
                                 <Time v={v} at={draft.updated_at} relative />
                                 {draft.replaces_message_id !== null ? (
                                     <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900" data-draft-replaces={String(draft.replaces_message_id)}>修改原留言</span>
@@ -532,66 +519,72 @@ export const WorkPanel: FC<{ v: ViewContext; slug: string; publicId: string; wor
 };
 
 /**
- * Jira 式右側窄欄的動態部分：狀態、「完成」鈕、建立者、時間（詳情視窗與單頁共用；詳情視窗靠對話端點的 side_html 隨狀態更新）。
- * 完成鈕：客戶端按了確認後直接把單改成已完成；開發團隊端按了只會跳出確認留言視窗（RequestCompletionDialog），
- * 單維持等客戶，不會直接結案。編輯、刪除等操作在 DetailActions，不隨狀態更新。
+ * Jira 式右側「詳細資料」窄欄的動態部分（詳情視窗與單頁共用；詳情視窗靠對話端點的 side_html 隨狀態更新）：
+ * 左右兩欄「標籤｜值」每列一行：狀態（左膠囊、右「完成」鈕）、建立者、建立時間、最後更新；標籤灰色小字、值一般字。
+ * 完成鈕是 CompleteButton（清單、看板共用）：客戶端按了確認後直接把單改成已完成；開發團隊端按了只會跳出確認留言視窗（RequestCompletionDialog），
+ * 單維持等客戶，不會直接結案；說明放在按鈕的提示文字，不佔版面。編輯、刪除等操作在 DetailActions，不隨狀態更新。
  */
 export const DetailSide: FC<{ v: ViewContext; slug: string; report: Report; isOwner: boolean; canManage: boolean; creatorLabel: string | null }> = ({ v, slug, report, isOwner, canManage, creatorLabel }) => {
     const labels = v.cfg.labels;
     const id = report.public_id;
     return (
         <div class="grid gap-4" data-detail-side>
-            <div>
-                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">狀態</p>
-                <div class="mt-1.5" data-report-status-badge={id}>
-                    <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
-                </div>
-            </div>
-            {canManage && report.status !== 'completed' ? (
-                <div data-detail-complete>
-                    {isOwner ? (
-                        <>
-                            <button type="button" class="inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-dialog-open={`request-completion-${id}`} data-request-completion={id} title={`發一則確認留言，請${labels.client}確認；不會直接結案`}>完成</button>
-                            <p class="mt-1 text-[11px] leading-4 text-slate-500">會發確認留言請{labels.client}按「{COMPLETION_APPROVE_LABEL}」，不會直接結案。</p>
-                        </>
-                    ) : (
-                        <form method="post" action={paths.reportStatus(slug, id)} data-confirm={COMPLETE_CONFIRM} data-completion-approve-form>
-                            <input type="hidden" name="_back" value={paths.report(slug, id)} />
-                            <input type="hidden" name="status" value="completed" />
-                            <button type="submit" class="inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" data-complete-report>完成</button>
-                        </form>
-                    )}
-                </div>
-            ) : null}
-            <dl class="grid gap-3 text-xs">
-                {creatorLabel ? <div><dt class="text-slate-500">建立者</dt><dd class="mt-0.5 font-medium text-slate-800" data-report-creator>{creatorLabel}</dd></div> : null}
-                <div><dt class="text-slate-500">建立時間</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.created_at} /></dd></div>
-                <div><dt class="text-slate-500">最後更新</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.latest_activity_at} relative /></dd></div>
+            <dl class="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-xs" data-detail-fields>
+                <dt class="text-slate-500">狀態</dt>
+                <dd class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span data-report-status-badge={id}>
+                        <StatusBadge status={report.status} labels={v.cfg.statusLabels} />
+                    </span>
+                    {canManage && report.status !== 'completed' ? (
+                        <span data-detail-complete>
+                            <CompleteButton slug={slug} publicId={id} status={report.status} isOwner={isOwner} clientLabel={labels.client} backPath={paths.report(slug, id)} approveForm />
+                        </span>
+                    ) : null}
+                </dd>
+                {creatorLabel ? (
+                    <>
+                        <dt class="text-slate-500">建立者</dt>
+                        <dd class="min-w-0 break-words font-medium text-slate-800" data-report-creator>{creatorLabel}</dd>
+                    </>
+                ) : null}
+                <dt class="text-slate-500">建立時間</dt>
+                <dd class="font-medium text-slate-800"><Time v={v} at={report.created_at} /></dd>
+                <dt class="text-slate-500">最後更新</dt>
+                <dd class="font-medium text-slate-800"><Time v={v} at={report.latest_activity_at} relative /></dd>
                 {isOwner && report.client_deleted_at ? (
-                    <div data-client-deleted><dt class="text-slate-500">{labels.client}已刪除</dt><dd class="mt-0.5 font-medium text-slate-800"><Time v={v} at={report.client_deleted_at} /></dd></div>
+                    <>
+                        <dt class="text-slate-500" data-client-deleted>{labels.client}已刪除</dt>
+                        <dd class="font-medium text-slate-800"><Time v={v} at={report.client_deleted_at} /></dd>
+                    </>
                 ) : null}
             </dl>
         </div>
     );
 };
 
-const ACTION_BUTTON = 'inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+const ACTION_BUTTON = 'inline-flex min-h-8 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
+const MENU_ITEM = 'block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50 focus:outline-none focus-visible:bg-slate-100';
 
-/** 詳情視窗右側窄欄下方的操作：編輯、還原、刪除、完整頁、在對話面板開啟。 */
+/** 詳情視窗右側窄欄下方的操作：主要操作（編輯、完整頁）一列，其他（在對話面板開啟、還原、刪除）收進「⋯」選單，刪除用紅字。 */
 export const DetailActions: FC<{ slug: string; report: Report; isOwner: boolean; backPath: string }> = ({ slug, report, isOwner, backPath }) => {
     const id = report.public_id;
     return (
-        <div class="flex flex-wrap gap-2 border-t border-slate-100 pt-3" data-detail-actions>
+        <div class="flex items-center gap-2 border-t border-slate-200 pt-3" data-detail-actions>
             <button type="button" class={ACTION_BUTTON} data-dialog-open={`edit-report-${id}`}>編輯</button>
-            {isOwner && report.client_deleted_at ? (
-                <form method="post" action={paths.reportRestore(slug, id)}>
-                    <input type="hidden" name="_back" value={backPath} />
-                    <button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report>還原</button>
-                </form>
-            ) : null}
-            <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-dialog-open={isOwner ? `delete-report-${id}` : `client-delete-report-${id}`} data-delete-report={isOwner ? '' : undefined} data-client-delete-report={isOwner ? undefined : ''}>刪除</button>
             <a href={paths.report(slug, id)} class={ACTION_BUTTON}>完整頁</a>
-            <button type="button" class={ACTION_BUTTON} data-chat-open={id}>在對話面板開啟</button>
+            <details class="relative ml-auto" data-action-menu>
+                <summary class={`${ACTION_BUTTON} cursor-pointer list-none px-2.5 text-base leading-none [&::-webkit-details-marker]:hidden`} aria-label="更多操作" title="更多操作">⋯</summary>
+                <div class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5">
+                    <button type="button" class={MENU_ITEM} data-chat-open={id}>在對話面板開啟</button>
+                    {isOwner && report.client_deleted_at ? (
+                        <form method="post" action={paths.reportRestore(slug, id)}>
+                            <input type="hidden" name="_back" value={backPath} />
+                            <button type="submit" class={`${MENU_ITEM} text-teal-800`} data-restore-report>還原</button>
+                        </form>
+                    ) : null}
+                    <button type="button" class={`${MENU_ITEM} text-rose-700 hover:bg-rose-50`} data-dialog-open={isOwner ? `delete-report-${id}` : `client-delete-report-${id}`} data-delete-report={isOwner ? '' : undefined} data-client-delete-report={isOwner ? undefined : ''}>刪除</button>
+                </div>
+            </details>
         </div>
     );
 };
@@ -690,7 +683,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
                             <div class="min-w-0">
                                 {isOwner || readOnly ? (
-                                    <h2 class="text-base font-semibold text-slate-950">活動</h2>
+                                    <h2 class="text-base font-semibold text-slate-950">{THREAD_HEADING}</h2>
                                 ) : (
                                     <>
                                         <h2 class="text-lg font-bold text-slate-950">留言給{labels.owner}</h2>
@@ -704,7 +697,7 @@ export const ReportPage: FC<ReportPageProps> = (props) => {
                         </div>
 
                         <div class="bg-slate-50/60 px-4 py-5 sm:px-7" data-activity data-refresh-url={paths.reportActivity(slug, report.public_id)} data-etag={props.activityEtag}>
-                            <Thread v={v} slug={slug} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} statusEvents={props.statusEvents} canApprove={props.canApprove} latestRequestId={props.latestRequestId} viewerAccountId={props.viewerAccountId} />
+                            <Thread v={v} slug={slug} report={report} messages={props.messages} messageAttachments={props.messageAttachments} attachmentUrl={attachmentUrl} viewerIsOwner={isOwner} canApprove={props.canApprove} latestRequestId={props.latestRequestId} viewerAccountId={props.viewerAccountId} />
                         </div>
 
                         {isOwner && props.drafts && props.drafts.length > 0 ? <DraftsSection v={v} slug={slug} publicId={report.public_id} drafts={props.drafts} draftErrors={props.draftErrors} anchor /> : null}

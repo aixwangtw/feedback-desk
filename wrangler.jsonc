@@ -24,6 +24,8 @@
     "vars": {
         "FEEDBACK_LABEL_CLIENT": "客戶",
         "FEEDBACK_LABEL_OWNER": "開發團隊",
+        // 共用團隊身分（共用 owner 帳號、AI 工具代發）在畫面上顯示的名字；開發者個人帳號顯示帳號的 name。
+        "FEEDBACK_SHARED_OWNER_NAME": "Alex",
         "FEEDBACK_PORTAL_TITLE": "問題回報追蹤",
         "FEEDBACK_HOME_TITLE": "問題回報",
         "FEEDBACK_HOME_EYEBROW": "Feedback Desk",

@@ -51,7 +51,7 @@ import {
 } from './reports';
 import { signedAttachmentUrl } from './signed';
 import type { Author } from './access';
-import { isDeveloperSideAuthor, isDeveloperSideCreator, withAgent } from './agents';
+import { isDeveloperSideAuthor, isDeveloperSideCreator, teamMessageName, withAgent } from './agents';
 import { findClaimableUploads } from './uploads';
 import { createDraft, parseReplaceMessageId, validatedDraftBody } from './drafts';
 import { paths } from '../routes/paths';
@@ -245,7 +245,6 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         report.creator_developer_id ? findDeveloper(ctx.env.DB, report.creator_developer_id) : Promise.resolve(null),
         report.creator_client_account_id ? findClientAccount(ctx.env.DB, report.creator_client_account_id) : Promise.resolve(null),
     ]);
-    const labels = config(ctx.env).labels;
     return {
         number: await sequenceNumber(ctx.env.DB, report, false),
         client_number: isVisibleToClient(report) ? await sequenceNumber(ctx.env.DB, report, true) : null,
@@ -272,7 +271,7 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
             messages.map(async (message) => ({
                 id: message.id,
                 author_type: message.author_type,
-                author: withAgent(message.author_name || (message.author_type === 'owner' ? labels.owner : message.author_type === 'agent' ? 'Vibe coding' : labels.client), message.author_agent, isDeveloperSideAuthor(message)),
+                author: withAgent(teamMessageName(config(ctx.env), report, message), message.author_agent, isDeveloperSideAuthor(message)),
                 created_at: message.created_at,
                 body: message.body,
                 attachments: await attachmentData(ctx, attachments.filter((a) => a.message_id === message.id)),
@@ -402,7 +401,7 @@ export async function workState(ctx: WorkViewer, report: Report) {
         })),
         recent_activity: (events.results as Array<{ kind: string; agent: string | null; detail: string | null; created_at: string; actor: string; developer_id: number | null; client_account_id: number | null }>).map((event) => ({
             kind: event.kind,
-            by: withAgent(event.actor, event.agent, event.client_account_id === null && (event.developer_id !== null || event.actor === config(ctx.env).labels.owner)),
+            by: withAgent(event.client_account_id === null && event.developer_id === null && [config(ctx.env).labels.owner, config(ctx.env).sharedOwnerName].includes(event.actor) ? config(ctx.env).sharedOwnerName : event.actor, event.agent, event.client_account_id === null && (event.developer_id !== null || [config(ctx.env).labels.owner, config(ctx.env).sharedOwnerName].includes(event.actor))),
             detail: event.detail,
             at: event.created_at,
         })),

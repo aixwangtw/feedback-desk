@@ -120,5 +120,6 @@
     @endif
 
     <x-feedback.image-lightbox />
+    <x-feedback.confirm-dialog id="confirm-dialog" />
 </body>
 </html>

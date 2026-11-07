@@ -49,7 +49,7 @@
                         @csrf
                         <button type="submit" class="inline-flex min-h-9 items-center rounded-lg bg-teal-700 px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-draft-send>送出</button>
                     </form>
-                    <form method="POST" action="{{ route('feedback.drafts.destroy', [$project, $report, $draft]) }}" onsubmit="return confirm('確定捨棄這則待審留言？')" data-draft-form="discard">
+                    <form method="POST" action="{{ route('feedback.drafts.destroy', [$project, $report, $draft]) }}" {{ app(\App\Support\FeedbackConfirmText::class)->attributes(app(\App\Support\FeedbackConfirmText::class)->discardDraft()) }} data-draft-form="discard">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="inline-flex min-h-9 items-center rounded-lg border border-rose-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-draft-discard>捨棄</button>

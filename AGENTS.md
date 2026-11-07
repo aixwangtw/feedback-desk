@@ -17,7 +17,10 @@
   團隊身分的留言任何開發者可動，老師只能動自己的（`FeedbackMessage::isManageableBy`）。不留痕跡：不顯示「已編輯」，收回用軟刪除、畫面與 API 都當它不存在（附件網址也 404），不改單的狀態。
   網頁、CLI（`feedback:message-edit`、`feedback:message-withdraw`）、MCP（`edit_message`、`withdraw_message`）、巡檢 API（PUT／DELETE `.../messages/{id}`）都走 `ManageFeedbackMessageAction`，不要另寫。新增查詢留言的地方一律走 Eloquent 關聯（預設排除已收回），不要用 DB::table 直接查 feedback_messages。
 - 附件即時更新（2026-11-07 使用者原話「留言內的新附件 要更新附件欄位 方便隨時從列表查看」「不要只是置頂對話」）：列表、看板、詳情相簿、面板相簿的附件都來自 `FeedbackAlbum`（單張單用 `items`，列表用 `listItemsForReports`，同一套規則：原始附件＋未收回留言的附件，草稿只進團隊的相簿），前端縮圖用 `feedback.reports._attachment-thumbs`（列表、看板、輪詢端點共用）。
-  列表縮圖最新的排最前、最多 3 張＋「+N」，點了開詳情並捲到相簿；`attachment-thumbs.js` 每 8 秒輪詢 `feedback.attachment-thumbs.index`（也聽 `feedback:album-changed`）。面板相簿鈕固定在標題列、徽章顯示數量、有新附件時變色提示（`data-album-new`），返回對話還原原本的捲動位置。不要把相簿做回置頂在對話串裡。
+  列表縮圖最新的排最前、最多 3 張＋「+N」，點了直接開附件燈箱（見下方規則，不開詳情）；`attachment-thumbs.js` 每 8 秒輪詢 `feedback.attachment-thumbs.index`（也聽 `feedback:album-changed`）。面板相簿鈕固定在標題列、徽章顯示數量、有新附件時變色提示（`data-album-new`），返回對話還原原本的捲動位置。不要把相簿做回置頂在對話串裡。
 - 「完成」鈕只有一個元件 `x-feedback.complete-button`（列表、看板、詳情窄欄共用）：客戶端確認後直接完成；團隊端開確認留言視窗（`_completion-dialog`），單維持等客戶，已完成不顯示。
 - 詳情窄欄（`_detail-side`）是左右兩欄「標籤｜值」：狀態（左膠囊、右完成鈕）、建立者、建立時間、最後更新；編輯、完整頁一列，其他收進「⋯」選單（`data-action-menu`），刪除紅字。「留言」區標題文字只寫在 `config('feedback.labels.thread')`（原本叫「活動」）。
 - 留言區不列狀態變更紀錄（`FeedbackTimeline` 只回留言）。團隊一律顯示人名：個人帳號顯示帳號 `name`，共用身分（含 AI 代發）顯示 `FeedbackTeamName::shared()`（`FEEDBACK_SHARED_OWNER_NAME`，兩站都設 Alex）；畫面不顯示「開發者」或「（Claude Code）」，agent 只存資料庫。公開回報單維持團隊稱呼（不讓陌生人知道團隊是誰）。狀態名稱「等工程師」不改。
+- 列表與看板的操作按鈕一律並排不換行（2026-11-07 使用者原話「操作按鈕要並排 不要換行 附件點開只看附件 規則 可用現有欄位的寬度縮小空格」）：放不下就縮其他欄位的寬度與左右內距（編號、狀態、建立者、建立日期、最後更新，日期用短格式 `<x-feedback.time short>`），不准讓操作欄換行或把按鈕上下堆疊。標題欄要保留足夠寬度，1280 寬整張表不可出現橫向捲軸（表格不設 `min-w`）。看板卡片的操作按鈕同樣並排。改完用 375 與 1280 各看一次。
+- 附件縮圖點開只開附件燈箱：列表、看板縮圖與「+N」不開詳情、不捲相簿，一律開 `<dialog data-image-lightbox>`（`resources/js/attachment-lightbox.js`），只顯示這張單的附件，可左右切換、影片直接播放、下方顯示名稱／來自哪則留言／時間，Esc 或點背景關閉。燈箱與詳情、面板相簿共用同一個元件；清單縮圖的資料由 `_attachment-thumbs` 以 `data-lightbox-gallery` 帶入（來源仍是 `FeedbackAlbum`，客戶端拿不到草稿附件）。
+- 確認視窗（2026-11-07 使用者原話「點完成跟刪除都要彈出確認視窗」，後更正「通過、完成不跳」）：只有「刪除單」與「收回留言」（含捨棄待審留言）先跳確認視窗，用網站自己的元件 `x-feedback.confirm-dialog`＋`confirm-dialog.js`，不用瀏覽器 `confirm()`；文字只寫在 `App\Support\FeedbackConfirmText`，要寫明刪的是哪張單或哪則留言。客戶端「完成」「通過」直接執行不跳；團隊端「完成」維持可改字的確認留言視窗。

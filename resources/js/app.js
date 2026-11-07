@@ -1,4 +1,6 @@
 import './feedback';
+import './attachment-lightbox';
+import './confirm-dialog';
 import './attachment-composer';
 import './message-drafts-page';
 import './chat-panel';

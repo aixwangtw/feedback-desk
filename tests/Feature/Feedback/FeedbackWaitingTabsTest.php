@@ -114,7 +114,7 @@ class FeedbackWaitingTabsTest extends TestCase
 
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
         $this->assertStringContainsString('data-complete-report="'.$report->public_id.'"', $html);
-        $this->assertStringContainsString('confirm(', $html);
+        $this->assertStringNotContainsString('confirm(', $html);
 
         $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertRedirect();
 

@@ -88,9 +88,7 @@ document.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     if (withdraw) {
-        if (!window.confirm('收回後這則留言會直接消失，確定要收回嗎？')) {
-            return;
-        }
+        // 確認視窗由 confirm-dialog.js 在送出前處理（表單帶 data-confirm-*）。
         try {
             const response = await post(withdraw, new FormData(withdraw));
             if (response.ok) {

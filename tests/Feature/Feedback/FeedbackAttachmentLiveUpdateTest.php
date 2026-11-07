@@ -54,10 +54,14 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $this->assertSame(3, substr_count($cell, '<img'));
         $this->assertLessThan(strpos($cell, 'm-mid.png'), strpos($cell, 'm-new.png'));
         $this->assertLessThan(strpos($cell, 'm-old.png'), strpos($cell, 'm-mid.png'));
-        $this->assertStringNotContainsString('original.png', $cell);
+        $this->assertStringNotContainsString('alt="original.png"', $cell);
+        $this->assertStringContainsString('original.png', $cell); // 燈箱清單含全部附件
         $this->assertStringContainsString('+1', $cell);
-        $this->assertStringContainsString('data-open-album', $cell);
-        $this->assertStringContainsString('data-dialog-open="detail-report-'.$this->report->public_id.'"', $cell);
+        $this->assertStringContainsString('data-lightbox-gallery=', $cell);
+        $this->assertStringContainsString('data-lightbox-index="0"', $cell);
+        $this->assertStringContainsString('data-lightbox-index="3"', $cell);
+        $this->assertStringNotContainsString('data-open-album', $cell);
+        $this->assertStringNotContainsString('data-dialog-open', Str::before($cell, '</div>'));
         $this->assertStringContainsString('data-attachment-thumbs-url', $html);
     }
 
@@ -212,10 +216,10 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         return FeedbackMessage::factory()->for($report ?? $this->report)->create(['author_type' => $author, 'body' => '附件留言']);
     }
 
-    private function attach(?FeedbackMessage $message, string $name, $at): FeedbackAttachment
+    private function attach(?FeedbackMessage $message, string $name, $at, ?FeedbackReport $report = null): FeedbackAttachment
     {
         return FeedbackAttachment::factory()->create([
-            'feedback_report_id' => $message?->feedback_report_id ?? $this->report->id,
+            'feedback_report_id' => $message?->feedback_report_id ?? ($report ?? $this->report)->id,
             'feedback_message_id' => $message?->id,
             'original_name' => $name,
             'created_at' => $at,
@@ -239,5 +243,27 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $token = Str::random(48);
         $this->project->update(['client_token_hash' => hash('sha256', $token)]);
         $this->get(route('feedback.client.authenticate', $this->project).'?token='.$token)->assertRedirect();
+    }
+
+    public function test_lightbox_gallery_lists_every_attachment_of_this_report_only(): void
+    {
+        $this->attach(null, 'original.png', now()->subHours(5));
+        $message = $this->message(FeedbackAuthorType::Reporter);
+        foreach (['a.png', 'b.png', 'c.png', 'd.png'] as $index => $name) {
+            $this->attach($message, $name, now()->subHours(4 - $index));
+        }
+        $other = FeedbackReport::factory()->for($this->project)->create();
+        $this->attach(null, 'someone-elses.png', now(), $other);
+        $this->actingAsOwner();
+
+        $json = $this->getJson(route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]))->assertOk();
+        $html = $json->json('reports.'.$this->report->public_id.'.row_html');
+        preg_match('/data-lightbox-gallery="([^"]*)"/', $html, $matches);
+        $gallery = json_decode(html_entity_decode($matches[1]), true);
+
+        $this->assertCount(5, $gallery);
+        $this->assertNotContains('someone-elses.png', array_column($gallery, 'name'));
+        $this->assertSame(['url', 'name', 'video', 'source', 'at'], array_keys($gallery[0]));
+        $this->assertSame('d.png', $gallery[0]['name']);
     }
 }

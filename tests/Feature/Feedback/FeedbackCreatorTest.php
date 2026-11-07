@@ -143,7 +143,7 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()
-            ->assertSee('<th class="whitespace-nowrap w-32 px-4 py-3.5 text-center">建立者</th>', false)
+            ->assertSee('<th class="whitespace-nowrap w-24 px-2 py-3.5 text-center">建立者</th>', false)
             ->assertSee('<option value="client"', false)
             ->assertSee('<option value="developer:'.$this->devA->id.'"', false)
             ->assertSee('<option value="developer:'.$this->devB->id.'"', false)

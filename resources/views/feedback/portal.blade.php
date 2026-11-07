@@ -185,27 +185,27 @@
 
         @if ($viewMode === 'list')
         <div class="sm:overflow-x-auto" data-list-view>
-            <table class="block w-full border-collapse text-left text-sm sm:table sm:min-w-[60rem]" data-report-table>
+            <table class="block w-full border-collapse text-left text-sm sm:table" data-report-table>
                 <thead class="hidden border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 sm:table-header-group">
                     <tr>
-                        <th class="whitespace-nowrap min-w-16 w-20 px-4 text-center py-3.5">編號</th>
-                        <th class="whitespace-nowrap px-4 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-14 px-2 text-center py-3.5">編號</th>
+                        <th class="whitespace-nowrap px-3 text-left py-3.5" aria-sort="{{ $ariaSort('title') }}"><a href="{{ $sortUrl('title') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">標題 @if ($sort === 'title')<span aria-hidden="true">{{ $sortMark('title') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center" aria-sort="{{ $ariaSort('status') }}"><a href="{{ $sortUrl('status') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">狀態 @if ($sort === 'status')<span aria-hidden="true">{{ $sortMark('status') }}</span>@endif</a></th>
                         @if ($reportCategories !== [])
-                            <th class="whitespace-nowrap w-28 px-4 py-3.5 text-center">分類</th>
+                            <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center">分類</th>
                         @endif
-                        <th class="whitespace-nowrap w-44 px-4 text-center py-3.5">附件</th>
-                        <th class="whitespace-nowrap w-32 px-4 py-3.5 text-center">建立者</th>
-                        <th class="whitespace-nowrap w-32 px-4 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-32 px-4 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
-                        <th class="whitespace-nowrap w-36 px-4 py-3.5 text-center">操作</th>
+                        <th class="whitespace-nowrap w-44 px-2 text-center py-3.5">附件</th>
+                        <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center">建立者</th>
+                        <th class="whitespace-nowrap w-28 px-2 text-center py-3.5" aria-sort="{{ $ariaSort('created_at') }}"><a href="{{ $sortUrl('created_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">建立日期 @if ($sort === 'created_at')<span aria-hidden="true">{{ $sortMark('created_at') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-24 px-2 py-3.5 text-center" aria-sort="{{ $ariaSort('latest_activity_at') }}"><a href="{{ $sortUrl('latest_activity_at') }}" class="inline-flex items-center gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">最後更新 @if ($sort === 'latest_activity_at')<span aria-hidden="true">{{ $sortMark('latest_activity_at') }}</span>@endif</a></th>
+                        <th class="whitespace-nowrap w-px px-2 py-3.5 text-center">操作</th>
                     </tr>
                 </thead>
                 <tbody class="block divide-y divide-slate-100 sm:table-row-group">
                     @forelse ($reports as $report)
                         <tr class="block cursor-pointer space-y-1 p-3 transition hover:bg-slate-100/70 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle @if ($report->isDeletedByClient()) bg-slate-50 text-slate-500 @endif" data-report-row="{{ $report->public_id }}" data-row-link="detail-report-{{ $report->public_id }}">
-                            <td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-3 sm:py-3 sm:align-middle"><x-feedback.report-link :$project :$report><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></x-feedback.report-link></td>
-                            <td class="block sm:table-cell sm:px-4 sm:py-3 sm:align-middle">
+                            <td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-2 sm:py-3 sm:align-middle"><x-feedback.report-link :$project :$report><span class="sm:hidden">編號 </span><span data-report-number>{{ $sequenceNumbers[$report->id] }}</span></x-feedback.report-link></td>
+                            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle">
                                 <div class="flex items-center gap-2">
                                     <x-feedback.report-link :$project :$report class="min-w-0 break-words font-semibold" data-report-title>{{ $report->title }}</x-feedback.report-link>
                                     <x-feedback.unread-dot :$report :is-owner="$isOwner" />
@@ -217,20 +217,20 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">
+                            <td class="block sm:table-cell sm:px-2 sm:py-3 sm:align-middle sm:text-center">
                                 <x-feedback.status-badge :status="$report->status" data-report-status-badge="{{ $report->public_id }}" />
                             </td>
                             @if ($reportCategories !== [])
-                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
+                                <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
                             @endif
-                            <td class="block sm:table-cell sm:text-center sm:px-3 sm:py-3 sm:align-middle">
+                            <td class="block sm:table-cell sm:text-center sm:px-2 sm:py-3 sm:align-middle">
                                 @include('feedback.reports._attachment-thumbs', ['report' => $report, 'items' => $thumbItems[$report->id] ?? collect()])
                             </td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" /></td>
-                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-3 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
-                            <td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle sm:text-center">
-                                <div class="flex flex-wrap gap-2 sm:justify-center">
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-creator><span class="font-semibold text-slate-500 sm:hidden">建立者：</span>{{ $report->creatorLabel() }}</td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span><x-feedback.time :at="$report->created_at" short /></td>
+                            <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
+                            <td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center">
+                                <div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions>
                                     <x-feedback.complete-button :$project :$report :is-owner="$isOwner" />
                                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
                                     @if ($isOwner && $report->isDeletedByClient())
@@ -413,31 +413,9 @@
         </dialog>
 
         @if ($isOwner)
-            <dialog id="delete-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="delete-report-title-{{ $report->public_id }}">
-                <form method="POST" action="{{ route('feedback.reports.destroy', [$project, $report]) }}" class="grid gap-4 p-5 sm:p-6">
-                    @csrf
-                    @method('DELETE')
-                    <h2 id="delete-report-title-{{ $report->public_id }}" class="text-lg font-bold text-slate-950">確定要刪除這個問題？</h2>
-                    <p class="text-sm leading-6 text-slate-600">「{{ $report->title }}」與它的截圖、留言紀錄會被永久刪除，無法復原。</p>
-                    <div class="flex justify-end gap-3">
-                        <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
-                        <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>
-                    </div>
-                </form>
-            </dialog>
+            <x-feedback.confirm-dialog :id="'delete-report-'.$report->public_id" :action="route('feedback.reports.destroy', [$project, $report])" method="DELETE" :text="app(\App\Support\FeedbackConfirmText::class)->deleteReport($report, true)" />
         @else
-            <dialog id="client-delete-report-{{ $report->public_id }}" class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby="client-delete-report-title-{{ $report->public_id }}">
-                <form method="POST" action="{{ route('feedback.reports.client-destroy', [$project, $report]) }}" class="grid gap-4 p-5 sm:p-6">
-                    @csrf
-                    @method('DELETE')
-                    <h2 id="client-delete-report-title-{{ $report->public_id }}" class="text-lg font-bold text-slate-950">確定刪除？</h2>
-                    <p class="text-sm leading-6 text-slate-600">「{{ $report->title }}」刪除後會從清單移除，無法自行復原。</p>
-                    <div class="flex justify-end gap-3">
-                        <button type="button" class="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-close autofocus>取消</button>
-                        <button type="submit" class="inline-flex min-h-10 items-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">確認刪除</button>
-                    </div>
-                </form>
-            </dialog>
+            <x-feedback.confirm-dialog :id="'client-delete-report-'.$report->public_id" :action="route('feedback.reports.client-destroy', [$project, $report])" method="DELETE" :text="app(\App\Support\FeedbackConfirmText::class)->deleteReport($report, false)" />
         @endif
     @endforeach
 

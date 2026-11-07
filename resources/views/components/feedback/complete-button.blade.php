@@ -1,6 +1,6 @@
 {{--
     「完成」鈕（清單、看板卡片、詳情右側窄欄共用這一個元件）：
-    客戶端按了先確認再把單改成已完成；開發團隊端按了跳出可改字的確認留言視窗（_completion-dialog），
+    客戶端按了直接把單改成已完成（不跳確認，使用者原話「通過、完成不跳」）；開發團隊端按了跳出可改字的確認留言視窗（_completion-dialog），
     送出後單維持等客戶、留言附「通過」按鈕，不會直接結案。已完成的單不顯示。
 --}}
 @props(['project', 'report', 'isOwner', 'compact' => false])
@@ -17,7 +17,7 @@
     @if ($isOwner)
         <button type="button" class="{{ $completeClass }}" data-dialog-open="request-completion-{{ $report->public_id }}" data-request-completion="{{ $report->public_id }}" {{ $attributes->only('data-card-action') }} title="發一則確認留言，請{{ config('feedback.labels.client') }}確認；不會直接結案">完成</button>
     @else
-        <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" onsubmit="return confirm('確定「{{ addslashes($report->title) }}」已經沒問題，要改成已完成嗎？')" {{ $attributes->only('data-card-action') }}>
+        <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" {{ $attributes->only('data-card-action') }}>
             @csrf
             @method('PATCH')
             <input type="hidden" name="status" value="{{ \App\Enums\FeedbackReportStatus::Completed->value }}">

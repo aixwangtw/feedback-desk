@@ -19,7 +19,7 @@ class DeleteFeedbackReportAction
 
         DB::transaction(function () use ($report): void {
             $report->feedbackAttachments()->delete();
-            $report->feedbackMessages()->delete();
+            $report->feedbackMessages()->withTrashed()->forceDelete();
             $report->automationRuns()->delete();
             $report->delete();
         });

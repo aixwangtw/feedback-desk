@@ -47,3 +47,12 @@ test('使用者收合的相簿換新後維持收合', () => {
 
     assert.equal(root.details[0].open, false);
 });
+
+test('有展開中的留言編輯表單才算編輯中，定時刷新不能換掉內容', async () => {
+    const { isEditingMessage } = await import('../../resources/js/thread-details.js');
+    const root = (found) => ({ querySelector: (selector) => (selector === '[data-message-edit-form]:not([hidden])' && found ? {} : null) });
+
+    assert.equal(isEditingMessage(root(true)), true);
+    assert.equal(isEditingMessage(root(false)), false);
+    assert.equal(isEditingMessage(null), false);
+});

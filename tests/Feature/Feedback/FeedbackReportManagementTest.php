@@ -107,10 +107,8 @@ class FeedbackReportManagementTest extends TestCase
             ->assertViewIs('feedback.portal')
             ->assertSee('新增問題')
             ->assertSee('共用頁面的問題')
-            ->assertSeeInOrder(['編號', '標題', '狀態', '建立者', '最後更新'])
-            ->assertDontSee('>附件</th>', false)
-            ->assertDontSee('>操作</th>', false)
-            ->assertDontSee('建立日期')
+            ->assertSeeInOrder(['編號', '標題', '狀態', '附件', '建立者', '建立日期', '最後更新', '操作'])
+            ->assertDontSee('調整重點')
             ->assertSee(route('feedback.attachments.show', [$project, $report, $attachment]), false)
             ->assertSee('data-lightbox-trigger', false)
             ->assertSee('data-dialog-open="edit-report-'.$report->public_id.'"', false)
@@ -193,9 +191,9 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertStringNotContainsString('data-kanban-status-form', $html);
         $this->assertStringNotContainsString('data-status-autosave', $html);
         $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//select')->length);
-        // 卡片整張可點開詳情（編輯、刪除在詳情裡），卡片上不放操作鈕。
+        // 卡片整張可點開詳情；卡片上的編輯、刪除等操作鈕都標 data-card-action，點了不會觸發整張卡片的點擊。
         $this->assertSame($xpath->query('//*[@data-kanban-card]')->length, $xpath->query('//*[@data-kanban-card and @data-row-link]')->length);
-        $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//button')->length);
+        $this->assertSame(0, $xpath->query('//*[@data-kanban-card]//button[not(@data-card-action)]')->length);
         $this->assertStringContainsString('hover:shadow-lg', $html);
         $this->assertStringContainsString('data-kanban-total-count="new">1</span>', $html);
         $this->assertStringNotContainsString('此狀態由自動化設定；卡片可拖出但不能拖入。', $html);

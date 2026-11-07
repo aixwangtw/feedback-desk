@@ -98,6 +98,13 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::post('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages', [FeedbackMessageController::class, 'store'])
         ->middleware(['throttle:30,1', 'throttle:feedback-public-message', 'throttle:feedback-guest-message'])
         ->name('feedback.messages.store');
+    // 編輯、收回自己發的留言（不留痕跡：沒有「已編輯」、收回後整則消失）。
+    Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages/{feedbackMessage}', [FeedbackMessageController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.messages.update');
+    Route::delete('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/messages/{feedbackMessage}', [FeedbackMessageController::class, 'destroy'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.messages.destroy');
     // 待審留言（草稿）：只有開發團隊能編輯、送出、捨棄。
     Route::put('/p/{feedbackProject:slug}/reports/{feedbackReport:public_id}/drafts/{feedbackMessageDraft}', [FeedbackMessageDraftController::class, 'update'])
         ->middleware('throttle:30,1')
@@ -147,6 +154,8 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
             Route::get('/projects/{project}/attention', [FeedbackPatrolController::class, 'attention'])->name('attention');
             Route::get('/projects/{project}/reports/{report}', [FeedbackPatrolController::class, 'show'])->name('show');
             Route::post('/projects/{project}/reports/{report}/messages', [FeedbackPatrolController::class, 'message'])->name('message');
+            Route::put('/projects/{project}/reports/{report}/messages/{message}', [FeedbackPatrolController::class, 'editMessage'])->whereNumber('message')->name('message.edit');
+            Route::delete('/projects/{project}/reports/{report}/messages/{message}', [FeedbackPatrolController::class, 'withdrawMessage'])->whereNumber('message')->name('message.withdraw');
             Route::post('/projects/{project}/reports/{report}/drafts', [FeedbackPatrolController::class, 'draft'])->name('draft');
             // 已停用（改用留言）：照常寫入，回應附 warning。
             Route::put('/projects/{project}/reports/{report}/adjustment', [FeedbackPatrolController::class, 'adjustment'])->name('adjustment');

@@ -156,6 +156,26 @@ class FeedbackPatrolController extends Controller
     }
 
     /**
+     * 編輯團隊留言（巡檢身分）：不顯示「已編輯」、不改狀態。body 必填；remove_attachment_ids 可移除附件。
+     */
+    public function editMessage(Request $request, string $project, string $report, int $message, FeedbackMcpTools $tools): JsonResponse
+    {
+        return $this->write($request, 'edit_message', $project, $report, $tools, 'edit_message', fn (): array => [
+            'message_id' => $message,
+            'body' => (string) $request->input('body', ''),
+            'remove_attachment_ids' => (array) $request->input('remove_attachment_ids', []),
+        ], fn (): array => ['message_id' => $message, 'body_length' => mb_strlen((string) $request->input('body', ''))]);
+    }
+
+    /**
+     * 收回團隊留言（巡檢身分）：客戶端完全看不到痕跡。
+     */
+    public function withdrawMessage(Request $request, string $project, string $report, int $message, FeedbackMcpTools $tools): JsonResponse
+    {
+        return $this->write($request, 'withdraw_message', $project, $report, $tools, 'withdraw_message', fn (): array => ['message_id' => $message], fn (): array => ['message_id' => $message]);
+    }
+
+    /**
      * 寫待審留言（草稿）：客戶端看不到，團隊在單頁審過按「送出」才發出。body 必填；replace_message_id 指定要修改的團隊留言。
      */
     public function draft(Request $request, string $project, string $report, ManageFeedbackMessageDraftAction $drafts): JsonResponse
@@ -274,7 +294,7 @@ class FeedbackPatrolController extends Controller
         }
 
         $status = match ($body['error'] ?? null) {
-            'project_not_found', 'report_not_found' => 404,
+            'project_not_found', 'report_not_found', 'message_not_found' => 404,
             'claimed_by_other' => 409,
             default => 422,
         };

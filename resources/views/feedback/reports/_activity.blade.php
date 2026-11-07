@@ -8,9 +8,10 @@
 @php
     $access = app(\App\Support\FeedbackAccess::class);
     $viewerIsOwner ??= $access->isOwner($project);
+    $viewerAccount = $viewerIsOwner ? null : $access->clientViewer($project);
     $compact ??= false;
     $timeline = app(\App\Support\FeedbackTimeline::class)->entries($report);
-    $latestCompletionRequestId = $report->feedbackMessages->where('is_completion_request', true)->max('id');
+    $latestCompletionRequestId = $report->feedbackMessages()->withTrashed()->where('is_completion_request', true)->max('id');
     $canApprove = ! $viewerIsOwner && $access->canManage($project) && $report->status !== FeedbackReportStatus::Completed;
 @endphp
 
@@ -41,12 +42,18 @@
                 <div @class(['flex flex-wrap items-baseline gap-x-2 px-1 text-xs', 'flex-row-reverse' => $isMine])>
                     <span class="font-semibold {{ $nameClass }}" data-chat-author>{{ $message->displayAuthor($report, $viewerIsOwner) }}</span>
                     <x-feedback.time :at="$message->created_at" relative class="text-slate-500" />
+                    @if ($message->isManageableBy($viewerIsOwner, $viewerAccount))
+                        <x-feedback.message-menu :$project :$report :$message />
+                    @endif
                 </div>
                 <div @class(['mt-1 min-w-0 max-w-full rounded-2xl px-3.5 py-2.5 ring-1 ring-inset', $bubbleClass, 'rounded-tr-md' => $isMine, 'rounded-tl-md' => ! $isMine])>
                     @if ($message->is_completion_request)
                         <p class="mb-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800" data-completion-request-badge>請確認完成</p>
                     @endif
                     <p class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800" data-chat-body>{{ $message->body }}</p>
+                    @if ($message->isManageableBy($viewerIsOwner, $viewerAccount))
+                        <x-feedback.message-edit-form :$project :$report :$message />
+                    @endif
                     @if ($message->is_completion_request && $canApprove && $message->id === $latestCompletionRequestId)
                         <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-2" data-completion-approve-form>
                             @csrf
@@ -56,7 +63,7 @@
                         </form>
                     @endif
                     @if ($message->feedbackAttachments->isNotEmpty())
-                        <div class="mt-2 flex flex-wrap gap-2">
+                        <div class="mt-2 flex flex-wrap gap-2" data-chat-attachments>
                             @foreach ($message->feedbackAttachments as $attachment)
                                 @if ($attachment->isVideo())
                                     <div class="min-w-0 w-full max-w-md">
@@ -65,8 +72,8 @@
                                     </div>
                                     @continue
                                 @endif
-                                <div class="min-w-0 {{ $compact ? 'w-20' : 'w-24 sm:w-28' }}">
-                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block {{ $compact ? 'size-20' : 'size-24 sm:size-28' }} overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽" data-chat-attachment>
+                                <div class="attachment-tile min-w-0">
+                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽" data-chat-attachment>
                                     <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
                                 </a>
                                 <x-feedback.attachment-caption :name="$attachment->original_name" class="mt-0.5" />

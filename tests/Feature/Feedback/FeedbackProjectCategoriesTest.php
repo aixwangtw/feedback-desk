@@ -162,17 +162,17 @@ class FeedbackProjectCategoriesTest extends TestCase
         $report = FeedbackReport::factory()->for($this->project)->create(['category' => '經典排版']);
         $this->loginDeveloper();
 
-        // 清單與看板精簡後不放分類下拉；分類在詳情視窗（右側滑出）裡改。
+        // 清單每列、看板每張卡片都有分類下拉，詳情視窗裡也可以改。
         $list = $this->get(route('feedback.portal', $this->project))->getContent();
-        $this->assertStringNotContainsString('data-report-category-cell', $list);
-        $this->assertStringNotContainsString('id="quick-category-'.$report->public_id.'-row"', $list);
+        $this->assertStringContainsString('data-report-category-cell', $list);
+        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-row"', $list);
         $dialog = Str::between($list, 'id="detail-report-'.$report->public_id.'"', '</dialog>');
         $this->assertStringContainsString('id="quick-category-'.$report->public_id.'"', $dialog);
         $this->assertStringContainsString('<option value="經典排版" selected>', $dialog);
         $this->assertStringContainsString('未分類', $dialog);
 
         $board = $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))->getContent();
-        $this->assertStringNotContainsString('id="quick-category-'.$report->public_id.'-card"', $board);
+        $this->assertStringContainsString('id="quick-category-'.$report->public_id.'-card"', $board);
         $card = substr($board, strpos($board, 'data-report-id="'.$report->public_id.'"'));
         $card = substr($card, 0, strpos($card, '</article>'));
         $this->assertLessThan(strpos($card, 'data-report-creator'), strpos($card, 'data-report-number'));

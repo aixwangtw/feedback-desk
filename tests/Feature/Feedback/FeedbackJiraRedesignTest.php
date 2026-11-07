@@ -45,7 +45,7 @@ class FeedbackJiraRedesignTest extends TestCase
 
     // ------------------------------------------------------------------ 列表與詳情
 
-    public function test_list_has_only_the_five_columns_and_no_tags_buttons_or_adjustment(): void
+    public function test_list_has_all_columns_except_adjustment_and_no_title_tags_or_chat_buttons(): void
     {
         $this->report->update(['adjustment_note' => '舊調整重點不該出現在清單']);
         $this->actingAsOwner();
@@ -53,18 +53,19 @@ class FeedbackJiraRedesignTest extends TestCase
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $header = Str::between($html, '<thead', '</thead>');
 
-        $this->assertSame(5, substr_count($header, '<th '));
-        foreach (['編號', '標題', '狀態', '建立者', '最後更新'] as $column) {
+        // 只拿掉標題旁標籤、每列留言按鈕、調整重點欄；附件、建立日期、操作欄照改版前的順序（沒有設分類時不顯示分類欄）。
+        $this->assertSame(8, substr_count($header, '<th '));
+        $columns = ['編號', '標題', '狀態', '附件', '建立者', '建立日期', '最後更新', '操作'];
+        foreach ($columns as $column) {
             $this->assertStringContainsString($column, $header);
         }
-        foreach (['附件', '調整重點', '建立日期', '操作', '分類'] as $removed) {
-            $this->assertStringNotContainsString($removed, $header);
-        }
+        $this->assertStringNotContainsString('調整重點', $header);
 
         $row = Str::between($html, 'data-report-row="'.$this->report->public_id.'"', '</tr>');
         $this->assertStringNotContainsString('data-report-flags', $row);
         $this->assertStringNotContainsString('data-chat-open', $row);
-        $this->assertStringNotContainsString('<button', $row);
+        $this->assertStringContainsString('data-dialog-open="edit-report-'.$this->report->public_id.'"', $row);
+        $this->assertStringContainsString('data-delete-report', $row);
         $this->assertStringNotContainsString('舊調整重點不該出現在清單', $row);
         $this->assertStringContainsString('data-unread-slot="'.$this->report->public_id.'"', $row);
     }
@@ -155,8 +156,15 @@ class FeedbackJiraRedesignTest extends TestCase
         Storage::disk('local')->put('feedback/drafts/secret.png', 'x');
 
         $this->actingAsOwner();
-        $owner = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk()->json('html');
+        $owner = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk()->json('album_html');
         $this->assertStringContainsString('data-chat-album', $owner);
+        $this->assertStringContainsString('附件（<span data-album-count>4</span>）', $owner);
+        // 附件不放在對話串裡：對話 html 沒有相簿，單頁的附件區（說明下方、活動上方）與詳情視窗各有自己的容器。
+        $this->assertStringNotContainsString('data-chat-album', $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html'));
+        $page = $this->get(route('feedback.reports.show', [$this->project, $this->report]))->getContent();
+        $this->assertLessThan(strpos($page, 'data-conversation'), strpos($page, 'data-album-region'));
+        $this->assertGreaterThan(strpos($page, 'data-report-description'), strpos($page, 'data-album-region'));
+        $this->assertStringContainsString('data-chat-album-open', $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent());
         $this->assertSame(4, substr_count($owner, 'data-album-item'));
         $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $original]), $owner);
         $this->assertStringContainsString(route('feedback.attachments.show', [$this->project, $this->report, $reply]), $owner);
@@ -170,10 +178,10 @@ class FeedbackJiraRedesignTest extends TestCase
 
         $this->actingAsClient();
         $client = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
-        $this->assertSame(3, substr_count($client->json('html'), 'data-album-item'));
-        $this->assertStringNotContainsString('draft-secret.png', $client->json('html'));
-        $this->assertStringNotContainsString('/drafts/', $client->json('html'));
-        $this->assertStringNotContainsString('data-album-kind="draft"', $client->json('html'));
+        $this->assertSame(3, substr_count($client->json('album_html'), 'data-album-item'));
+        $this->assertStringNotContainsString('draft-secret.png', $client->json('album_html'));
+        $this->assertStringNotContainsString('/drafts/', $client->json('album_html'));
+        $this->assertStringNotContainsString('data-album-kind="draft"', $client->json('album_html'));
         $this->assertNull($client->json('drafts_html'));
         $this->assertStringNotContainsString('draft-secret.png', $this->get(route('feedback.reports.show', [$this->project, $this->report]))->getContent());
         $this->assertStringNotContainsString('draft-secret.png', $this->get(route('feedback.reports.activity', [$this->project, $this->report]))->getContent());
@@ -184,7 +192,7 @@ class FeedbackJiraRedesignTest extends TestCase
     {
         $this->actingAsClient();
 
-        $this->assertStringNotContainsString('data-chat-album', $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html'));
+        $this->assertSame('', $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('album_html'));
     }
 
     // ------------------------------------------------------------------ 完成：開發團隊只能請老師確認

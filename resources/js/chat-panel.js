@@ -5,7 +5,7 @@ import { orderConversations } from './chat-order';
 import { renderMessageDrafts } from './message-drafts';
 import { EMPTY_THREAD_TEXT, autoSelectTarget, rememberDismissed, shouldAutoOpen, tabCounts, visibleItems } from './chat-tabs';
 import { clearReportUnread } from './report-read';
-import { replaceKeepingOpen } from './thread-details';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details';
 import { badgeText, countUnreadReports, unreadById, unreadSummary, withUnreadInLabel, withUnreadInTitle } from './chat-unread';
 
 const THREAD_POLL_MS = 5000;
@@ -49,6 +49,12 @@ if (root) {
     const errorBox = $('[data-chat-error]');
     // 待審留言（只有開發團隊的頁面有這個容器）：顯示在留言串最下面，與單頁、詳情視窗同一份（message-drafts.js）。
     const draftsBox = $('[data-chat-drafts]');
+    // 相簿鈕與附件頁：附件不放在對話串裡，點標題列的相簿鈕切到附件格狀頁，可返回對話。
+    const albumOpen = $('[data-chat-album-open]');
+    const albumCount = $('[data-chat-album-count]');
+    const albumPane = $('[data-chat-album-pane]');
+    const albumBody = $('[data-chat-album-body]');
+    const albumBack = $('[data-chat-album-back]');
 
     const state = {
         items: [],
@@ -56,6 +62,8 @@ if (root) {
         currentId: null,
         postUrl: null,
         lastThreadHtml: '',
+        lastAlbumHtml: '',
+        albumFor: null,
         lastListFetch: 0,
         threadRequest: 0,
         tab: 'awaiting',
@@ -373,6 +381,13 @@ if (root) {
         threadPane.classList.toggle('max-sm:hidden', view !== 'thread');
     };
 
+    // 對話或附件頁二選一：附件頁隱藏留言串與輸入框。
+    const setAlbumView = (show) => {
+        albumPane.hidden = !show;
+        scroller.hidden = show;
+        form.hidden = show;
+    };
+
     const withoutTimes = (html) => html.replace(/(<time\b[^>]*>)[^<]*(<\/time>)/g, '$1$2');
 
     const isNearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
@@ -385,6 +400,16 @@ if (root) {
         threadDeleted.hidden = !data.deleted;
         pageLink.href = data.page_url;
         state.postUrl = data.post_url;
+        const albumTotal = data.album_count ?? 0;
+        albumOpen.hidden = albumTotal === 0;
+        albumCount.textContent = String(albumTotal);
+        if (typeof data.album_html === 'string' && data.album_html !== state.lastAlbumHtml) {
+            state.lastAlbumHtml = data.album_html;
+            albumBody.innerHTML = data.album_html;
+        }
+        if (albumTotal === 0 && !albumPane.hidden) {
+            setAlbumView(false);
+        }
         if (draftsBox && typeof data.drafts_html === 'string') {
             const openId = data.id;
             renderMessageDrafts(draftsBox, data.drafts_html, {
@@ -395,7 +420,7 @@ if (root) {
             });
         }
 
-        if (data.html !== state.lastThreadHtml) {
+        if (data.html !== state.lastThreadHtml && !isEditingMessage(thread)) {
             const stickToBottom = forceScroll || isNearBottom();
             if (state.lastThreadHtml !== '' && withoutTimes(data.html) === withoutTimes(state.lastThreadHtml)) {
                 // 只有「幾分鐘前」變了：就地更新時間文字，不重建留言與縮圖。
@@ -472,11 +497,18 @@ if (root) {
     const openThread = (id) => {
         if (state.currentId !== id) {
             clearComposer();
+            state.lastAlbumHtml = '';
+            albumBody.replaceChildren();
+            albumOpen.hidden = true;
             state.lastThreadHtml = '';
             thread.replaceChildren(el('p', 'p-6 text-center text-sm text-slate-500', '載入中…'));
             threadTitle.textContent = state.items.find((item) => item.id === id)?.title ?? '';
         }
         state.currentId = id;
+        if (!albumPane.hidden && state.albumFor !== id) {
+            setAlbumView(false);
+        }
+        state.albumFor = id;
         placeholder.hidden = true;
         threadView.hidden = false;
         setView('thread');
@@ -524,6 +556,16 @@ if (root) {
     ['wheel', 'touchmove', 'pointerdown', 'keydown', 'focusin'].forEach((type) => {
         threadPane.addEventListener(type, confirmRead, { passive: true });
     });
+
+    document.addEventListener('feedback:messages-changed', () => {
+        if (isOpen() && state.currentId !== null) {
+            loadThread(state.currentId);
+            loadList();
+        }
+    });
+
+    albumOpen.addEventListener('click', () => setAlbumView(true));
+    albumBack.addEventListener('click', () => setAlbumView(false));
 
     const showList = () => {
         setView('list');

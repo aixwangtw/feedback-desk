@@ -4,4 +4,6 @@ import './message-drafts-page';
 import './chat-panel';
 import './report-dialog-thread';
 import './row-link';
+import './album';
+import './message-edit';
 import './completion';

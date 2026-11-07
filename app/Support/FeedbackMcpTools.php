@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Actions\ChangeFeedbackReportStatusAction;
 use App\Actions\CreateFeedbackReportAction;
+use App\Actions\ManageFeedbackMessageAction;
 use App\Actions\PostFeedbackMessageAction;
 use App\Actions\RequestFeedbackCompletionAction;
 use App\Actions\UpdateFeedbackReportAdjustmentAction;
@@ -56,6 +57,7 @@ class FeedbackMcpTools
         private UpdateFeedbackReportAdjustmentAction $updateAdjustment,
         private ChangeFeedbackReportStatusAction $changeStatus,
         private PostFeedbackMessageAction $postMessage,
+        private ManageFeedbackMessageAction $manageMessage,
         private RequestFeedbackCompletionAction $requestCompletion,
     ) {}
 
@@ -123,6 +125,8 @@ class FeedbackMcpTools
             ['name' => 'set_status', 'title' => '改狀態', 'description' => '改變回報單狀態：'.implode('、', FeedbackReportStatus::describedOptions()).'。改好並留言說明後改成 needs_input；completed（已完成）只由客戶按「通過」或「完成」，這裡改成 completed 會被拒絕（completed_by_client_only），要結案請用 request_completion 請客戶確認。別人認領中的單會回 claimed_by_other，確定要接手才加 force=true（會記錄）。'.FeedbackWorkRule::TEXT.self::HANDOFF_FLOW, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'status' => ['type' => 'string', 'maxLength' => 20, 'description' => 'new／needs_input／completed，或中文名稱：'.implode('／', array_map(fn (FeedbackReportStatus $status): string => $status->label(), FeedbackReportStatus::cases()))], 'force' => $force], ['project', 'report', 'status'])],
             ['name' => 'request_completion', 'title' => '請客戶確認完成', 'description' => '請客戶確認這張單完成：只會發一則附「通過」按鈕的確認留言（body 省略時用預設文字），單維持等客戶（needs_input），要客戶按「通過」才變成已完成；不能用來直接結案。只在確實修好且驗過畫面後使用。已完成的單會被拒絕（already_completed）。別人認領中的單會回 claimed_by_other，確定要接手才加 force=true（會記錄）。'.FeedbackWorkRule::TEXT.self::HANDOFF_FLOW, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'body' => ['type' => 'string', 'maxLength' => PostFeedbackMessageAction::MAX_BODY_LENGTH, 'description' => '確認留言內容，省略時用預設文字'], 'force' => $force], ['project', 'report'])],
             ['name' => 'add_message', 'title' => '留言', 'description' => '以目前登入的團隊帳號在回報單留言（公開單上一律顯示團隊稱呼）。'.self::UNTRUSTED, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'body' => ['type' => 'string', 'minLength' => 1, 'maxLength' => PostFeedbackMessageAction::MAX_BODY_LENGTH], 'images' => $images], ['project', 'report', 'body'])],
+            ['name' => 'edit_message', 'title' => '編輯團隊留言', 'description' => '編輯團隊身分發的留言（任何開發者都可以改；不能改客戶的留言）。改完不顯示「已編輯」，不改單的狀態。body 是新的完整內容；images 新增附圖；remove_attachment_ids 填要移除的附件 id（get_report 的留言附件有 id）。message_id 在 get_report 的 messages 裡。', 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'message_id' => ['type' => 'integer', 'minimum' => 1], 'body' => ['type' => 'string', 'minLength' => 1, 'maxLength' => PostFeedbackMessageAction::MAX_BODY_LENGTH], 'images' => $images, 'remove_attachment_ids' => ['type' => 'array', 'items' => ['type' => 'integer']]], ['project', 'report', 'message_id', 'body'])],
+            ['name' => 'withdraw_message', 'title' => '收回團隊留言', 'description' => '收回團隊身分發的留言（任何開發者都可以收回；不能收回客戶的留言）。收回後客戶端的畫面、API、未讀數、通知都完全看不到那則留言與附件，不留痕跡；不改單的狀態。', 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'message_id' => ['type' => 'integer', 'minimum' => 1]], ['project', 'report', 'message_id'])],
             ['name' => 'claim_report', 'title' => '認領回報單', 'description' => '認領一張單，讓其他人與其他 AI 知道你正在處理（顯示「名字（Codex）」與開始時間）。別人認領中會回 claimed_by_other：先 get_report 看交接紀錄，確定要接手才加 force=true（會記錄接手）。'.self::HANDOFF_FLOW, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'force' => $force], ['project', 'report'])],
             ['name' => 'release_report', 'title' => '釋放回報單', 'description' => '不再處理這張單時釋放認領（做完、或寫完交接紀錄要交給別人時）。只能釋放自己的認領；替別人釋放要加 force（會記錄）。'.self::HANDOFF_FLOW, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'force' => $force], ['project', 'report'])],
             ['name' => 'write_handoff', 'title' => '寫交接紀錄', 'description' => '工作中斷時留給下一個人或下一個 AI 的進度筆記：做到哪、下一步、卡在哪、改過哪些檔案或分支。只有團隊看得到，客戶看不到。下一個人用 get_report 會先看到最新一筆。release=true 會一併釋放你的認領。不要寫入密碼、token 等祕密。'.self::HANDOFF_FLOW, 'inputSchema' => $schema(['project' => $project, 'report' => [...$report, 'description' => 'public_id 或團隊端清單編號'], 'note' => ['type' => 'string', 'minLength' => 1, 'maxLength' => FeedbackReportWork::MAX_HANDOFF_NOTE], 'release' => ['type' => 'boolean']], ['project', 'report', 'note'])],
@@ -169,6 +173,8 @@ class FeedbackMcpTools
             'request_completion' => $this->json($this->teamRequestCompletion($actor, $input)),
             'set_status' => $this->json($this->teamStatus($actor, $input)),
             'add_message' => $this->json($this->message($actor, $this->teamReport($this->project($input), $input), $input)),
+            'edit_message' => $this->json($this->editMessage($actor, $this->teamReport($this->project($input), $input), $input)),
+            'withdraw_message' => $this->json($this->withdrawMessage($actor, $this->teamReport($this->project($input), $input), $input)),
             'claim_report' => $this->json($this->teamClaim($actor, $input)),
             'release_report' => $this->json($this->teamRelease($actor, $input)),
             'write_handoff' => $this->json($this->teamHandoff($actor, $input)),
@@ -681,6 +687,50 @@ class FeedbackMcpTools
     }
 
     /**
+     * @param  array<string, mixed>  $input
+     */
+    private function messageOf(FeedbackReport $report, array $input): FeedbackMessage
+    {
+        $id = $input['message_id'] ?? null;
+        $message = is_int($id) || (is_string($id) && ctype_digit($id)) ? $report->feedbackMessages()->whereKey((int) $id)->first() : null;
+        if ($message === null) {
+            throw new FeedbackServiceException('message_not_found', '找不到這則留言（message_id 看 get_report 的 messages）。', 404);
+        }
+
+        return $message;
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function editMessage(FeedbackActor $actor, FeedbackReport $report, array $input): array
+    {
+        $remove = array_values(array_filter((array) ($input['remove_attachment_ids'] ?? []), fn ($id) => is_int($id) || (is_string($id) && ctype_digit($id))));
+        $images = $this->images($input);
+        $message = $this->manageMessage->edit($report, $this->messageOf($report, $input), $actor, (string) ($input['body'] ?? ''), $images, array_map('intval', $remove));
+
+        return [
+            'public_id' => $report->public_id,
+            'message_id' => $message->id,
+            'images_added' => count($images),
+            'status' => $report->status->value,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function withdrawMessage(FeedbackActor $actor, FeedbackReport $report, array $input): array
+    {
+        $message = $this->messageOf($report, $input);
+        $this->manageMessage->withdraw($report, $message, $actor);
+
+        return ['public_id' => $report->public_id, 'message_id' => $message->id, 'withdrawn' => true, 'status' => $report->status->value];
+    }
+
+    /**
      * @param  iterable<FeedbackAttachment>  $attachments
      * @return list<array{id: int, original_name: string, mime_type: string, size: int, url: string}>
      */
@@ -710,6 +760,7 @@ class FeedbackMcpTools
             ->sortBy([['created_at', 'asc'], ['id', 'asc']])
             ->values()
             ->map(fn (FeedbackMessage $message): array => [
+                'id' => $message->id,
                 'author_type' => $message->author_type->value,
                 'author' => $message->displayAuthor($report, $viewerIsOwner),
                 'created_at' => $message->created_at->toIso8601String(),

@@ -10,12 +10,16 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['feedback_report_id', 'author_type', 'author_name', 'author_client_account_id', 'author_developer_id', 'author_agent', 'body', 'is_completion_request'])]
 class FeedbackMessage extends Model
 {
     /** @use HasFactory<FeedbackMessageFactory> */
     use HasFactory;
+
+    /** 收回的留言軟刪除：所有查詢預設看不到，畫面、API、未讀數、通知都不會留下痕跡。 */
+    use SoftDeletes;
 
     /** @return BelongsTo<FeedbackReport, $this> */
     public function feedbackReport(): BelongsTo
@@ -53,6 +57,19 @@ class FeedbackMessage extends Model
             $isPublic && ! $viewerIsOwner ? null : $this->author_agent,
             $this->author_client_account_id === null && ($this->author_developer_id !== null || $this->author_type === FeedbackAuthorType::Owner),
         );
+    }
+
+    /**
+     * 這個人能不能編輯、收回這則留言（只有自己發的）：
+     * 團隊身分發的留言，任何開發者都可以；客戶端的留言只有發出的那個帳號（沒有帳號的共用客戶身分只能動同樣沒帳號的留言）。
+     */
+    public function isManageableBy(bool $viewerIsTeam, ?FeedbackClientAccount $viewerAccount): bool
+    {
+        if ($this->author_type !== FeedbackAuthorType::Reporter) {
+            return $viewerIsTeam;
+        }
+
+        return ! $viewerIsTeam && $this->author_client_account_id === $viewerAccount?->id;
     }
 
     /** @return HasMany<FeedbackAttachment, $this> */

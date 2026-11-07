@@ -43,18 +43,10 @@
                 </div>
 
                 <div class="mt-5" data-report-description>{{ \App\Support\FeedbackRichText::render($report->description) }}</div>
-
-                @if ($report->feedbackAttachments->isNotEmpty())
-                    <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        @foreach ($report->feedbackAttachments as $attachment)
-                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}">
-                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover transition group-hover:scale-[1.02]" />
-                                <span class="absolute inset-x-2 bottom-2 rounded-md bg-slate-950/75 px-2 py-1 text-center text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">放大預覽</span>
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
             </section>
+
+            {{-- 附件（相簿）：說明下方、活動時間軸上方；沒有附件時整塊不顯示（album-region 沒有內容就隱藏），有新附件由 album.js 定時換新。 --}}
+            <div class="album-region rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" data-album-region data-refresh-url="{{ route('feedback.reports.activity', [$project, $report, 'part' => 'album']) }}">@include('feedback.reports._album', ['project' => $project, 'report' => $report, 'viewerIsOwner' => $isOwner])</div>
 
             @if ($report->hasAdjustment())
                 {{-- 調整重點已停用：舊內容只在這裡唯讀顯示（過去的處理說明），沒有內容就不顯示，網頁上不能編輯。 --}}

@@ -1,5 +1,5 @@
 import Sortable from 'sortablejs';
-import { replaceKeepingOpen } from './thread-details';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details';
 
 const renderImagePreviews = (input) => {
     const targetId = input.dataset.previewTarget;
@@ -225,7 +225,7 @@ if (imageLightbox) {
 const activity = document.querySelector('[data-activity]');
 if (activity) {
     const refresh = async () => {
-        if (document.hidden) {
+        if (document.hidden || isEditingMessage(activity)) {
             return;
         }
 
@@ -246,6 +246,7 @@ if (activity) {
     };
 
     window.setInterval(refresh, 5000);
+    document.addEventListener('feedback:messages-changed', refresh);
 }
 
 document.addEventListener('click', (event) => {

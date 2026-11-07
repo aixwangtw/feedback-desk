@@ -46,7 +46,21 @@
                             <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{{ config('feedback.labels.client') }}已刪除</span></p>
                             <h3 class="truncate text-sm font-bold text-slate-950" data-chat-thread-title></h3>
                         </div>
+                        {{-- 相簿鈕（照 LINE、Messenger 的「相片與影片」）：切到面板內這張單的附件格狀頁，有附件才顯示；附件不放在對話串裡。 --}}
+                        <button type="button" class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="相簿" data-chat-album-open hidden>
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m21 16-5-5-8 8" /></svg>
+                            相簿 <span class="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600" data-chat-album-count>0</span>
+                        </button>
                         <a href="#" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-page-link>開啟完整頁</a>
+                    </div>
+
+                    {{-- 附件頁：相簿鈕切過來，與對話二選一顯示，可返回對話；永遠全部顯示（data-album-force-all）。 --}}
+                    <div class="flex min-h-0 flex-1 flex-col bg-white" data-chat-album-pane data-album-force-all hidden>
+                        <div class="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-2 sm:px-4">
+                            <button type="button" class="inline-flex min-h-9 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-album-back>‹ 返回對話</button>
+                            <p class="text-sm font-bold text-slate-900">相片與影片</p>
+                        </div>
+                        <div class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4" data-chat-album-body></div>
                     </div>
 
                     <div class="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 px-3 py-4 sm:px-4" data-chat-scroll>

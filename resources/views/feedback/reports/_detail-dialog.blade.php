@@ -1,12 +1,11 @@
 {{--
     清單／看板點開的單張詳情（Jira 版面）：電腦版從右側滑出、手機版整頁。
-    左側：標題、說明、附件、過去的處理說明（舊調整重點，唯讀，有內容才顯示）、相簿＋活動時間軸（留言與狀態變更）、待審留言（只有團隊）、輸入框（可拖曳附件）。
+    左側：標題、說明、附件（相簿，Jira 式縮圖格狀）、過去的處理說明（舊調整重點，唯讀，有內容才顯示）、活動時間軸（留言與狀態變更）、待審留言（只有團隊）、輸入框（可拖曳附件）。
     右側窄欄：狀態、建立者、時間、「完成」鈕（_detail-side，隨對話端點的 side_html 更新）。
     留言、草稿、相簿與單頁、右下角面板是同一套元件：載入由 report-dialog-thread.js 向對話端點取回。
 --}}
 @php
     $reportId = $report->public_id;
-    $attachments = $report->feedbackAttachments;
 @endphp
 <dialog id="detail-report-{{ $reportId }}" class="detail-panel m-0 ml-auto h-dvh max-h-none w-full max-w-none bg-white p-0 text-slate-950 shadow-2xl backdrop:bg-slate-950/50 sm:w-[min(68rem,calc(100vw-1.5rem))] sm:rounded-l-2xl" aria-labelledby="detail-report-title-{{ $reportId }}" data-report-detail>
     <div class="flex h-dvh min-w-0 flex-col">
@@ -27,15 +26,8 @@
 
             <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5 lg:col-start-1 lg:row-start-2">
                 <div data-report-description>{{ \App\Support\FeedbackRichText::render($report->description, compact: true) }}</div>
-                @if ($attachments->isNotEmpty())
-                    <div class="flex flex-wrap gap-2" data-detail-attachments>
-                        @foreach ($attachments as $attachment)
-                            <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="block size-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽">
-                                <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
+                {{-- 附件（相簿）：說明下方、活動時間軸上方，隨對話端點的 album_html 載入（report-dialog-thread.js）。 --}}
+                <div class="album-region" data-dialog-album></div>
                 @if ($report->hasAdjustment())
                     <details class="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm" data-past-notes data-keep-open="past-notes-{{ $reportId }}">
                         <summary class="cursor-pointer font-semibold text-slate-700">過去的處理說明</summary>

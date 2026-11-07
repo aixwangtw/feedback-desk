@@ -258,7 +258,7 @@ class FeedbackGuestClientTest extends TestCase
         $this->assertLessThan(strpos($header, '>建立者</th>'), strpos($header, '>狀態'));
         $this->assertLessThan(strpos($header, '最後更新'), strpos($header, '>建立者</th>'));
         $this->assertStringNotContainsString('調整重點', $header);
-        $this->assertStringNotContainsString('建立日期', $header);
+        $this->assertStringContainsString('建立日期', $header);
         $row = substr($html, strpos($html, '<tbody'));
         $row = substr($row, 0, strpos($row, '</tbody>'));
         $this->assertStringNotContainsString('調整內文QRS', $row);

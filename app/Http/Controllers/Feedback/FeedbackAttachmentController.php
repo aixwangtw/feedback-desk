@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Feedback;
 
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackAttachment;
+use App\Models\FeedbackMessage;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
@@ -23,6 +24,8 @@ class FeedbackAttachmentController extends Controller
     ): Response {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         abort_unless($feedbackAttachment->feedback_report_id === $feedbackReport->id, 404);
+        // 收回的留言：附件網址一併失效。
+        abort_if($feedbackAttachment->feedback_message_id !== null && ! FeedbackMessage::whereKey($feedbackAttachment->feedback_message_id)->exists(), 404);
         if (! $access->canView($feedbackReport)) {
             $access->deny($feedbackProject);
         }
@@ -43,6 +46,8 @@ class FeedbackAttachmentController extends Controller
     ): Response {
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         abort_unless($feedbackAttachment->feedback_report_id === $feedbackReport->id, 404);
+        // 收回的留言：附件網址一併失效。
+        abort_if($feedbackAttachment->feedback_message_id !== null && ! FeedbackMessage::whereKey($feedbackAttachment->feedback_message_id)->exists(), 404);
 
         return $this->stream($request, $feedbackAttachment, $streamer);
     }

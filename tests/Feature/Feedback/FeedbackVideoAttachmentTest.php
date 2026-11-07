@@ -167,15 +167,14 @@ class FeedbackVideoAttachmentTest extends TestCase
         $this->actingAsClient();
         foreach (['list', 'board'] as $view) {
             $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => $view]))->assertOk()->getContent();
-            // 清單、看板不放附件縮圖；影片縮圖在詳情視窗（說明下方的附件）。
-            $dialog = Str::between($html, 'id="detail-report-'.$this->report->public_id.'"', '</dialog>');
-            $this->assertStringContainsString('<video muted playsinline preload="metadata" src="'.e($src).'#t=0.1"', $dialog);
-            $this->assertStringContainsString('data-attachment-video', $dialog);
-            $this->assertStringNotContainsString('<img src="'.e($src).'"', $dialog);
-            $this->assertStringNotContainsString('data-attachment-video', Str::before($html, '<dialog'));
+            // 清單、看板的附件縮圖：影片抓第一格畫面並疊播放圖示，不是 <img>。
+            $outside = Str::before($html, '<dialog');
+            $this->assertStringContainsString('<video muted playsinline preload="metadata" src="'.e($src).'#t=0.1"', $outside);
+            $this->assertStringContainsString('data-attachment-video', $outside);
+            $this->assertStringNotContainsString('<img src="'.e($src).'"', $outside);
         }
         $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
-        $this->assertStringNotContainsString('>附件</th>', $list);
+        $this->assertStringContainsString('>附件</th>', $list);
         $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertOk()->assertSee('data-attachment-video', false);
     }
 

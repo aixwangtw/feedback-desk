@@ -10,6 +10,7 @@ use App\Models\FeedbackMessage;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackAlbum;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -97,8 +98,18 @@ class FeedbackConversationController extends Controller
         // 待審留言只給開發團隊：客戶端的回應連 drafts 這個欄位都沒有。
         $drafts = $isOwner ? ['drafts_html' => $this->draftsHtml($feedbackProject, $feedbackReport)] : [];
 
+        $albumItems = app(FeedbackAlbum::class)->items($feedbackReport, $isOwner);
+
         return response()->json([
             ...$drafts,
+            // 附件（相簿）：詳情視窗放在說明下方，面板放在標題列相簿鈕切出的附件頁；草稿附件只在團隊端的清單裡。
+            'album_count' => $albumItems->count(),
+            'album_html' => $albumItems->isEmpty() ? '' : view('feedback.reports._album', [
+                'project' => $feedbackProject,
+                'report' => $feedbackReport,
+                'viewerIsOwner' => $isOwner,
+                'albumItems' => $albumItems,
+            ])->render(),
             'id' => $feedbackReport->public_id,
             'number' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $isOwner),
             'title' => $feedbackReport->title,

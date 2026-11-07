@@ -35,8 +35,8 @@
                                 </div>
                                 @continue
                             @endif
-                            <div class="min-w-0 w-24">
-                            <a href="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" target="_blank" rel="noreferrer" class="block size-24 overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt="{{ $file['original_name'] }}">
+                            <div class="attachment-tile min-w-0">
+                            <a href="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-slate-200 bg-white" data-lightbox-trigger data-lightbox-alt="{{ $file['original_name'] }}">
                                 <img src="{{ route('feedback.drafts.file', [$project, $report, $draft, $index]) }}" alt="{{ $file['original_name'] }}" class="size-full object-cover" loading="lazy">
                             </a>
                             <x-feedback.attachment-caption :name="$file['original_name']" class="mt-0.5" />

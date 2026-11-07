@@ -17,6 +17,7 @@ use App\Support\FeedbackReportWork;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class FeedbackReportController extends Controller
 {
@@ -151,6 +152,7 @@ class FeedbackReportController extends Controller
     }
 
     public function activity(
+        Request $request,
         FeedbackProject $feedbackProject,
         FeedbackReport $feedbackReport,
         FeedbackAccess $access,
@@ -165,6 +167,15 @@ class FeedbackReportController extends Controller
         $this->markRead($feedbackReport, $access);
 
         $feedbackReport->load(['feedbackMessages.feedbackAttachments', 'feedbackMessages.authorClientAccount', 'feedbackMessages.authorDeveloper']);
+
+        // 單頁的附件區（相簿）與活動時間軸分開刷新：part=album 只回附件區。
+        if ($request->query('part') === 'album') {
+            return view('feedback.reports._album', [
+                'project' => $feedbackProject,
+                'report' => $feedbackReport,
+                'viewerIsOwner' => $access->isOwner($feedbackProject),
+            ]);
+        }
 
         return view('feedback.reports._thread', [
             'project' => $feedbackProject,

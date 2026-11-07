@@ -1,9 +1,9 @@
-// 清單／看板的單張詳情視窗（右側滑出）：開啟時直接載入這張單的相簿＋活動時間軸（伺服器 Blade 已跳脫的 HTML），可在視窗內留言。
+// 清單／看板的單張詳情視窗（右側滑出）：開啟時直接載入這張單的活動時間軸與附件（相簿）（伺服器 Blade 已跳脫的 HTML），可在視窗內留言。
 // 載入即算已讀（與對話面板同一個端點），並通知對話面板同步紅色未讀數字；右側窄欄與清單上的狀態標籤跟著對話端點更新。
 
 import { renderMessageDrafts, draftsSignature } from './message-drafts';
 import { clearReportUnread } from './report-read';
-import { replaceKeepingOpen } from './thread-details';
+import { isEditingMessage, replaceKeepingOpen } from './thread-details';
 
 const POLL_MS = 5000;
 
@@ -30,8 +30,11 @@ const setupThread = (section) => {
     const errorBox = section.querySelector('[data-dialog-thread-error]');
     // 待審留言（只有開發團隊拿得到，客戶端這個容器不存在）：顯示在留言串最下面，與單頁、面板同一份。
     const draftsBox = section.querySelector('[data-dialog-thread-drafts]');
+    // 附件（相簿）：在說明下方、這個活動區上方，內容跟著對話端點更新。
+    const albumBox = dialog.querySelector('[data-dialog-album]');
     const reportId = section.dataset.reportId;
     let lastHtml = '';
+    let lastAlbum = null;
     let timer = null;
 
     const showError = (message) => {
@@ -68,7 +71,7 @@ const setupThread = (section) => {
     const load = async ({ scrollToEnd = false } = {}) => {
         try {
             const data = await fetchThread(section.dataset.threadUrl);
-            if (data.html !== lastHtml) {
+            if (data.html !== lastHtml && !isEditingMessage(body)) {
                 const template = document.createElement('template');
                 template.innerHTML = data.html;
                 // 調整重點已在視窗上方顯示，這裡只放留言串。
@@ -79,6 +82,10 @@ const setupThread = (section) => {
                     // 送出留言後，把輸入框帶回畫面內，看得到剛送出的那則。
                     form.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 }
+            }
+            if (albumBox && typeof data.album_html === 'string' && data.album_html !== lastAlbum) {
+                lastAlbum = data.album_html;
+                albumBox.innerHTML = data.album_html;
             }
             applySide(data);
             if (draftsBox && typeof data.drafts_html === 'string') {
@@ -145,6 +152,13 @@ const setupThread = (section) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
             send();
+        }
+    });
+
+    // 編輯、收回留言後重新載入（只在視窗開著時）。
+    document.addEventListener('feedback:messages-changed', () => {
+        if (dialog.open) {
+            load();
         }
     });
 

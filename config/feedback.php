@@ -118,6 +118,9 @@ return [
         ],
     ],
 
+    // 排程巡檢 API 不列出、也不開放的專案 slug（逗號分隔），例如內部專案。
+    'patrol_excluded_projects' => array_values(array_filter(array_map('trim', explode(',', (string) env('FEEDBACK_PATROL_EXCLUDED_PROJECTS', ''))), fn (string $slug): bool => $slug !== '')),
+
     'automation' => [
         'enabled' => filter_var(env('FEEDBACK_AUTOMATION_ENABLED', false), FILTER_VALIDATE_BOOL),
         'workspace_root' => env('FEEDBACK_WORKSPACE_ROOT'),

@@ -19,6 +19,7 @@ use App\Http\Controllers\Feedback\FeedbackProjectSettingsController;
 use App\Http\Controllers\Feedback\FeedbackPublicReportController;
 use App\Http\Controllers\Feedback\FeedbackReportController;
 use App\Http\Controllers\Feedback\FeedbackStatusController;
+use App\Http\Middleware\ExcludePatrolProjects;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -151,7 +152,7 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     // 排程（雲端例行巡檢）專用 API：Bearer token（feedback:patrol-token 建立），只能讀單、留言、寫待審留言、請客戶確認完成、改成等客戶（needs_input）；寫調整重點已停用（照常寫入但回 warning）。
     Route::prefix('/api/patrol')
         ->withoutMiddleware([PreventRequestForgery::class, ...$statelessMiddleware])
-        ->middleware('throttle:feedback-patrol')
+        ->middleware(['throttle:feedback-patrol', ExcludePatrolProjects::class])
         ->name('feedback.patrol.')
         ->group(function (): void {
             Route::get('/projects', [FeedbackPatrolController::class, 'projects'])->name('projects');

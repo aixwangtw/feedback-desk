@@ -40,7 +40,7 @@ class FeedbackPatrolController extends Controller
         }
 
         return response()->json([
-            'projects' => FeedbackProject::query()->orderBy('id')->get()->map(fn (FeedbackProject $project): array => [
+            'projects' => FeedbackProject::query()->whereNotIn('slug', config('feedback.patrol_excluded_projects', []))->orderBy('id')->get()->map(fn (FeedbackProject $project): array => [
                 'slug' => $project->slug,
                 'name' => $project->name,
                 'url' => route('feedback.portal', $project),

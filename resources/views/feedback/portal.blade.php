@@ -56,11 +56,11 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">{{ config('feedback.portal_title') }}</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label() }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}」；{{ config('feedback.labels.client') }}確認沒問題後，在詳情裡按「完成」或留言上的「通過」；開發團隊按「完成」只會發確認留言請{{ config('feedback.labels.client') }}確認，不會直接結案。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label($project) }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}」；{{ config('feedback.labels.client') }}確認沒問題後，在詳情裡按「完成」或留言上的「通過」；開發團隊按「完成」只會發確認留言請{{ config('feedback.labels.client') }}確認，不會直接結案。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label() }}</span><span>{{ config('feedback.labels.client') }}開了單或又留言，等{{ config('feedback.labels.owner') }}處理、回覆。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label() }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並留言說明，請{{ config('feedback.labels.client') }}確認。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label() }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label($project) }}</span><span>{{ config('feedback.labels.client') }}開了單或又留言，等{{ config('feedback.labels.owner') }}處理、回覆。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並留言說明，請{{ config('feedback.labels.client') }}確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label($project) }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與「完成」都在詳情裡。標題右邊的紅色數字是未讀留言數。</p>
         </div>
@@ -77,7 +77,7 @@
                     @php
                         $summaryCount = $statusCounts[$summaryStatus->value] ?? 0;
                     @endphp
-                    <li data-summary-status="{{ $summaryStatus->value }}"><a href="{{ $statusUrl($summaryStatus) }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label() }}">{{ $summaryStatus->label() }} {{ $summaryCount }} 題</a></li>
+                    <li data-summary-status="{{ $summaryStatus->value }}"><a href="{{ $statusUrl($summaryStatus) }}" class="rounded font-semibold text-teal-800 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-status-summary-item="{{ $summaryStatus->value }}" data-label="{{ $summaryStatus->label($project) }}">{{ $summaryStatus->label($project) }} {{ $summaryCount }} 題</a></li>
                 @endforeach
             </ul>
             <nav class="ml-auto inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1" aria-label="顯示模式">
@@ -103,13 +103,13 @@
                     '-mb-px inline-flex min-h-10 items-center gap-1.5 rounded-t-lg border px-4 text-sm font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
                     'border-slate-200 border-b-white bg-white text-teal-800' => $waitingTab === $tab,
                     'border-transparent text-slate-500 hover:text-slate-900' => $waitingTab !== $tab,
-                ]) data-waiting-tab="{{ $tab }}" @if ($waitingTab === $tab) aria-current="page" @endif>{{ \App\Support\FeedbackWaitingOn::tabLabel($tab) }} <span data-waiting-tab-count>{{ $tabCounts[$tab] ?? 0 }}</span></a>
+                ]) data-waiting-tab="{{ $tab }}" @if ($waitingTab === $tab) aria-current="page" @endif>{{ \App\Support\FeedbackWaitingOn::tabLabel($tab, $project) }} <span data-waiting-tab-count>{{ $tabCounts[$tab] ?? 0 }}</span></a>
             @endforeach
             <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::COMPLETED], ['status', 'page']) }}" @class([
                 'mb-2 ml-auto rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
                 'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED,
                 'text-slate-400 hover:text-slate-700' => $waitingTab !== \App\Support\FeedbackWaitingOn::COMPLETED,
-            ]) data-completed-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED) aria-current="page" @endif>已完成 {{ $tabCounts[\App\Support\FeedbackWaitingOn::COMPLETED] ?? 0 }}</a>
+            ]) data-completed-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED) aria-current="page" @endif>{{ \App\Enums\FeedbackReportStatus::Completed->label($project) }} {{ $tabCounts[\App\Support\FeedbackWaitingOn::COMPLETED] ?? 0 }}</a>
             <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::ALL], ['status', 'page']) }}" @class([
                 'mb-2 rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
                 'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::ALL,
@@ -218,7 +218,7 @@
                                 @endif
                             </td>
                             <td class="block sm:table-cell sm:px-2 sm:py-3 sm:align-middle sm:text-center">
-                                <x-feedback.status-badge :status="$report->status" data-report-status-badge="{{ $report->public_id }}" />
+                                <x-feedback.status-badge :status="$report->status" :$project data-report-status-badge="{{ $report->public_id }}" />
                             </td>
                             @if ($reportCategories !== [])
                                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
@@ -269,7 +269,7 @@
                         @endphp
                         <section class="overflow-hidden rounded-xl border {{ $columnClass }}" aria-labelledby="kanban-heading-{{ $boardStatus->value }}" data-kanban-column data-status="{{ $boardStatus->value }}">
                             <header class="flex items-center justify-between gap-3 border-b border-black/5 px-3.5 py-3">
-                                <h3 id="kanban-heading-{{ $boardStatus->value }}" class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class="size-2.5 rounded-full {{ $dotClass }}" aria-hidden="true"></span>{{ $boardStatus->label() }}</h3>
+                                <h3 id="kanban-heading-{{ $boardStatus->value }}" class="flex items-center gap-2 text-sm font-bold text-slate-900"><span class="size-2.5 rounded-full {{ $dotClass }}" aria-hidden="true"></span>{{ $boardStatus->label($project) }}</h3>
                                 <span class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-black/10" title="本頁／專案總數"><span data-kanban-page-count>{{ $pageStatusCounts[$boardStatus->value] ?? 0 }}</span> / <span data-kanban-total-count="{{ $boardStatus->value }}">{{ $statusCounts[$boardStatus->value] ?? 0 }}</span></span>
                             </header>
                             <div class="grid min-h-36 content-start gap-3 p-3" data-kanban-list data-status="{{ $boardStatus->value }}">

@@ -225,9 +225,9 @@ class FeedbackMcpTools
 
         $statuses = [];
         foreach ((array) ($input['status'] ?? []) as $value) {
-            $status = FeedbackReportStatus::fromInput((string) $value);
+            $status = FeedbackReportStatus::fromInput((string) $value, $project);
             if ($status === null) {
-                throw new FeedbackServiceException('invalid_status', "不認得的狀態「{$value}」。可用值：".implode('、', FeedbackReportStatus::describedOptions()));
+                throw new FeedbackServiceException('invalid_status', "不認得的狀態「{$value}」。可用值：".implode('、', FeedbackReportStatus::describedOptions($project)));
             }
             $statuses[] = $status->value;
         }
@@ -260,7 +260,7 @@ class FeedbackMcpTools
                 'client_number' => $report->isCreatedByClient() ? ($clientNumbers[$report->id] ?? 0) + 1 : null,
                 'public_id' => $report->public_id,
                 'status' => $report->status->value,
-                'status_label' => $report->status->label(),
+                'status_label' => $report->status->label($project),
                 'creator_type' => $report->creator_type->value,
                 'creator' => $report->isPublicReport() ? '公開回報' : $report->creatorLabel(),
                 'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent, true) : null,
@@ -296,7 +296,7 @@ class FeedbackMcpTools
             'public_id' => $report->public_id,
             'project' => $project->slug,
             'status' => $report->status->value,
-            'status_label' => $report->status->label(),
+            'status_label' => $report->status->label($project),
             'creator_type' => $report->creator_type->value,
             'creator' => $report->isPublicReport() ? '公開回報' : $report->creatorLabel(),
             'source' => $report->isPublicReport() ? 'public_stranger' : 'project_member',
@@ -417,7 +417,7 @@ class FeedbackMcpTools
             'public_id' => $report->public_id,
             'message_id' => $message->id,
             'status' => $report->status->value,
-            'note' => FeedbackCompletionRequest::sentNotice(),
+            'note' => FeedbackCompletionRequest::sentNotice($report->feedbackProject),
             'took_over_from' => $takenOver,
             'untrusted_content' => ['notice' => self::UNTRUSTED_NOTICE, 'title' => $report->title],
         ];
@@ -430,9 +430,9 @@ class FeedbackMcpTools
     private function teamStatus(FeedbackActor $actor, array $input): array
     {
         $project = $this->project($input);
-        $status = FeedbackReportStatus::fromInput((string) ($input['status'] ?? ''));
+        $status = FeedbackReportStatus::fromInput((string) ($input['status'] ?? ''), $project);
         if ($status === null) {
-            throw new FeedbackServiceException('invalid_status', '不認得的狀態。可用值：'.implode('、', FeedbackReportStatus::describedOptions()));
+            throw new FeedbackServiceException('invalid_status', '不認得的狀態。可用值：'.implode('、', FeedbackReportStatus::describedOptions($project)));
         }
         if ($status === FeedbackReportStatus::Completed) {
             throw new FeedbackServiceException('completed_by_client_only', FeedbackWorkRule::COMPLETED_BY_CLIENT_ONLY);
@@ -444,8 +444,8 @@ class FeedbackMcpTools
 
         return [
             'public_id' => $report->public_id,
-            'previous' => ['status' => $previous->value, 'label' => $previous->label()],
-            'current' => ['status' => $status->value, 'label' => $status->label()],
+            'previous' => ['status' => $previous->value, 'label' => $previous->label($project)],
+            'current' => ['status' => $status->value, 'label' => $status->label($project)],
             'took_over_from' => $takenOver,
             'untrusted_content' => ['notice' => self::UNTRUSTED_NOTICE, 'title' => $report->title],
         ];
@@ -583,7 +583,7 @@ class FeedbackMcpTools
                 'number' => ($numbers[$report->id] ?? 0) + 1,
                 'public_id' => $report->public_id,
                 'status' => $report->status->value,
-                'status_label' => $report->status->label(),
+                'status_label' => $report->status->label($project),
                 'creator' => $report->creatorLabel(),
                 'messages_count' => (int) $report->feedback_messages_count,
                 'unread_messages_count' => $report->unreadCountFor(false),
@@ -611,7 +611,7 @@ class FeedbackMcpTools
             'public_id' => $report->public_id,
             'project' => $project->slug,
             'status' => $report->status->value,
-            'status_label' => $report->status->label(),
+            'status_label' => $report->status->label($project),
             'creator' => $report->creatorLabel(),
             'created_at' => $report->created_at->toIso8601String(),
             'latest_activity_at' => $report->latest_activity_at?->toIso8601String(),

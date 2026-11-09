@@ -1,4 +1,4 @@
-@props(['status'])
+@props(['status', 'project' => null])
 
 @php
     $classes = match ($status) {
@@ -9,5 +9,5 @@
 @endphp
 
 <span {{ $attributes->merge(['class' => "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset {$classes}"]) }} data-status-value="{{ $status->value }}">
-    {{ $status->label() }}
+    {{ $status->label($project) }}
 </span>

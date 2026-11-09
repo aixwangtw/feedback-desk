@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackMessage;
+use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
 use App\Support\FeedbackAttachmentRules;
@@ -25,9 +26,9 @@ class PostFeedbackMessageAction
     /**
      * 團隊留言把單切成等客戶後，給人看的提醒（狀態名稱照站台設定）。
      */
-    public static function statusChangeNotice(): string
+    public static function statusChangeNotice(?FeedbackProject $project = null): string
     {
-        return '狀態已改為「'.FeedbackReportStatus::NeedsInput->label().'」。';
+        return '狀態已改為「'.FeedbackReportStatus::NeedsInput->label($project).'」。';
     }
 
     public function __construct(private ChangeFeedbackReportStatusAction $changeStatus) {}

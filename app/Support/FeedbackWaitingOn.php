@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\FeedbackReportStatus;
+use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 
 /**
@@ -50,16 +51,16 @@ final class FeedbackWaitingOn
     /**
      * 頁籤標題＝狀態名稱：等開發／等老師。
      */
-    public static function tabLabel(string $waitingOn): string
+    public static function tabLabel(string $waitingOn, ?FeedbackProject $project = null): string
     {
-        return self::status($waitingOn)->label();
+        return self::status($waitingOn)->label($project);
     }
 
     /**
      * 每張單上的標示（同狀態名稱）；已完成沒有標示。
      */
-    public static function badgeLabel(string $waitingOn): ?string
+    public static function badgeLabel(string $waitingOn, ?FeedbackProject $project = null): ?string
     {
-        return $waitingOn === self::COMPLETED ? null : self::status($waitingOn)->label();
+        return $waitingOn === self::COMPLETED ? null : self::status($waitingOn)->label($project);
     }
 }

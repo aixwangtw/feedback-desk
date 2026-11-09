@@ -78,7 +78,7 @@ class FeedbackMessageDraftController extends Controller
         }
 
         $feedbackReport->refresh();
-        $notice = ($replaces ? '已修改原留言。' : '留言已送出。').($feedbackReport->status !== $previous ? PostFeedbackMessageAction::statusChangeNotice() : '');
+        $notice = ($replaces ? '已修改原留言。' : '留言已送出。').($feedbackReport->status !== $previous ? PostFeedbackMessageAction::statusChangeNotice($feedbackProject) : '');
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $notice, 'status' => $feedbackReport->status->value]);

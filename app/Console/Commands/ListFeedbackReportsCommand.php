@@ -51,9 +51,9 @@ class ListFeedbackReportsCommand extends Command
 
         $statuses = [];
         foreach ((array) $this->option('status') as $input) {
-            $status = FeedbackReportStatus::fromInput((string) $input);
+            $status = FeedbackReportStatus::fromInput((string) $input, $project);
             if (! $status) {
-                $this->components->error("不認得的狀態「{$input}」。可用值：".implode('、', FeedbackReportStatus::describedOptions()));
+                $this->components->error("不認得的狀態「{$input}」。可用值：".implode('、', FeedbackReportStatus::describedOptions($project)));
 
                 return self::FAILURE;
             }
@@ -87,7 +87,7 @@ class ListFeedbackReportsCommand extends Command
             'client_number' => isset($clientNumbers[$report->id]) ? $clientNumbers[$report->id] + 1 : null,
             'public_id' => $report->public_id,
             'status' => $report->status->value,
-            'status_label' => $report->status->label(),
+            'status_label' => $report->status->label($project),
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
             'claimed_by' => $report->claimed_at !== null && $report->claimedBy !== null ? FeedbackAgentName::label($report->claimedBy->name, $report->claimed_agent, true) : null,

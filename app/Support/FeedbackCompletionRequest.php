@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\FeedbackReportStatus;
+use App\Models\FeedbackProject;
 
 /**
  * 「請老師確認完成」：開發團隊（網頁、artisan、MCP、巡檢 API）都不能直接把單結案，
@@ -20,9 +21,9 @@ final class FeedbackCompletionRequest
     public const APPROVE_LABEL = '通過';
 
     /** 給開發端的提醒：發出後單仍在等老師。 */
-    public static function sentNotice(): string
+    public static function sentNotice(?FeedbackProject $project = null): string
     {
-        return '已請'.config('feedback.labels.client').'確認完成：單維持「'.FeedbackReportStatus::NeedsInput->label().'」，要等'.config('feedback.labels.client').'按「'.self::APPROVE_LABEL.'」才會變成已完成。';
+        return '已請'.config('feedback.labels.client').'確認完成：單維持「'.FeedbackReportStatus::NeedsInput->label($project).'」，要等'.config('feedback.labels.client').'按「'.self::APPROVE_LABEL.'」才會變成已完成。';
     }
 
     /** 給 CLI、MCP、API 說明文字用。 */

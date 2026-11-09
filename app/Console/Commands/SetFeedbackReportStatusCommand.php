@@ -52,9 +52,9 @@ class SetFeedbackReportStatusCommand extends Command
             return self::FAILURE;
         }
 
-        $status = FeedbackReportStatus::fromInput((string) $this->argument('status'));
+        $status = FeedbackReportStatus::fromInput((string) $this->argument('status'), $project);
         if (! $status) {
-            $this->components->error('不認得的狀態。可用值：'.implode('、', FeedbackReportStatus::describedOptions()));
+            $this->components->error('不認得的狀態。可用值：'.implode('、', FeedbackReportStatus::describedOptions($project)));
 
             return self::FAILURE;
         }
@@ -89,8 +89,8 @@ class SetFeedbackReportStatusCommand extends Command
         $changeStatus->handle($report, $status, $actor);
 
         $this->components->info('已更新狀態：'.OutputFormatter::escape($report->title));
-        $this->components->twoColumnDetail('原狀態', "{$previous->value}（{$previous->label()}）");
-        $this->components->twoColumnDetail('新狀態', "{$status->value}（{$status->label()}）");
+        $this->components->twoColumnDetail('原狀態', "{$previous->value}（{$previous->label($project)}）");
+        $this->components->twoColumnDetail('新狀態', "{$status->value}（{$status->label($project)}）");
         if ($takenOver !== null) {
             $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
         }

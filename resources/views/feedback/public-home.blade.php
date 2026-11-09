@@ -41,7 +41,7 @@
                                 <x-feedback.message-badges :report="$myReport" :is-owner="false" class="mt-1" />
                                 <x-feedback.time :at="$myReport->created_at" class="text-xs text-slate-500" />
                             </div>
-                            <x-feedback.status-badge :status="$myReport->status" />
+                            <x-feedback.status-badge :status="$myReport->status" :$project />
                         </li>
                     @endforeach
                 </ul>

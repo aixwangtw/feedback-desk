@@ -39,12 +39,12 @@ class FeedbackCompletionRequestController extends Controller
 
         if ($request->expectsJson()) {
             return response()->json([
-                'message' => FeedbackCompletionRequest::sentNotice(),
+                'message' => FeedbackCompletionRequest::sentNotice($feedbackProject),
                 'status' => $feedbackReport->status->value,
                 'message_id' => $message->id,
             ], 201);
         }
 
-        return back()->with('success', FeedbackCompletionRequest::sentNotice());
+        return back()->with('success', FeedbackCompletionRequest::sentNotice($feedbackProject));
     }
 }

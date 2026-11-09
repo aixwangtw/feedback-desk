@@ -5,6 +5,7 @@
     $passwordErrors = $errors->getBag('password');
     $tokenErrors = $errors->getBag('token');
     $categoryErrors = $errors->getBag('categories');
+    $statusLabelErrors = $errors->getBag('statusLabels');
 @endphp
 <x-feedback.layout :title="'我的帳號｜'.$project->name" :$project>
     <x-slot:headerAction>
@@ -132,6 +133,22 @@
                     <input id="report-categories" name="categories" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_INPUT_LENGTH }}" value="{{ old('categories', implode(',', $project->reportCategories())) }}" placeholder="例如：程式使用問題,版面排版,其他" class="{{ $input }}" data-categories-input>
                     <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在下拉選單。留空就不分類，開單與清單都不顯示分類欄位。已經分好類的單不會被改掉。</p>
                     <button type="submit" class="{{ $primary }}">儲存分類</button>
+                </form>
+                @if ($statusLabelErrors->any())
+                    <p class="mt-6 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{{ $statusLabelErrors->first() }}</p>
+                @endif
+                <form method="POST" action="{{ route('feedback.project.status-labels', $project) }}" class="mt-6 grid gap-3 border-t border-slate-200 pt-6" data-status-labels-form>
+                    @csrf
+                    @method('PUT')
+                    <p class="text-sm font-semibold text-slate-800">狀態名稱</p>
+                    @foreach (\App\Enums\FeedbackReportStatus::cases() as $statusOption)
+                        <div class="grid gap-1">
+                            <label for="status-label-{{ $statusOption->value }}" class="text-xs font-semibold text-slate-600">{{ $statusOption->label() }}（{{ $statusOption->value }}）</label>
+                            <input id="status-label-{{ $statusOption->value }}" name="status_labels[{{ $statusOption->value }}]" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_STATUS_LABEL_LENGTH }}" value="{{ old('status_labels.'.$statusOption->value, $project->statusLabelOverrides()[$statusOption->value] ?? '') }}" placeholder="{{ $statusOption->label() }}" class="{{ $input }}" data-status-label-input="{{ $statusOption->value }}">
+                        </div>
+                    @endforeach
+                    <p class="text-xs leading-5 text-slate-500">只改這個看板顯示的名稱，資料不變；留空的沿用全站名稱（灰字）。網頁、對話面板、指令列、MCP、API 都會用這裡的名稱。</p>
+                    <button type="submit" class="{{ $primary }}">儲存狀態名稱</button>
                 </form>
             </section>
         @endif

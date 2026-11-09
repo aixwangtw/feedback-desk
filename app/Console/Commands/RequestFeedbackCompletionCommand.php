@@ -85,8 +85,8 @@ class RequestFeedbackCompletionCommand extends Command
             $this->components->twoColumnDetail('接手自', OutputFormatter::escape($takenOver));
         }
         $this->components->twoColumnDetail('留言 id', (string) $message->id);
-        $this->components->twoColumnDetail('目前狀態', $report->status->label());
-        $this->components->warn(FeedbackCompletionRequest::sentNotice());
+        $this->components->twoColumnDetail('目前狀態', $report->status->label($report->feedbackProject));
+        $this->components->warn(FeedbackCompletionRequest::sentNotice($report->feedbackProject));
         $this->line(route('feedback.reports.show', [$project, $report]));
 
         return self::SUCCESS;

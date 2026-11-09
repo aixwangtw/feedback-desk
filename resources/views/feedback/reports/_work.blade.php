@@ -2,7 +2,7 @@
 @php
     $workErrors = $errors->getBag('work');
     $smallButton = 'rounded-lg border px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
-    $statusLabel = fn (string $value): string => \App\Enums\FeedbackReportStatus::tryFrom($value)?->label() ?? $value;
+    $statusLabel = fn (string $value): string => \App\Enums\FeedbackReportStatus::tryFrom($value)?->label($project) ?? $value;
 @endphp
 <section id="work" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-work-panel>
     <h2 class="text-sm font-semibold text-slate-950">誰在處理</h2>

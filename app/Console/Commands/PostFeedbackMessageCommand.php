@@ -99,7 +99,7 @@ class PostFeedbackMessageCommand extends Command
         $this->components->twoColumnDetail('留言 id', (string) $message->id);
         $this->components->twoColumnDetail('附圖', (string) count($images));
         if ($report->status !== $previous) {
-            $this->components->warn(PostFeedbackMessageAction::statusChangeNotice());
+            $this->components->warn(PostFeedbackMessageAction::statusChangeNotice($report->feedbackProject));
         }
         $this->line(route('feedback.reports.show', [$project, $report]));
 

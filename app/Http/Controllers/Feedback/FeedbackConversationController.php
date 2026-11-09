@@ -113,7 +113,7 @@ class FeedbackConversationController extends Controller
             'id' => $feedbackReport->public_id,
             'number' => $feedbackReport->sequenceNumber(clientCreatedOnly: ! $isOwner),
             'title' => $feedbackReport->title,
-            'status' => $feedbackReport->status->label(),
+            'status' => $feedbackReport->status->label($feedbackProject),
             'status_value' => $feedbackReport->status->value,
             'deleted' => $feedbackReport->isDeletedByClient(),
             // 詳情視窗右側窄欄（狀態、時間、完成鈕）與清單上的狀態標籤，隨對話一起更新。
@@ -123,7 +123,7 @@ class FeedbackConversationController extends Controller
                 'isOwner' => $isOwner,
                 'context' => 'dialog',
             ])->render(),
-            'status_badge_html' => Blade::render('<x-feedback.status-badge :status="$status" data-report-status-badge="{{ $id }}" />', ['status' => $feedbackReport->status, 'id' => $feedbackReport->public_id]),
+            'status_badge_html' => Blade::render('<x-feedback.status-badge :status="$status" :$project data-report-status-badge="{{ $id }}" />', ['status' => $feedbackReport->status, 'project' => $feedbackProject, 'id' => $feedbackReport->public_id]),
             'page_url' => route('feedback.reports.show', [$feedbackProject, $feedbackReport]),
             'post_url' => route('feedback.messages.store', [$feedbackProject, $feedbackReport]),
             'html' => view('feedback.reports._conversation', [
@@ -178,7 +178,7 @@ class FeedbackConversationController extends Controller
             'id' => $report->public_id,
             'number' => $number,
             'title' => $report->title,
-            'status' => $report->status->label(),
+            'status' => $report->status->label($project),
             'deleted' => $report->isDeletedByClient(),
             'preview' => $report->latest_message_body !== null
                 ? Str::limit(Str::squish((string) $report->latest_message_body), self::PREVIEW_LENGTH)

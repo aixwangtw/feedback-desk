@@ -67,6 +67,14 @@ class FeedbackReport extends Model
         return $this->belongsTo(FeedbackProject::class);
     }
 
+    /**
+     * 這張單的狀態名稱，依所屬看板設定（沒設定沿用全站）。
+     */
+    public function statusLabel(): string
+    {
+        return $this->status->label($this->feedbackProject);
+    }
+
     /** @return BelongsTo<FeedbackDeveloper, $this> */
     public function creatorDeveloper(): BelongsTo
     {

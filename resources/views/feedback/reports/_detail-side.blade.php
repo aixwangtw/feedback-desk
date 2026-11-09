@@ -15,7 +15,7 @@
     <dl class="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-xs" data-detail-fields>
         <dt class="text-slate-500">狀態</dt>
         <dd class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <x-feedback.status-badge :status="$report->status" data-report-status-badge="{{ $report->public_id }}" />
+            <x-feedback.status-badge :status="$report->status" :$project data-report-status-badge="{{ $report->public_id }}" />
             @if ($canManage && ! $isCompleted)
                 <span data-detail-complete><x-feedback.complete-button :$project :$report :is-owner="$isOwner" /></span>
             @endif

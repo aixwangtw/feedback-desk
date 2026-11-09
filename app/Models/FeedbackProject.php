@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Enums\FeedbackReportStatus;
 use Database\Factories\FeedbackProjectFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled', 'public_reporting_enabled', 'report_categories'])]
+#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled', 'public_reporting_enabled', 'report_categories', 'status_labels'])]
 class FeedbackProject extends Model
 {
     /** @use HasFactory<FeedbackProjectFactory> */
@@ -52,7 +53,33 @@ class FeedbackProject extends Model
             'automation_enabled' => 'boolean',
             'public_reporting_enabled' => 'boolean',
             'report_categories' => 'array',
+            'status_labels' => 'array',
         ];
+    }
+
+    /**
+     * 這個專案自訂的狀態名稱（狀態值 => 名稱）；沒自訂的狀態不在裡面，顯示時沿用全站設定。
+     *
+     * @return array<string, string>
+     */
+    public function statusLabelOverrides(): array
+    {
+        $overrides = [];
+        foreach ((array) ($this->status_labels ?? []) as $value => $label) {
+            if (FeedbackReportStatus::tryFrom((string) $value) !== null && is_string($label) && trim($label) !== '') {
+                $overrides[(string) $value] = trim($label);
+            }
+        }
+
+        return $overrides;
+    }
+
+    /**
+     * 這個專案顯示的狀態名稱：專案有設定就用專案的，沒設定沿用全站（FeedbackReportStatus::label()）。
+     */
+    public function statusLabel(FeedbackReportStatus $status): string
+    {
+        return $status->label($this);
     }
 
     /**

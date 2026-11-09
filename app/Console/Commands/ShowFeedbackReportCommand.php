@@ -77,7 +77,7 @@ class ShowFeedbackReportCommand extends Command
             'project' => $project->slug,
             'title' => $report->title,
             'status' => $report->status->value,
-            'status_label' => $report->status->label(),
+            'status_label' => $report->status->label($project),
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
             'deleted_by_client' => $report->isDeletedByClient(),

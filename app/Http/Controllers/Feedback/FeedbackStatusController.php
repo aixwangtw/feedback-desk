@@ -29,12 +29,12 @@ class FeedbackStatusController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'status' => $status->value,
-                'label' => $status->label(),
+                'label' => $status->label($feedbackProject),
                 'counts' => FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $access->isOwner($feedbackProject), clientCreatedOnly: ! $access->isOwner($feedbackProject)),
-                'message' => "狀態已更新為「{$status->label()}」。",
+                'message' => "狀態已更新為「{$status->label($feedbackProject)}」。",
             ]);
         }
 
-        return back()->with('success', "狀態已更新為「{$status->label()}」。");
+        return back()->with('success', "狀態已更新為「{$status->label($feedbackProject)}」。");
     }
 }

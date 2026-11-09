@@ -39,7 +39,7 @@
                             </div>
                         @endif
                     </div>
-                    <x-feedback.status-badge :status="$report->status" />
+                    <x-feedback.status-badge :status="$report->status" :$project />
                 </div>
 
                 <div class="mt-5" data-report-description>{{ \App\Support\FeedbackRichText::render($report->description) }}</div>
@@ -73,7 +73,7 @@
                         @if ($canManage)
                             <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-chat-open="{{ $report->public_id }}">在對話面板開啟</button>
                         @endif
-                        <x-feedback.status-badge :status="$report->status" />
+                        <x-feedback.status-badge :status="$report->status" :$project />
                     </div>
                 </div>
 

@@ -224,6 +224,17 @@ class FeedbackAccess
         $this->queueCookie($entries);
     }
 
+    /**
+     * 登出：清掉這個瀏覽器在所有專案的登入（工作階段與長效 cookie），不只目前這個專案。
+     * 團隊登入是跨專案共用的，只清一個專案會讓其他專案的登入留著。
+     */
+    public function revokeAll(): void
+    {
+        $this->session->forget('feedback');
+        $this->forgetAccountCache();
+        $this->queueCookie([]);
+    }
+
     public function isOwner(FeedbackProject $project): bool
     {
         if ($this->hasRole($project, self::ROLE_OWNER, $this->ownerKey($project))) {

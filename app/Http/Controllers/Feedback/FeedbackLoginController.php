@@ -87,12 +87,16 @@ class FeedbackLoginController extends Controller
 
         $request->session()->regenerate();
 
+        // 團隊帳號（開發者個人帳號、共用 owner 帳號）本來就能進每個專案，在專案登入頁登入也一併給全域登入，
+        // 切換專案不用再輸入帳密。客戶帳號只授權自己這個專案。
         if ($account instanceof FeedbackDeveloper) {
             $access->grantDeveloper($feedbackProject, $account);
+            $access->grantGlobalDeveloper($account);
         } elseif ($account instanceof FeedbackClientAccount) {
             $access->grantClientAccount($feedbackProject, $account);
         } else {
             $access->grantOwner($feedbackProject, FeedbackAccess::SOURCE_PASSWORD);
+            $access->grantGlobalOwner();
         }
 
         return redirect()->intended(route('feedback.portal', $feedbackProject, false));
@@ -201,8 +205,7 @@ class FeedbackLoginController extends Controller
 
     public function destroy(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
     {
-        $access->revoke($feedbackProject);
-        $access->revokeGlobal();
+        $access->revokeAll();
         $request->session()->regenerate(true);
         $request->session()->regenerateToken();
 
@@ -211,7 +214,7 @@ class FeedbackLoginController extends Controller
 
     public function destroyUnified(Request $request, FeedbackAccess $access): RedirectResponse
     {
-        $access->revokeGlobal();
+        $access->revokeAll();
         $request->session()->regenerate(true);
         $request->session()->regenerateToken();
 

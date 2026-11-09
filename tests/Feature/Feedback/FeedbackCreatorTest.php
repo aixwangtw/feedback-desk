@@ -92,6 +92,14 @@ class FeedbackCreatorTest extends TestCase
         $cookie = json_decode($this->loginAs('dev-a', 'dev-a-pass'), true);
         $cookie[(string) $this->project->id]['owner']['developer_id'] = $this->devB->id;
 
+        // 專案登入時也會發全域登入；只改專案那筆時，仍是本人 dev-a 的全域登入生效，認不成 dev-b。
+        $this->expireSession();
+        $this->withCookie(FeedbackAccess::COOKIE_NAME, json_encode($cookie));
+        $this->get(route('feedback.portal', $this->project))->assertOk();
+        $this->assertSame($this->devA->id, app(FeedbackAccess::class)->currentDeveloper($this->project)?->id);
+
+        $cookie[FeedbackAccess::COOKIE_GLOBAL_KEY]['owner']['developer_id'] = $this->devB->id;
+
         $this->expireSession();
         $this->withCookie(FeedbackAccess::COOKIE_NAME, json_encode($cookie));
         $this->get(route('feedback.portal', $this->project))->assertRedirect(route('feedback.login', $this->project));

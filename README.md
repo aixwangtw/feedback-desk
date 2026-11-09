@@ -37,7 +37,7 @@ Feedback Desk is an issue-reporting desk for talking with clients and teammates 
 | 身分 | 能做什麼 | 怎麼進來 |
 | --- | --- | --- |
 | 客戶（client） | 新增、編輯、刪除這個專案客戶端的單，留言，確認完成（按「完成」或確認留言上的「通過」）。同專案的客戶彼此看得到對方開的單與留言；看不到開發團隊建立的單、交接紀錄與其他專案。 | 專屬連結 `/p/{slug}/access?token=...`，或自己的客戶帳號（`/p/{slug}/login`）；客戶帳號也能用命令列與 MCP（看單、開單附圖、留言） |
-| 開發團隊（owner） | 看所有專案全部的單，回覆（狀態自動切換）、請客戶確認完成、認領、寫交接紀錄、還原被刪除的單，也能自己開單、管理帳號。 | 專屬連結 `/owner/{slug}/access?token=...`，或團隊個人帳號（`/owner/{slug}/login`，每個專案都能登入） |
+| 開發團隊（owner） | 看所有專案全部的單，回覆（狀態自動切換）、請客戶確認完成、認領、寫交接紀錄、還原被刪除的單，也能自己開單、管理帳號。 | 專屬連結 `/owner/{slug}/access?token=...`，或團隊個人帳號（`/owner/{slug}/login`，每個專案都能登入；在任一專案登入一次就能直接切換到所有專案，專屬連結只限該專案；客戶帳號只能進自己的專案） |
 | 公開回報者 | 只能看自己送出的那張單和留言，看得到調整重點與團隊回覆。 | 送出後顯示的私密網址；同一個瀏覽器也會記住 |
 
 ## 如何安裝與使用
@@ -346,7 +346,7 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 
 指令前面都要加 `npx --allow-git=all github:aixwangtw/feedback-desk`。
 
-網頁上的「登出」只清除這個瀏覽器的登入，其他裝置上的登入不受影響。要讓所有裝置都登出：本人到「我的帳號」改密碼；或由團隊用 `project client-link` 換連結、`client reset`／`client disable`、`developer reset`／`developer disable`（本人自己設定的密碼不能被重設，改用停用）。
+網頁上的「登出」清除這個瀏覽器在所有專案的登入，其他裝置上的登入不受影響。要讓所有裝置都登出：本人到「我的帳號」改密碼；或由團隊用 `project client-link` 換連結、`client reset`／`client disable`、`developer reset`／`developer disable`（本人自己設定的密碼不能被重設，改用停用）。
 
 ## 免費方案夠用嗎？有哪些限制？
 

@@ -215,8 +215,13 @@ export class Access {
         return timingSafeEqualString(expected, g.f) ? developer : null;
     }
 
-    async revokeGlobalDeveloper(): Promise<void> {
+    /**
+     * Logout: drop this browser's owner and client logins on every project and the global team login.
+     * A team login works on every project, so clearing only one project would leave the others signed in.
+     */
+    async signOutEverywhere(): Promise<void> {
         const cookie = await this.auth();
+        cookie.p = {};
         delete cookie.g;
         this.saveAuth(cookie);
     }
@@ -241,14 +246,6 @@ export class Access {
         cookie.r = cookie.r.filter(([id]) => id !== report.id);
         cookie.r.push([report.id, this.nowSeconds + REPORTER_GRANT_SECONDS]);
         cookie.r = cookie.r.slice(-MAX_REPORTER_GRANTS);
-        this.saveAuth(cookie);
-    }
-
-    /** Remove every owner/client grant for the project, and global developer session. */
-    async revoke(project: Project): Promise<void> {
-        const cookie = await this.auth();
-        delete cookie.p[String(project.id)];
-        delete cookie.g;
         this.saveAuth(cookie);
     }
 

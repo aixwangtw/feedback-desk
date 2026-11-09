@@ -437,7 +437,7 @@ web.post('/p/:slug/login', async (c) => {
 web.post('/p/:slug/logout', async (c) => {
     const project = await projectOr404(c);
     const access = c.get('access');
-    await access.revoke(project);
+    await access.signOutEverywhere();
     access.setFlash({ success: '已登出。' });
     return c.redirect(paths.login(project.slug), 302);
 });
@@ -508,7 +508,7 @@ web.post('/owner/login', async (c) => {
 
 web.post('/owner/logout', async (c) => {
     const access = c.get('access');
-    await access.revokeGlobalDeveloper();
+    await access.signOutEverywhere();
     access.setFlash({ success: '已登出。' });
     return c.redirect(paths.ownerGlobalLogin(), 302);
 });

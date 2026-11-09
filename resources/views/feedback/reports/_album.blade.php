@@ -20,7 +20,7 @@
                     </a>
                     <x-feedback.attachment-caption :name="$item['name']" class="mt-1" />
                     <p class="mt-0.5 truncate text-[11px] leading-4 text-slate-600" title="{{ $item['source'] }}" data-album-source>
-                        @if ($item['kind'] === 'draft')<span class="font-semibold text-amber-800">{{ $item['source'] }}（只有{{ config('feedback.labels.owner') }}看得到）</span>@else{{ $item['source'] }}@endif
+                        @if ($item['kind'] === 'draft')<span class="font-semibold text-amber-800">{{ $item['source'] }}（只有{{ $project->ownerRole() }}看得到）</span>@else{{ $item['source'] }}@endif
                     </p>
                     <x-feedback.time :at="$item['at']" relative class="block text-[11px] leading-4 text-slate-400" />
                 </li>

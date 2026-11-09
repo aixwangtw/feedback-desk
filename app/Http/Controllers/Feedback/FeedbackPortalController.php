@@ -243,6 +243,6 @@ class FeedbackPortalController extends Controller
             $options['public'] = '公開回報';
         }
 
-        return $options + ['shared' => config('feedback.labels.owner').'（共用）'];
+        return $options + ['shared' => $project->ownerRole().'（共用）'];
     }
 }

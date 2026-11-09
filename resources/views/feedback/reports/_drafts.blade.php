@@ -6,7 +6,7 @@
 --}}
 @php $anchor = $anchor ?? false; @endphp
 <div @if ($anchor) id="message-drafts" @endif class="border-t border-amber-200 bg-amber-50/70 px-5 py-4 sm:px-7" data-message-drafts>
-    <h3 class="text-sm font-bold text-amber-900">待審留言 {{ $drafts->count() }}<span class="ml-2 text-xs font-normal text-amber-800">只有{{ config('feedback.labels.owner') }}看得到，按「送出」才會發給{{ config('feedback.labels.client') }}</span></h3>
+    <h3 class="text-sm font-bold text-amber-900">待審留言 {{ $drafts->count() }}<span class="ml-2 text-xs font-normal text-amber-800">只有{{ $project->ownerRole() }}看得到，按「送出」才會發給{{ $project->clientRole() }}</span></h3>
     <ol class="mt-3 grid gap-3">
         @foreach ($drafts as $draft)
             @php $draftErrors = $errors->getBag('draft'.$draft->id); @endphp

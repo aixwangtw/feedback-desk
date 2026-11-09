@@ -68,6 +68,9 @@ $feedbackRoutes = function () use ($statelessMiddleware): void {
     Route::put('/p/{feedbackProject:slug}/settings/status-labels', [FeedbackProjectSettingsController::class, 'updateStatusLabels'])
         ->middleware('throttle:30,1')
         ->name('feedback.project.status-labels');
+    Route::put('/p/{feedbackProject:slug}/settings/role-labels', [FeedbackProjectSettingsController::class, 'updateRoleLabels'])
+        ->middleware('throttle:30,1')
+        ->name('feedback.project.role-labels');
     Route::get('/p/{feedbackProject:slug}/attachment-thumbs', [FeedbackAttachmentThumbsController::class, 'index'])
         ->middleware('throttle:120,1')
         ->name('feedback.attachment-thumbs.index');

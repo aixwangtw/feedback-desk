@@ -29,7 +29,7 @@
         <dt class="text-slate-500">最後更新</dt>
         <dd class="font-medium text-slate-800"><x-feedback.time :at="$report->latest_activity_at" relative /></dd>
         @if ($isOwner && $report->isDeletedByClient())
-            <dt class="text-slate-500" data-client-deleted>{{ config('feedback.labels.client') }}已刪除</dt>
+            <dt class="text-slate-500" data-client-deleted>{{ $project->clientRole() }}已刪除</dt>
             <dd class="font-medium text-slate-800"><x-feedback.time :at="$report->client_deleted_at" /></dd>
         @endif
     </dl>

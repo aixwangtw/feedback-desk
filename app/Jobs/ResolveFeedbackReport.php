@@ -7,6 +7,7 @@ use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackAutomationStatus;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackAutomationRun;
+use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -132,7 +133,7 @@ class ResolveFeedbackReport implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        $summary = $exception?->getMessage() ?? '自動處理失敗，請由'.config('feedback.labels.owner').'檢查執行紀錄。';
+        $summary = $exception?->getMessage() ?? '自動處理失敗，請由'.FeedbackProject::ownerRoleFor($this->report->feedbackProject).'檢查執行紀錄。';
 
         DB::transaction(function () use ($summary): void {
             $this->run->update([

@@ -12,9 +12,9 @@ use App\Models\FeedbackProject;
 final class FeedbackCompletionRequest
 {
     /** 確認留言預設文字（網頁上可以改字；CLI、MCP、API 沒給文字時用這個）。 */
-    public static function defaultBody(): string
+    public static function defaultBody(?FeedbackProject $project = null): string
     {
-        return '這張已經處理好了，'.config('feedback.labels.client').'確認沒問題請按『'.self::APPROVE_LABEL.'』；還有問題直接在這裡留言';
+        return '這張已經處理好了，'.FeedbackProject::clientRoleFor($project).'確認沒問題請按『'.self::APPROVE_LABEL.'』；還有問題直接在這裡留言';
     }
 
     /** 留言上給老師按的按鈕文字。 */
@@ -23,7 +23,7 @@ final class FeedbackCompletionRequest
     /** 給開發端的提醒：發出後單仍在等老師。 */
     public static function sentNotice(?FeedbackProject $project = null): string
     {
-        return '已請'.config('feedback.labels.client').'確認完成：單維持「'.FeedbackReportStatus::NeedsInput->label($project).'」，要等'.config('feedback.labels.client').'按「'.self::APPROVE_LABEL.'」才會變成已完成。';
+        return '已請'.FeedbackProject::clientRoleFor($project).'確認完成：單維持「'.FeedbackReportStatus::NeedsInput->label($project).'」，要等'.FeedbackProject::clientRoleFor($project).'按「'.self::APPROVE_LABEL.'」才會變成已完成。';
     }
 
     /** 給 CLI、MCP、API 說明文字用。 */

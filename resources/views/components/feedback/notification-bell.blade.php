@@ -1,5 +1,5 @@
 {{-- 頁首通知鈴鐺：只列對方發的、自己還沒讀的留言；點了開啟該單留言處（開啟即標已讀）。團隊端另列待審留言。 --}}
-@props(['notifications'])
+@props(['notifications', 'project' => null])
 
 @php $total = $notifications['total']; @endphp
 <details class="relative" data-notification-bell data-bell-count="{{ $total }}">
@@ -13,7 +13,7 @@
         @endif
     </summary>
     <div class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5">
-        <p class="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">{{ $notifications['is_owner'] ? config('feedback.labels.client').'的新留言' : config('feedback.labels.owner').'的新留言' }}</p>
+        <p class="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500">{{ $notifications['is_owner'] ? \App\Models\FeedbackProject::clientRoleFor($project).'的新留言' : \App\Models\FeedbackProject::ownerRoleFor($project).'的新留言' }}</p>
         <div class="max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain">
             @forelse ($notifications['items'] as $item)
                 <a href="{{ $item['url'] }}" class="block border-b border-slate-100 px-4 py-3 transition hover:bg-teal-50" data-bell-item="{{ $item['public_id'] }}">
@@ -33,7 +33,7 @@
         </div>
         @if ($notifications['drafts'] !== [])
             <div class="border-t border-amber-200 bg-amber-50/70">
-                <p class="px-4 pt-2.5 text-xs font-semibold text-amber-900">待審留言（只有{{ config('feedback.labels.owner') }}看得到）</p>
+                <p class="px-4 pt-2.5 text-xs font-semibold text-amber-900">待審留言（只有{{ \App\Models\FeedbackProject::ownerRoleFor($project) }}看得到）</p>
                 @foreach ($notifications['drafts'] as $draft)
                     <a href="{{ $draft['url'] }}" class="flex items-center justify-between gap-2 px-4 py-2 text-sm hover:bg-amber-100" data-bell-draft="{{ $draft['public_id'] }}">
                         <span class="min-w-0 truncate"><span class="text-[11px] text-amber-800">{{ $draft['project'] }}｜</span>{{ $draft['title'] }}</span>

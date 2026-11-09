@@ -15,7 +15,7 @@
 @endphp
 @if ($report->status !== \App\Enums\FeedbackReportStatus::Completed)
     @if ($isOwner)
-        <button type="button" class="{{ $completeClass }}" data-dialog-open="request-completion-{{ $report->public_id }}" data-request-completion="{{ $report->public_id }}" {{ $attributes->only('data-card-action') }} title="發一則確認留言，請{{ config('feedback.labels.client') }}確認；不會直接結案">完成</button>
+        <button type="button" class="{{ $completeClass }}" data-dialog-open="request-completion-{{ $report->public_id }}" data-request-completion="{{ $report->public_id }}" {{ $attributes->only('data-card-action') }} title="發一則確認留言，請{{ $project->clientRole() }}確認；不會直接結案">完成</button>
     @else
         <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" {{ $attributes->only('data-card-action') }}>
             @csrf

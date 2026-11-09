@@ -4,6 +4,7 @@ namespace App\Http\Requests\Feedback;
 
 use App\Enums\FeedbackReportStatus;
 use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
+use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -32,7 +33,7 @@ class UpdateFeedbackStatusRequest extends FormRequest
                 && (app(FeedbackAccess::class)->isOwner($report->feedbackProject)
                     || $this->input('status') !== FeedbackReportStatus::Completed->value),
             403,
-            '狀態會依留言自動切換；網頁上只有'.config('feedback.labels.client').'能按「完成」結單。',
+            '狀態會依留言自動切換；網頁上只有'.FeedbackProject::clientRoleFor($report instanceof FeedbackReport ? $report->feedbackProject : null).'能按「完成」結單。',
         );
 
         return $allowed;

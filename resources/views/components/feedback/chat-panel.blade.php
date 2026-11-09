@@ -43,7 +43,7 @@
                     <div class="flex shrink-0 items-start gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
                         <button type="button" class="inline-flex min-h-9 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-teal-800 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 sm:hidden" data-chat-back>‹ 返回清單</button>
                         <div class="min-w-0 flex-1">
-                            <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{{ config('feedback.labels.client') }}已刪除</span></p>
+                            <p class="text-xs font-semibold text-slate-500"><span data-chat-thread-number></span> · <span data-chat-thread-status></span><span class="ml-1 rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-600" data-chat-thread-deleted hidden>{{ $project->clientRole() }}已刪除</span></p>
                             <h3 class="truncate text-sm font-bold text-slate-950" data-chat-thread-title></h3>
                         </div>
                         {{-- 相簿鈕（照 LINE、Messenger 的「相片與影片」）：固定在標題列（捲動對話不會消失），徽章顯示附件數，有新附件時變色提示；點了切到面板內的附件頁，可返回對話並回到原本的捲動位置；附件不放在對話串裡。 --}}

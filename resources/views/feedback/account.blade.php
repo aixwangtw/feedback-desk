@@ -6,6 +6,7 @@
     $tokenErrors = $errors->getBag('token');
     $categoryErrors = $errors->getBag('categories');
     $statusLabelErrors = $errors->getBag('statusLabels');
+    $roleLabelErrors = $errors->getBag('roleLabels');
 @endphp
 <x-feedback.layout :title="'我的帳號｜'.$project->name" :$project>
     <x-slot:headerAction>
@@ -20,7 +21,7 @@
                 <p class="mt-4 text-sm leading-6 text-slate-600" data-account-no-account>你是用專屬連結或共用帳號登入的，沒有個人帳號可以設定。要用個人帳號登入，請先登出，再用帳號密碼登入後回到這一頁。</p>
             @else
                 <p class="mt-2 text-sm leading-6 text-slate-600">
-                    登入帳號：<span class="font-semibold text-slate-900" data-account-username>{{ $account->username }}</span>{{ $isDeveloper ? '（'.config('feedback.labels.owner').'個人帳號，所有專案共用）' : '（這個專案的'.config('feedback.labels.client').'帳號）' }}。登入帳號不能改。
+                    登入帳號：<span class="font-semibold text-slate-900" data-account-username>{{ $account->username }}</span>{{ $isDeveloper ? '（'.$project->ownerRole().'個人帳號，所有專案共用）' : '（這個專案的'.$project->clientRole().'帳號）' }}。登入帳號不能改。
                 </p>
                 <form method="POST" action="{{ route('feedback.account.name', $project) }}" class="mt-5 grid gap-3" data-account-name-form>
                     @csrf
@@ -149,6 +150,20 @@
                     @endforeach
                     <p class="text-xs leading-5 text-slate-500">只改這個看板顯示的名稱，資料不變；留空的沿用全站名稱（灰字）。網頁、對話面板、指令列、MCP、API 都會用這裡的名稱。</p>
                     <button type="submit" class="{{ $primary }}">儲存狀態名稱</button>
+                </form>
+                @if ($roleLabelErrors->any())
+                    <p class="mt-6 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{{ $roleLabelErrors->first() }}</p>
+                @endif
+                <form method="POST" action="{{ route('feedback.project.role-labels', $project) }}" class="mt-6 grid gap-3 border-t border-slate-200 pt-6" data-role-labels-form>
+                    @csrf
+                    @method('PUT')
+                    <p class="text-sm font-semibold text-slate-800">說明文字裡的角色稱呼</p>
+                    <label for="client-role-label" class="text-xs font-semibold text-slate-600">客戶端稱呼</label>
+                    <input id="client-role-label" name="client_role_label" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_STATUS_LABEL_LENGTH }}" value="{{ old('client_role_label', $project->client_role_label) }}" placeholder="{{ config('feedback.labels.client') }}" class="{{ $input }}" data-client-role-input>
+                    <label for="owner-role-label" class="text-xs font-semibold text-slate-600">開發者端稱呼</label>
+                    <input id="owner-role-label" name="owner_role_label" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_STATUS_LABEL_LENGTH }}" value="{{ old('owner_role_label', $project->owner_role_label) }}" placeholder="{{ config('feedback.labels.owner') }}" class="{{ $input }}" data-owner-role-input>
+                    <p class="text-xs leading-5 text-slate-500">用在頁首說明、狀態說明、按鈕與提示（例如「○○確認沒問題後…」）。留空沿用全站稱呼（灰字）。</p>
+                    <button type="submit" class="{{ $primary }}">儲存角色稱呼</button>
                 </form>
             </section>
         @endif

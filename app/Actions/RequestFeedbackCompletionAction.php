@@ -26,15 +26,15 @@ class RequestFeedbackCompletionAction
     public function handle(FeedbackReport $report, FeedbackActor $actor, ?string $body = null, array $screenshots = []): FeedbackMessage
     {
         if (! $actor->isTeam) {
-            throw new FeedbackServiceException('team_only', '只有開發團隊能請'.config('feedback.labels.client').'確認完成。', 403);
+            throw new FeedbackServiceException('team_only', '只有開發團隊能請'.$report->feedbackProject->clientRole().'確認完成。', 403);
         }
         if ($report->status === FeedbackReportStatus::Completed) {
-            throw new FeedbackServiceException('already_completed', '這張單已經完成，不用再請'.config('feedback.labels.client').'確認。');
+            throw new FeedbackServiceException('already_completed', '這張單已經完成，不用再請'.$report->feedbackProject->clientRole().'確認。');
         }
 
         $body = trim((string) $body);
         if ($body === '') {
-            $body = FeedbackCompletionRequest::defaultBody();
+            $body = FeedbackCompletionRequest::defaultBody($report->feedbackProject);
         }
         if (mb_strlen($body) > PostFeedbackMessageAction::MAX_BODY_LENGTH) {
             throw new FeedbackServiceException('body_too_long', '留言內容不能超過 '.PostFeedbackMessageAction::MAX_BODY_LENGTH.' 字。');

@@ -29,7 +29,7 @@
                         @endif
                         @if ($isOwner && $report->isDeletedByClient())
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
-                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
+                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ $project->clientRole() }}已刪除</span>
                                 <x-feedback.time :at="$report->client_deleted_at" />
                                 <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
                                     @csrf
@@ -65,7 +65,7 @@
                         @if ($isOwner || ! $canPostMessage)
                             <h2 class="text-base font-semibold text-slate-950">{{ config('feedback.labels.thread') }}</h2>
                         @else
-                            <h2 class="text-lg font-bold text-slate-950">留言給{{ config('feedback.labels.owner') }}</h2>
+                            <h2 class="text-lg font-bold text-slate-950">留言給{{ $project->ownerRole() }}</h2>
                             <p class="mt-1 text-sm leading-6 text-slate-600" data-message-hint>有問題或補充可以直接在這裡留言，我們會看到並回覆</p>
                         @endif
                     </div>
@@ -93,7 +93,7 @@
                             @csrf
                             <div>
                                 <label for="body" class="sr-only">訊息內容</label>
-                                <textarea id="body" name="body" required maxlength="10000" rows="3" placeholder="補充操作步驟、回答{{ config('feedback.labels.owner') }}問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
+                                <textarea id="body" name="body" required maxlength="10000" rows="3" placeholder="補充操作步驟、回答{{ $project->ownerRole() }}問題，或提供新的發現…" class="block w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ old('body') }}</textarea>
                                 @error('body')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                                 @error('screenshots')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror
                                 @error('screenshots.*')<p class="mt-2 text-xs text-rose-700">{{ $message }}</p>@enderror

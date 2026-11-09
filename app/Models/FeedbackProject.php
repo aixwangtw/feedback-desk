@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled', 'public_reporting_enabled', 'report_categories', 'status_labels'])]
+#[Fillable(['name', 'slug', 'client_display_name', 'owner_token_hash', 'client_token_hash', 'client_username', 'client_password_hash', 'login_prefill_username', 'login_prefill_password', 'repository_path', 'automation_enabled', 'public_reporting_enabled', 'report_categories', 'status_labels', 'client_role_label', 'owner_role_label'])]
 class FeedbackProject extends Model
 {
     /** @use HasFactory<FeedbackProjectFactory> */
@@ -45,6 +45,33 @@ class FeedbackProject extends Model
     public function clientLabel(): string
     {
         return filled($this->client_display_name) ? $this->client_display_name : (string) config('feedback.labels.client');
+    }
+
+    /**
+     * 說明文字、提示與按鈕裡的「客戶端」稱呼（例如「老師」）；看板沒設定沿用全站 labels.client。
+     * 沒有看板時（登入頁等）用 FeedbackProject::clientRoleFor(null)。
+     */
+    public function clientRole(): string
+    {
+        return filled($this->client_role_label) ? trim($this->client_role_label) : (string) config('feedback.labels.client');
+    }
+
+    /**
+     * 說明文字裡的「開發者端」稱呼（例如「工程師」）；看板沒設定沿用全站 labels.owner。
+     */
+    public function ownerRole(): string
+    {
+        return filled($this->owner_role_label) ? trim($this->owner_role_label) : (string) config('feedback.labels.owner');
+    }
+
+    public static function clientRoleFor(?self $project): string
+    {
+        return $project?->clientRole() ?? (string) config('feedback.labels.client');
+    }
+
+    public static function ownerRoleFor(?self $project): string
+    {
+        return $project?->ownerRole() ?? (string) config('feedback.labels.owner');
     }
 
     protected function casts(): array

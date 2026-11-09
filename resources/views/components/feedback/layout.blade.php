@@ -85,7 +85,7 @@
                 @endif
 
                 @if ($notifications !== null)
-                    <x-feedback.notification-bell :$notifications />
+                    <x-feedback.notification-bell :$notifications :$project />
                 @endif
 
                 @if ($canManage && ! $access->isGuest($project))

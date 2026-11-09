@@ -79,6 +79,29 @@ class FeedbackProjectSettingsController extends Controller
     }
 
     /**
+     * 說明文字裡的角色稱呼：客戶端（例如「老師」）、開發者端（例如「工程師」）；留空沿用全站名稱。
+     */
+    public function updateRoleLabels(Request $request, FeedbackProject $feedbackProject, FeedbackAccess $access): RedirectResponse
+    {
+        if (! $access->isOwner($feedbackProject)) {
+            $access->deny($feedbackProject);
+        }
+
+        $validated = $request->validateWithBag('roleLabels', [
+            'client_role_label' => ['nullable', 'string', 'max:'.self::MAX_STATUS_LABEL_LENGTH],
+            'owner_role_label' => ['nullable', 'string', 'max:'.self::MAX_STATUS_LABEL_LENGTH],
+        ], attributes: ['client_role_label' => '客戶端稱呼', 'owner_role_label' => '開發者端稱呼']);
+
+        $feedbackProject->update([
+            'client_role_label' => filled($validated['client_role_label'] ?? null) ? trim($validated['client_role_label']) : null,
+            'owner_role_label' => filled($validated['owner_role_label'] ?? null) ? trim($validated['owner_role_label']) : null,
+        ]);
+
+        return redirect()->to(route('feedback.account', $feedbackProject).'#project-settings')
+            ->with('success', '已更新角色稱呼：客戶端「'.$feedbackProject->clientRole().'」、開發者端「'.$feedbackProject->ownerRole().'」。');
+    }
+
+    /**
      * 逗號（全形、半形）或換行分隔。
      *
      * @return list<string>

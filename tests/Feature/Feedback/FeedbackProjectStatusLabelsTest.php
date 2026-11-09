@@ -5,6 +5,7 @@ namespace Tests\Feature\Feedback;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackCompletionRequest;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -27,9 +28,14 @@ class FeedbackProjectStatusLabelsTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+        config()->set('feedback.labels.client', '老師');
+        config()->set('feedback.labels.owner', '工程師');
         $this->internal = FeedbackProject::factory()->create([
             'slug' => 'internal',
             'status_labels' => ['new' => '待 Alex 決定', 'needs_input' => '待 Nick 確認', 'completed' => '已完成'],
+            'client_display_name' => 'Nick',
+            'client_role_label' => 'Nick',
+            'owner_role_label' => 'Alex',
         ]);
         $this->teacher = FeedbackProject::factory()->create(['slug' => 'teacher']);
     }
@@ -175,5 +181,60 @@ class FeedbackProjectStatusLabelsTest extends TestCase
         $this->artisan('feedback:reports', ['project' => 'internal', '--json' => true])
             ->expectsOutputToContain('待 Nick 確認')
             ->assertSuccessful();
+    }
+
+    public function test_role_words_follow_the_board_on_portal_and_dialogs(): void
+    {
+        $this->assertSame('Nick', $this->internal->clientRole());
+        $this->assertSame('Alex', $this->internal->ownerRole());
+        $this->assertSame('老師', $this->teacher->clientRole());
+        $this->assertSame('工程師', $this->teacher->ownerRole());
+
+        $internalReport = $this->report($this->internal, FeedbackReportStatus::New);
+        $this->loginAsOwner($this->internal);
+        $html = $this->get(route('feedback.portal', $this->internal))->assertOk()->getContent();
+        $this->assertStringContainsString('Nick留言就變', $html);
+        $this->assertStringContainsString('Alex回覆就變', $html);
+        $this->assertStringContainsString('Nick已刪除', $html);
+        $this->assertStringNotContainsString('老師', $html);
+        $this->assertStringNotContainsString('工程師', $html);
+        $show = $this->get(route('feedback.reports.show', [$this->internal, $internalReport]))->assertOk()->getContent();
+        $this->assertStringContainsString('請Nick確認完成', $show);
+        $this->assertStringNotContainsString('請老師確認完成', $show);
+        $this->assertStringContainsString('Nick確認沒問題請按', FeedbackCompletionRequest::defaultBody($this->internal));
+
+        $this->flushSession();
+        $otherReport = $this->report($this->teacher, FeedbackReportStatus::New);
+        $this->loginAsOwner($this->teacher);
+        $html = $this->get(route('feedback.portal', $this->teacher))->assertOk()->getContent();
+        $this->assertStringContainsString('老師留言就變', $html);
+        $this->assertStringContainsString('工程師回覆就變', $html);
+        $this->assertStringContainsString('老師已刪除', $html);
+        $this->assertStringNotContainsString('Nick', $html);
+        $this->assertStringNotContainsString('Alex', $html);
+        $show = $this->get(route('feedback.reports.show', [$this->teacher, $otherReport]))->assertOk()->getContent();
+        $this->assertStringContainsString('請老師確認完成', $show);
+        $this->assertStringContainsString('老師確認沒問題請按', FeedbackCompletionRequest::defaultBody($this->teacher));
+        $this->assertStringContainsString('老師確認沒問題請按', FeedbackCompletionRequest::defaultBody());
+    }
+
+    public function test_owner_sets_and_clears_role_labels(): void
+    {
+        $this->loginAsOwner($this->teacher);
+        $this->get(route('feedback.account', $this->teacher))->assertOk()->assertSee('data-role-labels-form', false);
+
+        $this->put(route('feedback.project.role-labels', $this->teacher), ['client_role_label' => ' 小明 ', 'owner_role_label' => ''])->assertSessionHasNoErrors();
+        $this->teacher->refresh();
+        $this->assertSame('小明', $this->teacher->clientRole());
+        $this->assertSame('工程師', $this->teacher->ownerRole());
+
+        $this->put(route('feedback.project.role-labels', $this->teacher), ['client_role_label' => str_repeat('長', 21)])->assertSessionHasErrorsIn('roleLabels', 'client_role_label');
+
+        $this->put(route('feedback.project.role-labels', $this->teacher), [])->assertSessionHasNoErrors();
+        $this->assertNull($this->teacher->refresh()->client_role_label);
+
+        $this->artisan('feedback:status-labels', ['project' => 'teacher', '--client-role' => 'X', '--owner-role' => 'Y'])->expectsOutputToContain('客戶端稱呼：X／開發者端稱呼：Y')->assertSuccessful();
+        $this->artisan('feedback:status-labels', ['project' => 'teacher', '--clear' => true])->assertSuccessful();
+        $this->assertNull($this->teacher->refresh()->owner_role_label);
     }
 }

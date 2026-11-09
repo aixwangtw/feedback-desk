@@ -56,11 +56,11 @@
         <div>
             <p class="text-sm font-semibold text-teal-700">{{ config('feedback.portal_title') }}</p>
             <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ config('feedback.labels.client') }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label($project) }}」，{{ config('feedback.labels.owner') }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}」；{{ config('feedback.labels.client') }}確認沒問題後，在詳情裡按「完成」或留言上的「通過」；開發團隊按「完成」只會發確認留言請{{ config('feedback.labels.client') }}確認，不會直接結案。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{{ $project->clientRole() }}留言就變「{{ \App\Enums\FeedbackReportStatus::New->label($project) }}」，{{ $project->ownerRole() }}回覆就變「{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}」；{{ $project->clientRole() }}確認沒問題後，在詳情裡按「完成」或留言上的「通過」；開發團隊按「完成」只會發確認留言請{{ $project->clientRole() }}確認，不會直接結案。{{ $viewMode === 'board' ? '各欄' : '點欄名即可排序；' }}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
             <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label($project) }}</span><span>{{ config('feedback.labels.client') }}開了單或又留言，等{{ config('feedback.labels.owner') }}處理、回覆。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}</span><span>{{ config('feedback.labels.owner') }}已回覆或改好並留言說明，請{{ config('feedback.labels.client') }}確認。</span></li>
-                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label($project) }}</span><span>{{ config('feedback.labels.client') }}確認沒問題，該問題修復成功。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::New->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::New->label($project) }}</span><span>{{ $project->clientRole() }}開了單或又留言，等{{ $project->ownerRole() }}處理、回覆。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}</span><span>{{ $project->ownerRole() }}已回覆或改好並留言說明，請{{ $project->clientRole() }}確認。</span></li>
+                <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Enums\FeedbackReportStatus::Completed->label($project) }}</span><span>{{ $project->clientRole() }}確認沒問題，該問題修復成功。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與「完成」都在詳情裡。標題右邊的紅色數字是未讀留言數。</p>
         </div>
@@ -153,7 +153,7 @@
                         @endforeach
                     </select>
                 </label>
-                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">{{ config('feedback.labels.client') }}已刪除
+                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">{{ $project->clientRole() }}已刪除
                     <select name="deleted" data-auto-submit data-deleted-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
                         <option value="">一併顯示</option>
                         <option value="hide" @selected($deletedFilter === 'hide')>隱藏</option>
@@ -212,7 +212,7 @@
                                 </div>
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
-                                        <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ config('feedback.labels.client') }}已刪除</span>
+                                        <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ $project->clientRole() }}已刪除</span>
                                         <x-feedback.time :at="$report->client_deleted_at" />
                                     </span>
                                 @endif
@@ -310,7 +310,7 @@
                                             <x-feedback.unread-dot :$report :is-owner="$isOwner" class="mt-0.5" />
                                         </div>
                                         @if ($isOwner && $report->isDeletedByClient())
-                                            <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{{ config('feedback.labels.client') }}已刪除</span>
+                                            <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{{ $project->clientRole() }}已刪除</span>
                                         @endif
                                         @include('feedback.reports._attachment-thumbs', ['report' => $report, 'items' => $thumbItems[$report->id] ?? collect(), 'card' => true])
 

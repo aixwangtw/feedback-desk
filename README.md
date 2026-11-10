@@ -440,6 +440,32 @@ npx --allow-git=all github:aixwangtw/feedback-desk public-reporting public-desk 
 
 請用 [`laravel` 分支](https://github.com/aixwangtw/feedback-desk/tree/laravel)。Laravel 版裝在你自己的主機（PHP 8.3 以上，資料庫用 SQLite 或其他 Laravel 支援的資料庫），有實驗功能「自動處理」：新單進來時，由主機上的 Codex 在指定的程式碼目錄嘗試處理並回寫結果。安裝方式見該分支的 README。兩個版本的功能同步維護：每人一個帳號、改名字與密碼、多人多 AI 認領與交接在兩版都有。
 
+### Docker 自行託管（企業內網，不用 Cloudflare 帳號）
+
+同一個 Cloudflare Workers 版本也可以裝在內網主機：跑在容器裡的 `wrangler dev`，資料（D1、R2 模擬檔）放在具名卷，設定全部用環境變數注入。
+
+```bash
+docker build -t feedback-desk .
+docker run -d --name feedback-desk -p 8787:8787 \
+  -v feedback-desk-data:/app/.wrangler \
+  -e APP_SECRET=<至少 32 字元的亂數> \
+  -e BOOTSTRAP_ADMIN=alex \
+  feedback-desk
+docker logs feedback-desk  # 首次會印出只顯示一次的密碼，存好後到 /owner/login 登入
+```
+
+| 環境變數 | 必填 | 說明 |
+| --- | --- | --- |
+| `APP_SECRET` | 強烈建議 | cookie 加密與簽署下載網址，至少 32 字元；換了全員重登入。沒給就產生一組存進資料卷（重啟沿用，換卷即失效）。 |
+| `PORT` | 否（預設 `8787`） | 對外 port；`docker run` 的 `-p` 對應容器內的這個 port。 |
+| `BOOTSTRAP_ADMIN`／`BOOTSTRAP_NAME`／`BOOTSTRAP_PASSWORD` | 首次必填其一 | 空庫時建第一個團隊帳號（帳號只能英數、底線、連字號）；密碼沒給就產生 24 字亂數，只在 log 顯示一次。已有帳號時自動跳過，之後改密碼走網頁「我的帳號」。 |
+| `FEEDBACK_*` | 否 | 全部轉成 Worker vars，蓋掉程式預設值；有哪些 key 見下一節設定表（例如 `FEEDBACK_LABEL_CLIENT=業主`、`FEEDBACK_PORTAL_TITLE`）。`FEEDBACK_TURNSTILE_SECRET_KEY` 與 `FEEDBACK_TURNSTILE_SITE_KEY` 兩個都有才啟用 Turnstile。 |
+
+- 資料都在 `feedback-desk-data` 卷（`/app/.wrangler`：資料庫、附件、`app-secret`）。備份：`docker run --rm -v feedback-desk-data:/data -v "$PWD":/backup alpine tar czf /backup/feedback-desk-data.tar.gz -C /data .`；還原反向解開即可。
+- 更新：`git pull` 後重建 image 再 `docker stop`／`docker rm`／`docker run`（同一個卷），啟動時自動跑 migrations，資料保留。
+- 內網用 HTTP 即可；要對外請放在反向代理（TLS、內網 DNS）後面，不要直接暴露。
+- 限制：這是開發伺服器等級的託管（單行程、SQLite 單寫），適合部門／中小規模內網使用；高併發請用 Cloudflare 部署。
+
 ## 有哪些設定可以改？
 
 在部署資料夾的 `wrangler.jsonc` 的 `vars` 修改，改完重新執行 `deploy`。未設定時使用預設值，沒有任何內建帳號或密碼。

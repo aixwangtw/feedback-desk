@@ -2,29 +2,35 @@
 
 namespace App\Support;
 
+use Illuminate\Http\UploadedFile;
+
 /**
  * 附件規則（網頁上傳、artisan --attach、對話面板共用）。
- * 圖片：jpg／png／webp，每張 10 MB；留言與待審留言另收 mp4 影片（教操作的錄影），每支 50 MB。
- * 開單、調整重點、公開回報仍只收圖片。
+ * 圖片：jpg／png／webp，每張 10 MB；影片：mp4、mov（iPhone）、webm，每支 100 MB。
+ * 開單、補上傳、留言、待審留言都收圖片與影片；調整重點仍只收圖片；公開回報者在單頁留言只收圖片。
  */
 final class FeedbackAttachmentRules
 {
     /** artisan --attach 說明（只能用常數組字串，因為寫在 #[Signature] 裡）。 */
-    public const CLI_ATTACH_HELP = '要附上的圖片或影片路徑，可重複多次（jpg/png/webp 每個 '.self::MAX_IMAGE_MEGABYTES.' MB、mp4 每個 '.self::MAX_VIDEO_MEGABYTES.' MB，最多 '.self::MAX_FILES.' 個）';
+    public const CLI_ATTACH_HELP = '要附上的圖片或影片路徑，可重複多次（jpg/png/webp 每個 '.self::MAX_IMAGE_MEGABYTES.' MB、mp4/mov/webm 每個 '.self::MAX_VIDEO_MEGABYTES.' MB，最多 '.self::MAX_FILES.' 個）';
 
     /** @var list<string> */
     public const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
     /**
-     * mp4 依判斷方式可能是 video/mp4 或 application/mp4（同一種檔案），兩者都收；存檔與播放一律當 video/mp4。
+     * mp4 依判斷方式可能是 video/mp4 或 application/mp4（同一種檔案），兩者都收，存檔與播放一律當 video/mp4；
+     * video/quicktime 是 iPhone 錄的 .mov，video/webm 是 webm。這三種存檔時保留原本的類型，不轉檔。
      *
      * @var list<string>
      */
-    public const VIDEO_MIME_TYPES = ['video/mp4', 'application/mp4'];
+    public const VIDEO_MIME_TYPES = ['video/mp4', 'application/mp4', 'video/quicktime', 'video/webm'];
+
+    /** 瀏覽器端比對用的影片類型（application/mp4 已在 JS 端併入 video/mp4）。 */
+    public const BROWSER_VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
     public const MAX_IMAGE_MEGABYTES = 10;
 
-    public const MAX_VIDEO_MEGABYTES = 50;
+    public const MAX_VIDEO_MEGABYTES = 100;
 
     public const MAX_IMAGE_BYTES = self::MAX_IMAGE_MEGABYTES * 1024 * 1024;
 
@@ -35,7 +41,7 @@ final class FeedbackAttachmentRules
     public const MAX_FILES = 5;
 
     /** 留言檔案欄位的 accept 屬性。 */
-    public const MESSAGE_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4';
+    public const MESSAGE_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm';
 
     /** 可附影片的地方，上傳按鈕的字。 */
     public const MESSAGE_BUTTON = '附件';
@@ -44,7 +50,7 @@ final class FeedbackAttachmentRules
     public const MESSAGE_FIELD = '圖片／影片';
 
     /** 瀏覽器端（拖曳、按鈕選檔）檢查不合格時的說明，文字與伺服器端允許的格式一致。 */
-    public const TYPE_ERROR = '只能附 jpg、png、webp 圖片或 mp4 影片';
+    public const TYPE_ERROR = '只能附 jpg、png、webp 圖片或 mp4、mov、webm 影片';
 
     public const TYPE_ERROR_IMAGES_ONLY = '只能附 jpg、png、webp 圖片';
 
@@ -61,7 +67,7 @@ final class FeedbackAttachmentRules
             'maxImageBytes' => self::MAX_IMAGE_BYTES,
             'maxVideoBytes' => self::MAX_VIDEO_BYTES,
             'imageTypes' => self::IMAGE_MIME_TYPES,
-            'videoTypes' => ['video/mp4'],
+            'videoTypes' => self::BROWSER_VIDEO_MIME_TYPES,
             'fieldName' => self::MESSAGE_FIELD,
             'typeMessage' => self::TYPE_ERROR,
         ];
@@ -119,16 +125,39 @@ final class FeedbackAttachmentRules
         return '圖片或影片，最多 '.self::MAX_FILES.' 個；圖片每個 '.self::maxImageMegabytes().' MB、影片每個 '.self::maxVideoMegabytes().' MB';
     }
 
+    /**
+     * 所有「可附圖片或影片」的上傳欄位共用的驗證規則（開單、補上傳、留言）：類型來自 IMAGE／VIDEO_MIME_TYPES，
+     * 影片上限 MAX_VIDEO_KILOBYTES，圖片上限由呼叫端依場合帶入（預設 10 MB）。
+     *
+     * @return list<mixed>
+     */
+    public static function uploadRules(int $imageMaxKilobytes = self::MAX_IMAGE_MEGABYTES * 1024): array
+    {
+        return [
+            'required',
+            'file',
+            'mimetypes:'.implode(',', [...self::IMAGE_MIME_TYPES, ...self::VIDEO_MIME_TYPES]),
+            'max:'.self::MAX_VIDEO_KILOBYTES,
+            function (string $attribute, mixed $value, \Closure $fail) use ($imageMaxKilobytes): void {
+                if ($value instanceof UploadedFile
+                    && ! self::isVideoMime($value->getMimeType())
+                    && $value->getSize() > $imageMaxKilobytes * 1024) {
+                    $fail('每張圖片不可超過 '.intdiv($imageMaxKilobytes, 1024).' MB。');
+                }
+            },
+        ];
+    }
+
     public static function isVideoMime(?string $mime): bool
     {
         return in_array($mime, self::VIDEO_MIME_TYPES, true);
     }
 
     /**
-     * 存進附件紀錄的 MIME：mp4 一律記成 video/mp4，瀏覽器才會用影片播放。
+     * 存進附件紀錄的 MIME：application/mp4 記成 video/mp4，瀏覽器才會用影片播放；mov、webm 與圖片保留原本的類型。
      */
     public static function storedMime(?string $mime): string
     {
-        return self::isVideoMime($mime) ? 'video/mp4' : ($mime ?? 'application/octet-stream');
+        return $mime === 'application/mp4' ? 'video/mp4' : ($mime ?? 'application/octet-stream');
     }
 }

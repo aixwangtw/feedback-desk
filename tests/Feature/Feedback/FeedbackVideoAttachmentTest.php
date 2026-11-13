@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,9 @@ class FeedbackVideoAttachmentTest extends TestCase
 
     /** 最小的 mp4 檔頭（ftyp box），finfo 會判斷成 video/mp4。 */
     private const MP4 = "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom\x00\x00\x00\x08free";
+
+    /** 1x1 的 PNG。 */
+    private const PNG = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d\x00\x00\x00\x00IEND\xaeB`\x82";
 
     private FeedbackProject $project;
 
@@ -87,18 +91,73 @@ class FeedbackVideoAttachmentTest extends TestCase
         ftruncate($handle, FeedbackAttachmentRules::MAX_VIDEO_BYTES + 1);
         fclose($handle);
         $this->artisan('feedback:message', ['project' => 'site', 'report' => $this->report->public_id, '--text' => 'x', '--attach' => [$big]])
-            ->expectsOutputToContain('50 MB')
+            ->expectsOutputToContain(FeedbackAttachmentRules::MAX_VIDEO_MEGABYTES.' MB')
             ->assertFailed();
 
-        $webm = tempnam(sys_get_temp_dir(), 'fd').'.webm';
-        file_put_contents($webm, "\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\xF7\x81\x01\x42\xF2\x81\x04\x42\xF3\x81\x08\x42\x82\x84webm");
-        $this->artisan('feedback:message', ['project' => 'site', 'report' => $this->report->public_id, '--text' => 'x', '--attach' => [$webm]])->assertFailed();
+        $avi = tempnam(sys_get_temp_dir(), 'fd').'.avi';
+        file_put_contents($avi, 'RIFF'."\x24\x00\x00\x00".'AVI LIST'.str_repeat("\x00", 32));
+        $this->artisan('feedback:message', ['project' => 'site', 'report' => $this->report->public_id, '--text' => 'x', '--attach' => [$avi]])->assertFailed();
         $this->assertSame(0, FeedbackMessage::count());
     }
 
-    public function test_report_creation_still_only_takes_images(): void
+    public function test_report_creation_command_takes_a_video(): void
     {
-        $this->artisan('feedback:create', ['project' => 'site', '--title' => '新單', '--description' => '說明', '--attach' => [$this->mp4File()]])->assertFailed();
+        $this->artisan('feedback:create', ['project' => 'site', '--title' => '新單', '--description' => '說明', '--attach' => [$this->mp4File()]])->assertSuccessful();
+        $this->assertSame(1, FeedbackAttachment::where('mime_type', 'video/mp4')->whereNull('feedback_message_id')->count());
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function acceptedVideos(): array
+    {
+        $mov = "\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00qt  \x00\x00\x00\x08wide";
+        $webm = "\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\xF7\x81\x01\x42\xF2\x81\x04\x42\xF3\x81\x08\x42\x82\x84webm";
+
+        return [
+            'mp4' => ['a.mp4', self::MP4, 'video/mp4'],
+            'mov' => ['a.mov', $mov, 'video/quicktime'],
+            'webm' => ['a.webm', $webm, 'video/webm'],
+        ];
+    }
+
+    #[DataProvider('acceptedVideos')]
+    public function test_every_upload_path_takes_mp4_mov_and_webm_and_keeps_the_type(string $name, string $content, string $mime): void
+    {
+        $this->actingAsClient();
+        $file = fn () => UploadedFile::fake()->createWithContent($name, $content);
+
+        // 開新單
+        $this->post(route('feedback.reports.store', $this->project), [
+            'issues' => [['title' => '影片單', 'description' => '說明', 'screenshots' => [$file()]]],
+        ])->assertSessionHasNoErrors();
+        $created = FeedbackReport::where('title', '影片單')->sole();
+        $this->assertSame($mime, $created->feedbackAttachments()->sole()->mime_type);
+
+        // 補上傳
+        $this->put(route('feedback.reports.update', [$this->project, $created]), [
+            'title' => '影片單', 'description' => '說明', 'screenshots' => [$file()],
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(2, $created->feedbackAttachments()->where('mime_type', $mime)->count());
+
+        // 留言
+        $this->post(route('feedback.messages.store', [$this->project, $this->report]), ['body' => '留言', 'screenshots' => [$file()]])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, FeedbackAttachment::whereNotNull('feedback_message_id')->where('mime_type', $mime)->count());
+    }
+
+    public function test_creation_and_update_reject_unsupported_types_and_oversize_videos_but_images_still_work(): void
+    {
+        $this->actingAsClient();
+        $store = fn (UploadedFile $file) => $this->post(route('feedback.reports.store', $this->project), [
+            'issues' => [['title' => '單', 'description' => '說明', 'screenshots' => [$file]]],
+        ]);
+
+        $store(UploadedFile::fake()->create('doc.pdf', 10, 'application/pdf'))->assertSessionHasErrors('issues.0.screenshots.0');
+        $store(UploadedFile::fake()->createWithContent('big.mp4', self::MP4)->size(FeedbackAttachmentRules::MAX_VIDEO_KILOBYTES + 1))->assertSessionHasErrors('issues.0.screenshots.0');
+        $store(UploadedFile::fake()->createWithContent('big.png', self::PNG)->size(FeedbackAttachmentRules::MAX_IMAGE_MEGABYTES * 1024 + 1))->assertSessionHasErrors('issues.0.screenshots.0');
+        $this->assertSame(0, FeedbackReport::where('title', '單')->count());
+
+        $store(UploadedFile::fake()->createWithContent('ok.png', self::PNG))->assertSessionHasNoErrors();
+        $this->assertSame('image/png', FeedbackReport::where('title', '單')->sole()->feedbackAttachments()->sole()->mime_type);
     }
 
     public function test_web_message_and_panel_reply_accept_mp4_for_both_sides(): void
@@ -130,7 +189,7 @@ class FeedbackVideoAttachmentTest extends TestCase
 
     public function test_upload_controls_that_take_videos_say_attachment_and_show_both_limits(): void
     {
-        $hint = '圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 50 MB';
+        $hint = '圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 100 MB';
         $this->assertSame($hint, FeedbackAttachmentRules::messageHint());
 
         $this->actingAsClient();

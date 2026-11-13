@@ -3,10 +3,10 @@
 namespace App\Http\Requests\Feedback;
 
 use App\Services\TurnstileVerifier;
+use App\Support\FeedbackAttachmentRules;
 use App\Support\PublicReporting;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 
 class StorePublicFeedbackReportRequest extends FormRequest
@@ -37,11 +37,7 @@ class StorePublicFeedbackReportRequest extends FormRequest
             'description' => ['required', 'string', 'max:10000'],
             'reporter_name' => ['nullable', 'string', 'max:50'],
             'screenshots' => ['nullable', 'array', 'max:'.PublicReporting::MAX_SCREENSHOTS],
-            'screenshots.*' => [
-                'required',
-                File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max(PublicReporting::MAX_SCREENSHOT_KILOBYTES),
-                'mimetypes:image/jpeg,image/png,image/webp',
-            ],
+            'screenshots.*' => FeedbackAttachmentRules::uploadRules(PublicReporting::MAX_SCREENSHOT_KILOBYTES),
             self::HONEYPOT_FIELD => ['nullable'],
         ];
     }
@@ -78,8 +74,8 @@ class StorePublicFeedbackReportRequest extends FormRequest
             'title' => '標題',
             'description' => '說明',
             'reporter_name' => '稱呼',
-            'screenshots' => '截圖',
-            'screenshots.*' => '截圖',
+            'screenshots' => FeedbackAttachmentRules::MESSAGE_FIELD,
+            'screenshots.*' => FeedbackAttachmentRules::MESSAGE_FIELD,
         ];
     }
 
@@ -89,8 +85,8 @@ class StorePublicFeedbackReportRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'screenshots.max' => '截圖最多 '.PublicReporting::MAX_SCREENSHOTS.' 張。',
-            'screenshots.*.max' => '每張截圖不可超過 5 MB。',
+            'screenshots.max' => '圖片或影片最多 '.PublicReporting::MAX_SCREENSHOTS.' 個。',
+            'screenshots.*.max' => '每個檔案不可超過 '.FeedbackAttachmentRules::MAX_VIDEO_MEGABYTES.' MB。',
         ];
     }
 }

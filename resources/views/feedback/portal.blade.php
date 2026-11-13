@@ -384,7 +384,7 @@
 
                 @if ($report->feedbackAttachments->isNotEmpty())
                     <fieldset>
-                        <legend class="mb-2 text-sm font-semibold text-slate-800">目前截圖 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
+                        <legend class="mb-2 text-sm font-semibold text-slate-800">目前圖片或影片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
                         <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                             @foreach ($report->feedbackAttachments as $attachment)
                                 <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
@@ -400,8 +400,8 @@
                 @endif
 
                 <div>
-                    <label for="edit-screenshots-{{ $report->public_id }}" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增截圖<input id="edit-screenshots-{{ $report->public_id }}" name="screenshots[]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="edit-preview-{{ $report->public_id }}"></label>
-                    <span class="ml-2 text-xs text-slate-500">截圖總數最多 5 張，每張 10 MB</span>
+                    <label for="edit-screenshots-{{ $report->public_id }}" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增圖片或影片<input id="edit-screenshots-{{ $report->public_id }}" name="screenshots[]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="edit-preview-{{ $report->public_id }}"></label>
+                    <span class="ml-2 text-xs text-slate-500">{{ \App\Support\FeedbackAttachmentRules::messageHint() }}</span>
                     <div id="edit-preview-{{ $report->public_id }}" class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                 </div>
 
@@ -476,7 +476,7 @@
                                 <textarea id="issue-description-{{ $index }}" name="issues[{{ $index }}][description]" required maxlength="10000" rows="4" placeholder="請說明操作步驟、預期結果與實際結果。" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">{{ $issue['description'] ?? '' }}</textarea>
                             </div>
                             <div>
-                                <label for="issue-screenshots-{{ $index }}" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳截圖<input id="issue-screenshots-{{ $index }}" name="issues[{{ $index }}][screenshots][]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="issue-preview-{{ $index }}"></label>
+                                <label for="issue-screenshots-{{ $index }}" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳圖片或影片<input id="issue-screenshots-{{ $index }}" name="issues[{{ $index }}][screenshots][]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="issue-preview-{{ $index }}"></label>
                                 <span class="ml-2 text-xs text-slate-500">最多 5 張，每張 10 MB</span>
                                 <div id="issue-preview-{{ $index }}" class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                             </div>
@@ -507,7 +507,7 @@
                     <div><label for="issue-title-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label><input id="issue-title-__INDEX__" name="issues[__INDEX__][title]" required maxlength="160" placeholder="例如：答案儲存後重新整理會消失" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></div>
                     <div><label for="issue-description-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題說明 <span class="text-rose-600">*</span></label><textarea id="issue-description-__INDEX__" name="issues[__INDEX__][description]" required maxlength="10000" rows="4" placeholder="請說明操作步驟、預期結果與實際結果。" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></textarea></div>
                     <div>
-                        <label for="issue-screenshots-__INDEX__" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳截圖<input id="issue-screenshots-__INDEX__" name="issues[__INDEX__][screenshots][]" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="issue-preview-__INDEX__"></label>
+                        <label for="issue-screenshots-__INDEX__" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳圖片或影片<input id="issue-screenshots-__INDEX__" name="issues[__INDEX__][screenshots][]" type="file" accept="{{ \App\Support\FeedbackAttachmentRules::MESSAGE_ACCEPT }}" multiple class="sr-only" data-image-input data-preview-target="issue-preview-__INDEX__"></label>
                         <span class="ml-2 text-xs text-slate-500">最多 5 張，每張 10 MB</span>
                         <div id="issue-preview-__INDEX__" class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                     </div>

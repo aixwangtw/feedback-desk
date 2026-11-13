@@ -71,7 +71,7 @@ class CodexFeedbackCodingAgent extends CliFeedbackCodingAgent
         ];
 
         foreach ($report->feedbackAttachments as $attachment) {
-            if ($attachment->disk === 'local') {
+            if ($attachment->disk === 'local' && ! $attachment->isVideo()) {
                 $command[] = '--image';
                 $command[] = Storage::disk($attachment->disk)->path($attachment->path);
             }

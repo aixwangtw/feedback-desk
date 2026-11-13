@@ -8,6 +8,8 @@ const EXTENSION_TYPES = {
     png: 'image/png',
     webp: 'image/webp',
     mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    webm: 'video/webm',
 };
 
 const megabytes = (bytes) => Math.floor(bytes / 1024 / 1024);

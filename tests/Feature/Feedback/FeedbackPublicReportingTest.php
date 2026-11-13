@@ -144,6 +144,20 @@ class FeedbackPublicReportingTest extends TestCase
             ->assertSee('這是簡短說明。');
     }
 
+    public function test_public_report_takes_a_short_video_and_keeps_the_quicktime_type(): void
+    {
+        $mov = "\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00qt  \x00\x00\x00\x08wide";
+        $this->post(route('feedback.public.store'), $this->payload([
+            'screenshots' => [UploadedFile::fake()->createWithContent('phone.mov', $mov)],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('video/quicktime', FeedbackReport::firstOrFail()->feedbackAttachments()->sole()->mime_type);
+
+        $this->post(route('feedback.public.store'), $this->payload([
+            'screenshots' => [UploadedFile::fake()->create('doc.pdf', 10, 'application/pdf')],
+        ]))->assertSessionHasErrors('screenshots.0');
+    }
+
     public function test_submitting_a_report_creates_a_public_report_and_shows_the_private_url_once(): void
     {
         $response = $this->post(route('feedback.public.store'), $this->payload([

@@ -7,10 +7,10 @@ use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackAttachmentRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 
 class UpdateFeedbackReportRequest extends FormRequest
@@ -56,11 +56,7 @@ class UpdateFeedbackReportRequest extends FormRequest
                 ? ['prohibited']
                 : ['nullable', 'string', Rule::in(array_values(array_unique(array_filter([...$categories, $report?->category]))))],
             'screenshots' => ['nullable', 'array', 'max:'.self::MAX_SCREENSHOTS],
-            'screenshots.*' => [
-                'required',
-                File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max('10mb'),
-                'mimetypes:image/jpeg,image/png,image/webp',
-            ],
+            'screenshots.*' => FeedbackAttachmentRules::uploadRules(),
             'remove_attachments' => ['nullable', 'array'],
             'remove_attachments.*' => [
                 'integer',
@@ -91,7 +87,7 @@ class UpdateFeedbackReportRequest extends FormRequest
                     ->count();
 
                 if ($remaining + count($this->file('screenshots', [])) > self::MAX_SCREENSHOTS) {
-                    $validator->errors()->add('screenshots', '截圖總數不可超過 '.self::MAX_SCREENSHOTS.' 張。');
+                    $validator->errors()->add('screenshots', '圖片與影片總數不可超過 '.self::MAX_SCREENSHOTS.' 個。');
                 }
             },
         ];
@@ -103,9 +99,9 @@ class UpdateFeedbackReportRequest extends FormRequest
             'title' => '問題標題',
             'description' => '問題說明',
             'category' => '分類',
-            'screenshots' => '截圖',
-            'screenshots.*' => '截圖',
-            'remove_attachments.*' => '要刪除的截圖',
+            'screenshots' => FeedbackAttachmentRules::MESSAGE_FIELD,
+            'screenshots.*' => FeedbackAttachmentRules::MESSAGE_FIELD,
+            'remove_attachments.*' => '要刪除的附件',
         ];
     }
 }

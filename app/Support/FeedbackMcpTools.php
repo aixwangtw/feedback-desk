@@ -322,7 +322,7 @@ class FeedbackMcpTools
         if (($input['include_images'] ?? false) === true) {
             $budget = self::INLINE_TOTAL_MAX_BYTES;
             foreach ($report->feedbackAttachments as $attachment) {
-                if ($attachment->size > self::INLINE_IMAGE_MAX_BYTES || $attachment->size > $budget) {
+                if ($attachment->isVideo() || $attachment->size > self::INLINE_IMAGE_MAX_BYTES || $attachment->size > $budget) {
                     continue;
                 }
                 $bytes = Storage::disk($attachment->disk)->get($attachment->path);

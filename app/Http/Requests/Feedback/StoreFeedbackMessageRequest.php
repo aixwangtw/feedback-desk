@@ -9,7 +9,6 @@ use App\Support\FeedbackAttachmentRules;
 use App\Support\PublicReporting;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 
@@ -78,26 +77,14 @@ class StoreFeedbackMessageRequest extends FormRequest
         return [
             'body' => ['required', 'string', 'max:10000'],
             'screenshots' => ['nullable', 'array', 'max:'.($isPublicReporter ? PublicReporting::MAX_SCREENSHOTS : 5)],
-            // 公開回報者只能附圖；有登入的雙方另可附 mp4 影片（每支 50 MB，圖片仍是每張 10 MB）。
+            // 公開回報者只能附圖；有登入的雙方另可附影片（mp4、mov、webm，每支 100 MB，圖片仍是每張 10 MB）。
             'screenshots.*' => $isPublicReporter
                 ? [
                     'required',
                     File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max(PublicReporting::MAX_SCREENSHOT_KILOBYTES),
                     'mimetypes:image/jpeg,image/png,image/webp',
                 ]
-                : [
-                    'required',
-                    'file',
-                    'mimetypes:'.implode(',', [...FeedbackAttachmentRules::IMAGE_MIME_TYPES, ...FeedbackAttachmentRules::VIDEO_MIME_TYPES]),
-                    'max:'.FeedbackAttachmentRules::MAX_VIDEO_KILOBYTES,
-                    function (string $attribute, mixed $value, \Closure $fail): void {
-                        if ($value instanceof UploadedFile
-                            && ! FeedbackAttachmentRules::isVideoMime($value->getMimeType())
-                            && $value->getSize() > FeedbackAttachmentRules::MAX_IMAGE_BYTES) {
-                            $fail('每張圖片不可超過 '.FeedbackAttachmentRules::maxImageMegabytes().' MB。');
-                        }
-                    },
-                ],
+                : FeedbackAttachmentRules::uploadRules(),
         ];
     }
 

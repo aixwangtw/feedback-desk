@@ -52,8 +52,8 @@ class FeedbackAttachmentDropTest extends TestCase
         $this->assertSame(FeedbackAttachmentRules::MAX_IMAGE_BYTES, $rules['maxImageBytes']);
         $this->assertSame(FeedbackAttachmentRules::MAX_VIDEO_BYTES, $rules['maxVideoBytes']);
         $this->assertSame(FeedbackAttachmentRules::IMAGE_MIME_TYPES, $rules['imageTypes']);
-        $this->assertSame(['video/mp4'], $rules['videoTypes']);
-        $this->assertSame('只能附 jpg、png、webp 圖片或 mp4 影片', $rules['typeMessage']);
+        $this->assertSame(FeedbackAttachmentRules::BROWSER_VIDEO_MIME_TYPES, $rules['videoTypes']);
+        $this->assertSame('只能附 jpg、png、webp 圖片或 mp4、mov、webm 影片', $rules['typeMessage']);
 
         $public = FeedbackAttachmentRules::publicBrowserRules();
         $this->assertFalse($public['allowVideo']);

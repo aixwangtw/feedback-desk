@@ -6,11 +6,11 @@ use App\Http\Requests\Feedback\Concerns\RedirectsUnauthorizedToLogin;
 use App\Models\FeedbackProject;
 use App\Services\TurnstileVerifier;
 use App\Support\FeedbackAccess;
+use App\Support\FeedbackAttachmentRules;
 use App\Support\PublicReporting;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\Validator;
 
 class StoreFeedbackReportRequest extends FormRequest
@@ -47,11 +47,7 @@ class StoreFeedbackReportRequest extends FormRequest
                 ? ['prohibited']
                 : ['required', 'string', Rule::in($categories)],
             'issues.*.screenshots' => ['nullable', 'array', 'max:5'],
-            'issues.*.screenshots.*' => [
-                'required',
-                File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max('10mb'),
-                'mimetypes:image/jpeg,image/png,image/webp',
-            ],
+            'issues.*.screenshots.*' => FeedbackAttachmentRules::uploadRules(),
         ];
     }
 
@@ -62,8 +58,8 @@ class StoreFeedbackReportRequest extends FormRequest
             'issues.*.title' => '問題標題',
             'issues.*.description' => '問題說明',
             'issues.*.category' => '分類',
-            'issues.*.screenshots' => '截圖',
-            'issues.*.screenshots.*' => '截圖',
+            'issues.*.screenshots' => FeedbackAttachmentRules::MESSAGE_FIELD,
+            'issues.*.screenshots.*' => FeedbackAttachmentRules::MESSAGE_FIELD,
         ];
     }
 

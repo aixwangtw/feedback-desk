@@ -189,7 +189,7 @@ class ClaudeCodeFeedbackCodingAgent extends CliFeedbackCodingAgent
     {
         $paths = [];
         foreach ($report->feedbackAttachments as $attachment) {
-            if ($attachment->disk === 'local') {
+            if ($attachment->disk === 'local' && ! $attachment->isVideo()) {
                 $paths[] = Storage::disk($attachment->disk)->path($attachment->path);
             }
         }

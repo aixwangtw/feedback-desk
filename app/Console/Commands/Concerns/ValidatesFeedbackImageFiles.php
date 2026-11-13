@@ -7,7 +7,7 @@ use Illuminate\Http\UploadedFile;
 
 /**
  * 指令附件的共用檢查，規則與網頁上傳相同（FeedbackAttachmentRules）：jpg／png／webp 每張 10 MB 內、一次最多 5 個；
- * 留言與待審留言（allowVideo）另收 mp4 影片，每支 50 MB 內。
+ * 留言與待審留言（allowVideo）另收影片（mp4、mov、webm），每支 100 MB 內。
  * 原檔只會被複製到私有儲存，不會移動或刪除。
  */
 trait ValidatesFeedbackImageFiles
@@ -60,7 +60,7 @@ trait ValidatesFeedbackImageFiles
 
         if (! in_array($mime, FeedbackAttachmentRules::IMAGE_MIME_TYPES, true) || @getimagesize($path) === false) {
             $this->components->error($allowVideo
-                ? "只接受 jpg／png／webp 圖片或 mp4 影片（PDF 請先轉成圖片）：{$path}"
+                ? "只接受 jpg／png／webp 圖片或 mp4、mov、webm 影片（PDF 請先轉成圖片）：{$path}"
                 : "只接受 jpg／png／webp 圖片（PDF 請先轉成圖片）：{$path}");
 
             return null;

@@ -8,6 +8,7 @@ use App\Console\Commands\Concerns\ResolvesFeedbackActor;
 use App\Console\Commands\Concerns\ValidatesFeedbackImageFiles;
 use App\Enums\FeedbackCreatorType;
 use App\Models\FeedbackProject;
+use App\Support\FeedbackAttachmentRules;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Help;
 use Illuminate\Console\Attributes\Signature;
@@ -19,7 +20,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {--title= : 回饋單標題（必填，160 字內）}
     {--description= : 回饋單說明（必填，10000 字內）}
     {--category= : 分類（專案有設定分類時必填，且須是其中之一）}
-    {--attach=* : 要附上的圖片檔路徑，可重複多次（jpg/png/webp，每張 10 MB 內，最多 5 張）}
+    {--attach=* : '.FeedbackAttachmentRules::CLI_ATTACH_HELP.'}
     {--for-client : 這張單也給客戶看（出現在客戶的清單與看板，並留一則通知讓客戶看到紅色未讀數字）}
     {--notice= : 搭配 --for-client 的通知留言內容（省略時用預設文字）}
     {--as= : 以這個團隊個人帳號建單（或設環境變數 FEEDBACK_DESK_AS）；省略時記成共用團隊身分}
@@ -106,7 +107,7 @@ class CreateFeedbackReportCommand extends Command
             return self::FAILURE;
         }
 
-        $images = $this->validatedImageFiles((array) $this->option('attach'));
+        $images = $this->validatedImageFiles((array) $this->option('attach'), allowVideo: true);
         if ($images === null) {
             return self::FAILURE;
         }

@@ -188,7 +188,8 @@ class FeedbackAccountController extends Controller
     }
 
     /**
-     * 登入頁把密碼公開預填的示範帳號：讓一個訪客改成自己的密碼，其他人就都進不來了。
+     * 登入頁把「帳號與密碼」都公開預填的示範帳號：讓一個訪客改成自己的密碼，其他人就都進不來了。
+     * 只預填帳號、密碼沒有公開時，任何人都進不去這個帳號，所以不算示範帳號，可以改密碼。
      */
     private function isPrefilled(FeedbackProject $project, FeedbackDeveloper|FeedbackClientAccount $account): bool
     {
@@ -196,9 +197,16 @@ class FeedbackAccountController extends Controller
             return false;
         }
 
-        return $account instanceof FeedbackDeveloper
-            ? (bool) config('feedback.login_prefill.owner.enabled') && filled(config('feedback.login_prefill.owner.username')) && config('feedback.login_prefill.owner.username') === $account->username
-            : filled($project->login_prefill_username) && $project->login_prefill_username === $account->username;
+        if ($account instanceof FeedbackDeveloper) {
+            return (bool) config('feedback.login_prefill.owner.enabled')
+                && filled(config('feedback.login_prefill.owner.username'))
+                && config('feedback.login_prefill.owner.username') === $account->username
+                && filled(config('feedback.login_prefill.owner.password'));
+        }
+
+        return filled($project->login_prefill_username)
+            && $project->login_prefill_username === $account->username
+            && filled($project->login_prefill_password);
     }
 
     /**

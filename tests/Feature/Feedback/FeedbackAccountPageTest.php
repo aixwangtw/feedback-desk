@@ -141,6 +141,43 @@ class FeedbackAccountPageTest extends TestCase
         $this->assertNull($this->project->refresh()->login_prefill_password);
     }
 
+    public function test_a_username_only_prefill_is_not_a_public_demo_account(): void
+    {
+        $this->project->update(['login_prefill_username' => 'mei', 'login_prefill_password' => null]);
+        $this->loginClient();
+
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertDontSee('公開預填的示範帳號');
+        $this->post(route('feedback.account.password', $this->project), ['current_password' => 'client-old-password', 'new_password' => self::NEW_PASSWORD, 'new_password_confirmation' => self::NEW_PASSWORD])
+            ->assertSessionHasNoErrors();
+        $this->assertTrue($this->client->refresh()->password_set_by_self);
+    }
+
+    public function test_a_username_and_password_prefill_still_blocks_the_password_change_page_text(): void
+    {
+        $this->project->update(['login_prefill_username' => 'mei', 'login_prefill_password' => 'client-old-password']);
+        $this->loginClient();
+
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertSee('公開預填的示範帳號');
+    }
+
+    public function test_owner_prefill_blocks_password_change_only_when_the_owner_password_is_also_public(): void
+    {
+        FeedbackDeveloper::factory()->withPassword('dev-old-password-x')->create(['username' => 'amy']);
+        config()->set('feedback.login_prefill.enabled', true);
+        config()->set('feedback.login_prefill.owner.enabled', true);
+        config()->set('feedback.login_prefill.owner.username', 'amy');
+        $this->post(route('feedback.login.store', $this->project), ['username' => 'amy', 'password' => 'dev-old-password-x'])->assertRedirect();
+        $payload = ['current_password' => 'dev-old-password-x', 'new_password' => self::NEW_PASSWORD, 'new_password_confirmation' => self::NEW_PASSWORD];
+
+        config()->set('feedback.login_prefill.owner.password', 'dev-old-password-x');
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertSee('公開預填的示範帳號');
+        $this->post(route('feedback.account.password', $this->project), $payload)->assertSessionHasErrorsIn('password', 'current_password');
+
+        config()->set('feedback.login_prefill.owner.password', null);
+        $this->get(route('feedback.account', $this->project))->assertOk()->assertDontSee('公開預填的示範帳號');
+        $this->post(route('feedback.account.password', $this->project), $payload)->assertSessionHasNoErrors();
+    }
+
     public function test_a_developer_password_change_keeps_this_browser_signed_in_on_every_project(): void
     {
         $developer = FeedbackDeveloper::factory()->withPassword('dev-old-password-x')->create(['username' => 'amy']);

@@ -348,6 +348,19 @@ describe('review follow-ups', () => {
         expect((await clientRow(demo.account.id)).password_set_by_self).toBe(0);
     });
 
+    it('lets an account change its password when only its username is prefilled', async () => {
+        const vars = { FEEDBACK_LOGIN_PREFILL_ENABLED: 'true' };
+        const seeded = await seedProject();
+        const holder = await seedClientAccount(seeded.project, unique('half'));
+        await env.DB.prepare('UPDATE projects SET login_prefill_username = ?, login_prefill_password = NULL WHERE id = ?').bind(holder.account.username, seeded.project.id).run();
+        const browser = new Browser(undefined, vars);
+        expect((await browser.loginAs(seeded.project.slug, holder.account.username, holder.password)).status).toBe(302);
+        expect(await (await browser.get(`/p/${seeded.project.slug}/account`)).text()).not.toContain('公開預填的示範帳號');
+        const verified = await browser.post(`/p/${seeded.project.slug}/account/verify`, { current_password: holder.password });
+        expect(verified.status).not.toBe(403);
+        expect(await verified.text()).not.toContain('示範帳號');
+    });
+
     it('keeps the teacher prefill when only the developer prefill is switched off', async () => {
         const vars = { FEEDBACK_LOGIN_PREFILL_ENABLED: 'true', FEEDBACK_OWNER_LOGIN_PREFILL_ENABLED: 'false', FEEDBACK_OWNER_LOGIN_PREFILL_USERNAME: 'admin', FEEDBACK_OWNER_LOGIN_PREFILL_PASSWORD: 'owner-secret' };
         const seeded = await seedProject();

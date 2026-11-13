@@ -61,7 +61,8 @@ async function accountFor(c: AppContext, project: Project): Promise<Account | nu
 
 /**
  * Accounts whose password the login page shows to everyone (FEEDBACK_LOGIN_PREFILL_ENABLED): letting
- * one visitor make it their own would lock everyone else out of a shared demo account.
+ * one visitor make it their own would lock everyone else out of a shared demo account. Only the
+ * username being prefilled does not count: the password is not public, so nobody can sign in as it.
  */
 function isPrefilled(c: AppContext, project: Project, holder: Account): boolean {
     const prefill = config(c.env).loginPrefill;
@@ -69,8 +70,8 @@ function isPrefilled(c: AppContext, project: Project, holder: Account): boolean 
         return false;
     }
     return holder.kind === 'developer'
-        ? prefill.ownerEnabled && prefill.ownerUsername !== '' && prefill.ownerUsername === holder.developer.username
-        : project.login_prefill_username !== null && project.login_prefill_username === holder.client.username;
+        ? prefill.ownerEnabled && prefill.ownerUsername !== '' && prefill.ownerUsername === holder.developer.username && prefill.ownerPassword !== ''
+        : project.login_prefill_username !== null && project.login_prefill_username === holder.client.username && project.login_prefill_password !== null && project.login_prefill_password !== '';
 }
 
 const PREFILLED = '這是登入頁公開預填的示範帳號，不能改密碼。';

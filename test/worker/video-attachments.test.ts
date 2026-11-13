@@ -6,8 +6,8 @@ import { api, BASE, Browser, PNG_BYTES, seedDeveloper, seedProject, seedReport, 
 
 /**
  * 留言與待審留言可以附 mp4 影片：對應 Laravel 版 FeedbackVideoAttachmentTest。
- * 影片每支 50 MB、圖片每張 10 MB；留言串與待審留言用 <video> 直接播放；附件網址支援 Range（206）。
- * 開單、調整重點、公開回報仍只收圖片。
+ * 影片（mp4、mov、webm）每支 100 MB、圖片每張 10 MB；留言串與待審留言用 <video> 直接播放；附件網址支援 Range（206）。
+ * 開單、補上傳、公開回報也收影片；調整重點與公開回報者在單頁留言仍只收圖片。
  */
 function mp4Bytes(size = 4096, brand = 'isom'): Uint8Array {
     const bytes = new Uint8Array(size);
@@ -19,6 +19,8 @@ function mp4Bytes(size = 4096, brand = 'isom'): Uint8Array {
 }
 
 const MP4 = mp4Bytes();
+/** webm 檔頭：EBML 標記，DocType 寫 webm。 */
+const WEBM = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81, 0x01, 0x42, 0xf2, 0x81, 0x04, 0x42, 0xf3, 0x81, 0x08, 0x42, 0x82, 0x84, ...[...'webm'].map((c) => c.charCodeAt(0)), 0, 0, 0, 0]);
 const VIDEO_TAG = '<video controls="" playsinline="" preload="metadata"';
 
 async function setup() {
@@ -154,7 +156,7 @@ describe('留言附 mp4 影片', () => {
         expect((await attachmentsOf(report)).map((row) => row.mime_type)).toEqual(['video/mp4', 'video/mp4']);
     });
 
-    it('limits: video 50 MB, image 10 MB; other video formats and HEIC are refused', async () => {
+    it('limits: video 100 MB, image 10 MB; HEIC, mkv and other formats are refused', async () => {
         const { seeded, report, token } = await setup();
         const owner = await new Browser().asOwner(seeded);
         const tooBigVideo = await owner.request('PUT', `/p/${seeded.project.slug}/uploads?purpose=message&report=${report.public_id}`, {
@@ -169,33 +171,36 @@ describe('留言附 mp4 影片', () => {
         expect(tooBigImage.status).toBe(413);
         expect(((await tooBigImage.json()) as { message: string }).message).toContain('10 MB');
 
-        for (const [bytes, name] of [[mp4Bytes(64, 'qt  '), 'clip.mov'], [mp4Bytes(64, 'heic'), 'photo.heic'], [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0, 0, 0, 0, 0]), 'clip.webm']] as const) {
+        for (const [bytes, name] of [[mp4Bytes(64, 'heic'), 'photo.heic'], [new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x88, ...[...'matroska'].map((c) => c.charCodeAt(0))]), 'clip.mkv']] as const) {
             expect((await apiUpload(token, seeded, report, bytes, name)).status).toBe(415);
         }
         expect(await attachmentsOf(report)).toHaveLength(0);
     });
 
-    it('new reports, adjustments and public reporting still take images only', async () => {
+    it('new reports, report edits and public reporting take video too; adjustments and public replies stay images only', async () => {
         const { seeded, report, token } = await setup();
         expect((await apiUpload(token, seeded, report, MP4, 'a.mp4', 'adjustment')).status).toBe(415);
         const owner = await new Browser().asOwner(seeded);
-        expect((await owner.upload(seeded.project.slug, 'purpose=report', MP4, 'a.mp4')).status).toBe(415);
         expect((await owner.upload(seeded.project.slug, `purpose=adjustment&report=${report.public_id}`, MP4, 'a.mp4')).status).toBe(415);
+        for (const [bytes, name, mime] of [[MP4, 'a.mp4', 'video/mp4'], [mp4Bytes(64, 'qt  '), 'a.mov', 'video/quicktime'], [WEBM, 'a.webm', 'video/webm']] as const) {
+            const uploaded = await owner.upload(seeded.project.slug, 'purpose=report', bytes, name);
+            expect(uploaded.status).toBe(201);
+            expect(((await uploaded.json()) as { mime_type: string }).mime_type).toBe(mime);
+        }
 
         const open = await seedProject({ client: false, publicReporting: true });
         const stranger = new Browser(undefined, { FEEDBACK_HOME_PUBLIC_PROJECT: open.project.slug });
         expect((await stranger.post('/public-reports', { title: '首頁按鈕太小', description: '手機上不好按' })).status).toBe(302);
         const publicReport = (await env.DB.prepare("SELECT * FROM reports WHERE project_id = ? AND creator_type = 'public' ORDER BY id DESC LIMIT 1").bind(open.project.id).first<Report>()) as Report;
-        // 公開回報者能附圖（確認身分沒問題），但不收影片。
+        // 公開回報者在單頁留言只能附圖；首頁開單可以附影片。
         expect((await stranger.upload(open.project.slug, `purpose=message&report=${publicReport.public_id}`)).status).toBe(201);
         expect((await stranger.upload(open.project.slug, `purpose=message&report=${publicReport.public_id}`, MP4, 'a.mp4')).status).toBe(415);
-        expect((await stranger.upload(open.project.slug, 'purpose=public', MP4, 'a.mp4')).status).toBe(415);
+        expect((await stranger.upload(open.project.slug, 'purpose=public', MP4, 'a.mp4')).status).toBe(201);
 
         const portal = await (await owner.get(`/p/${seeded.project.slug}`)).text();
-        expect(portal).toMatch(/id="issue-screenshots-0" type="file" accept="image\/jpeg,image\/png,image\/webp"/);
-        // 只收圖片的地方維持原本的字。
-        expect(portal).toContain('＋ 上傳截圖');
-        expect(portal).toContain('最多 5 張，每張 10 MB');
+        expect(portal).toMatch(new RegExp(`id="issue-screenshots-0" type="file" accept="${MESSAGE_ACCEPT.replaceAll('/', '\\/')}"`));
+        expect(portal).toContain('＋ 上傳圖片或影片');
+        expect(portal).toContain(MESSAGE_HINT);
     });
 });
 
@@ -205,30 +210,38 @@ describe('附件規則的純邏輯', () => {
         expect(detectAttachmentType(MP4, false)).toBeNull();
         expect(detectAttachmentType(mp4Bytes(32, 'mp42'), true)).toBe('video/mp4');
         expect(detectAttachmentType(mp4Bytes(32, 'heic'), true)).toBeNull();
-        expect(detectAttachmentType(mp4Bytes(32, 'qt  '), true)).toBeNull();
+        expect(detectAttachmentType(mp4Bytes(32, 'qt  '), true)).toBe('video/quicktime');
+        expect(detectAttachmentType(mp4Bytes(32, 'qt  '), false)).toBeNull();
+        expect(detectAttachmentType(WEBM, true)).toBe('video/webm');
+        expect(detectAttachmentType(WEBM, false)).toBeNull();
+        expect(detectAttachmentType(new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x88, ...[...'matroska'].map((c) => c.charCodeAt(0))]), true)).toBeNull();
         expect(detectAttachmentType(PNG_BYTES, true)).toBe('image/png');
     });
 
-    it('treats video/mp4 and application/mp4 alike and stores video/mp4', () => {
+    it('treats video/mp4 and application/mp4 alike and keeps mov and webm as they are', () => {
         expect(isVideoMime('application/mp4')).toBe(true);
-        expect(isVideoMime('video/webm')).toBe(false);
+        expect(isVideoMime('video/webm')).toBe(true);
+        expect(isVideoMime('video/quicktime')).toBe(true);
+        expect(isVideoMime('video/x-msvideo')).toBe(false);
         expect(storedMime('application/mp4')).toBe('video/mp4');
+        expect(storedMime('video/quicktime')).toBe('video/quicktime');
         expect(storedMime('image/png')).toBe('image/png');
-        expect(maxBytesFor('video/mp4')).toBe(50 * 1024 * 1024);
+        expect(maxBytesFor('video/mp4')).toBe(100 * 1024 * 1024);
         expect(maxBytesFor('image/jpeg')).toBe(10 * 1024 * 1024);
     });
 
-    it('checks files in the browser the same way: count, type, 50 MB per video, 10 MB per image', () => {
+    it('checks files in the browser the same way: count, type, 100 MB per video, 10 MB per image', () => {
         const message = { maxFiles: 5, maxImageBytes: MAX_IMAGE_BYTES, allowVideo: true };
         const video = (size: number, type = 'video/mp4') => ({ name: 'v.mp4', type, size });
         const image = (size: number) => ({ name: 'a.png', type: 'image/png', size });
         expect(fileProblem([video(MAX_VIDEO_BYTES), image(MAX_IMAGE_BYTES)], message)).toBeNull();
         expect(fileProblem([video(1, 'application/mp4')], message)).toBeNull();
-        expect(fileProblem([video(MAX_VIDEO_BYTES + 1)], message)).toBe('「v.mp4」太大：每支影片不可超過 50 MB。');
+        expect(fileProblem([video(MAX_VIDEO_BYTES + 1)], message)).toBe('「v.mp4」太大：每支影片不可超過 100 MB。');
         expect(fileProblem([image(MAX_IMAGE_BYTES + 1)], message)).toBe('「a.png」太大：每張圖片不可超過 10 MB。');
-        expect(fileProblem([video(1, 'video/webm')], message)).toBe('附件只接受 JPG、PNG、WebP 圖片或 MP4 影片。');
+        expect(fileProblem([video(1, 'video/webm'), video(1, 'video/quicktime')], message)).toBeNull();
+        expect(fileProblem([video(1, 'video/x-msvideo')], message)).toBe('附件只接受 JPG、PNG、WebP 圖片或 MP4、MOV、WebM 影片。');
         expect(fileProblem(Array.from({ length: 6 }, () => image(1)), message)).toBe('一次最多附 5 個檔案。');
-        expect(MESSAGE_HINT).toBe('圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 50 MB');
+        expect(MESSAGE_HINT).toBe('圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 100 MB');
         expect(fileProblem([video(1)], { ...message, allowVideo: false })).toBe('附圖只接受 JPG、PNG、WebP。');
     });
 });

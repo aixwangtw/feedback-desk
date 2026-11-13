@@ -360,7 +360,7 @@ api.post('/projects/:slug/reports/:ref/drafts', async (c) => {
 
 async function storeUpload(c: AppContext, target: { projectId: number; reportId: number | null; purpose: 'report' | 'message' | 'adjustment' }): Promise<Response> {
     try {
-        const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, allowVideo: target.purpose === 'message', nowIso: nowIso(c.get('now')) });
+        const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, allowVideo: target.purpose !== 'adjustment', nowIso: nowIso(c.get('now')) });
         return c.json({ id: upload.id, name: upload.original_name, size: upload.size, mime_type: upload.mime_type }, 201);
     } catch (error) {
         if (error instanceof UploadError) {

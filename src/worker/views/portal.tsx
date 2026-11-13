@@ -499,7 +499,7 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
 
                     {row.attachments.length > 0 ? (
                         <fieldset>
-                            <legend class="mb-2 text-sm font-semibold text-slate-800">目前截圖 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
+                            <legend class="mb-2 text-sm font-semibold text-slate-800">目前圖片或影片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
                             <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                                 {row.attachments.map((attachment) => (
                                     <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
@@ -515,8 +515,8 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                     ) : null}
 
                     <div>
-                        <label for={`edit-screenshots-${report.public_id}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增截圖<input id={`edit-screenshots-${report.public_id}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`edit-preview-${report.public_id}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name="upload_ids[]" data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
-                        <span class="ml-2 text-xs text-slate-500">截圖總數最多 5 張，每張 10 MB</span>
+                        <label for={`edit-screenshots-${report.public_id}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增圖片或影片<input id={`edit-screenshots-${report.public_id}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target={`edit-preview-${report.public_id}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name="upload_ids[]" data-upload-allow-video data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
+                        <span class="ml-2 text-xs text-slate-500">{MESSAGE_HINT}</span>
                         <div id={`edit-preview-${report.public_id}`} class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                     </div>
 
@@ -563,8 +563,8 @@ const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: s
                 <textarea id={`issue-description-${index}`} name={`issues[${index}][description]`} required maxlength={10000} rows={4} placeholder="請說明操作步驟、預期結果與實際結果。" class={`${INPUT} resize-y leading-6`}>{description ?? ''}</textarea>
             </div>
             <div>
-                <label for={`issue-screenshots-${index}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳截圖<input id={`issue-screenshots-${index}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`issue-preview-${index}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name={`issues[${index}][upload_ids][]`} data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
-                <span class="ml-2 text-xs text-slate-500">最多 5 張，每張 10 MB</span>
+                <label for={`issue-screenshots-${index}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳圖片或影片<input id={`issue-screenshots-${index}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target={`issue-preview-${index}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name={`issues[${index}][upload_ids][]`} data-upload-allow-video data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
+                <span class="ml-2 text-xs text-slate-500">{MESSAGE_HINT}</span>
                 <div id={`issue-preview-${index}`} class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
             </div>
         </div>

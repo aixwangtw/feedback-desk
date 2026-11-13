@@ -17,7 +17,7 @@ export interface AttachmentOptions {
     allowVideo: boolean;
 }
 
-const EXTENSION_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4' };
+const EXTENSION_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
 
 /** MIME 優先；瀏覽器沒給（部分系統拖進來的檔案）才看副檔名。 */
 export function fileMimeType(file: AttachmentFile): string {

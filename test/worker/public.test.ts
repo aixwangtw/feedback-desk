@@ -130,7 +130,7 @@ describe('home page public reporting', () => {
         const html = await empty.text();
         expect(html).toContain('標題 為必填。');
         expect(html).toContain('稱呼 不能超過 50 個字元。');
-        const big = await visitor.request('PUT', `/p/${slug}/uploads?purpose=public`, { body: new Uint8Array(16), headers: { 'content-length': String(5 * 1024 * 1024 + 1) } });
+        const big = await visitor.request('PUT', `/p/${slug}/uploads?purpose=public`, { body: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]), headers: { 'content-length': String(5 * 1024 * 1024 + 1) } });
         expect(big.status).toBe(413);
         const ids = [];
         for (let i = 0; i < 4; i++) ids.push(await visitor.uploadId(slug, 'purpose=public'));

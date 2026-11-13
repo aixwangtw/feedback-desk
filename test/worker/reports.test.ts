@@ -16,7 +16,7 @@ describe('uploads', () => {
         }
         const gif = await client.upload(seeded.project.slug, 'purpose=report', GIF, 'fake.png');
         expect(gif.status).toBe(415);
-        expect(((await gif.json()) as { message: string }).message).toContain('jpg、png 或 webp');
+        expect(((await gif.json()) as { message: string }).message).toContain('JPG、PNG、WebP');
         const text = await client.upload(seeded.project.slug, 'purpose=report', new TextEncoder().encode('<script>alert(1)</script>'), 'x.jpg');
         expect(text.status).toBe(415);
     });

@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
-import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
+import { ATTACHMENT_TYPE_ERROR, DETECT_HEAD_BYTES, detectAttachmentType, imageTooLarge, isVideoMime, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
 import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
 import { ADJUSTMENT_DEPRECATED } from '../../shared/completion';
 import { encodePath } from '../api';
@@ -238,8 +238,8 @@ function printAttachments(rt: Runtime, label: string, attachments: AttachmentInf
 }
 
 /**
- * Reads and checks local files before anything is sent. `allowVideo`（message、draft 的 --attach）另收 mp4 影片，
- * 每支 50 MB；圖片每張 10 MB。開單、調整重點只收圖片。
+ * Reads and checks local files before anything is sent. `allowVideo`（開單、message、draft 的 --attach）另收影片
+ * （mp4、mov、webm），每支 100 MB；圖片每張 10 MB。調整重點只收圖片。
  */
 export function readImages(paths: string[], options: { allowVideo?: boolean } = {}): Array<{ path: string; name: string; bytes: Uint8Array; mime: string }> {
     const allowVideo = options.allowVideo === true;
@@ -256,14 +256,14 @@ export function readImages(paths: string[], options: { allowVideo?: boolean } = 
             throw new CliError(allowVideo ? `${VIDEO_TOO_LARGE.replace(/。$/, '')}：${path}` : `圖片超過 10 MB：${path}`);
         }
         const bytes = new Uint8Array(readFileSync(path));
-        const mime = detectAttachmentType(bytes.subarray(0, 12), allowVideo);
+        const mime = detectAttachmentType(bytes.subarray(0, DETECT_HEAD_BYTES), allowVideo);
         if (!mime && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-') {
             throw new CliError(`不收 PDF，請先轉成 jpg／png／webp 圖片再附：${path}`);
         }
         if (!mime) {
             throw new CliError(allowVideo ? `${ATTACHMENT_TYPE_ERROR.replace(/。$/, '')}：${path}` : `只接受 jpg／png／webp 圖片：${path}`);
         }
-        if (mime !== 'video/mp4' && size > MAX_IMAGE_BYTES) {
+        if (!isVideoMime(mime) && size > MAX_IMAGE_BYTES) {
             throw new CliError(`${imageTooLarge(MAX_IMAGE_BYTES).replace(/。$/, '')}：${path}`);
         }
         return { path, name: basename(path), bytes, mime };
@@ -580,7 +580,7 @@ export async function create(rt: Runtime, argv: string[]): Promise<number> {
         throw new CliError(`一張單最多附 ${MAX_IMAGES} 張圖。`);
     }
     // 先全部檢查過再上傳：任何一張不合格，整張單都不建立。
-    const images = readImages(paths);
+    const images = readImages(paths, { allowVideo: true });
     const api = apiFor(rt, str(args, 'url'));
     const uploadIds: string[] = [];
     for (const image of images) {

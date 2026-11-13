@@ -5,7 +5,7 @@ import { placeholders } from './db';
 import type { Upload, UploadPurpose } from './models';
 import { charSlice } from '../../shared/text';
 
-import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_TOO_LARGE, type ImageMime } from '../../shared/attachment-rules';
+import { ATTACHMENT_TYPE_ERROR, DETECT_HEAD_BYTES, detectAttachmentType, imageTooLarge, isVideoMime, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_TOO_LARGE, type ImageMime } from '../../shared/attachment-rules';
 
 export { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES };
 export const PUBLIC_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -74,8 +74,8 @@ export async function storeImageStream(
     env: Env,
     input: Request | ImageSource,
     /**
-     * maxBytes is the image limit. allowVideo (留言與待審留言，非公開回報) also takes mp4 up to MAX_VIDEO_BYTES;
-     * the body is still streamed into R2 (a 50 MB video is never held in memory).
+     * maxBytes is the image limit. allowVideo also takes mp4／mov／webm up to MAX_VIDEO_BYTES;
+     * the body is still streamed into R2 (a 100 MB video is never held in memory).
      */
     options: { projectId: number; reportId: number | null; purpose: UploadPurpose; maxBytes: number; nowIso: string; allowVideo?: boolean },
 ): Promise<Upload> {
@@ -96,7 +96,7 @@ export async function storeImageStream(
     const reader = source.body.getReader();
     const chunks: Uint8Array[] = [];
     let headLength = 0;
-    while (headLength < 12) {
+    while (headLength < DETECT_HEAD_BYTES) {
         const { value, done } = await reader.read();
         if (done) {
             break;
@@ -115,7 +115,7 @@ export async function storeImageStream(
         await reader.cancel();
         throw new UploadError(allowVideo ? ATTACHMENT_TYPE_ERROR : '截圖必須是 jpg、png 或 webp 圖片。', 415);
     }
-    if (mime !== 'video/mp4' && length > options.maxBytes) {
+    if (!isVideoMime(mime) && length > options.maxBytes) {
         await reader.cancel();
         throw new UploadError(imageLimit, 413);
     }

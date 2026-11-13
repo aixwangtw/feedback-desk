@@ -858,7 +858,7 @@ web.put('/p/:slug/uploads', async (c) => {
     const reportPublicId = c.req.query('report') ?? '';
     let maxBytes = MAX_IMAGE_BYTES;
     let reportId: number | null = null;
-    // 留言（含團隊與客戶）另收 mp4 影片；開單、調整重點、公開回報只收圖片。
+    // 開單、補上傳、留言（含團隊與客戶）、公開回報都收影片；只有調整重點與公開回報者在單頁留言只收圖片。
     let allowVideo = false;
     const ip = clientIp(c.req.raw);
     const publicLimits = (): Limit[] => {
@@ -874,6 +874,7 @@ web.put('/p/:slug/uploads', async (c) => {
         if (!(await access.canManage(project))) {
             abort(403);
         }
+        allowVideo = true;
     } else if (purpose === 'adjustment') {
         if (!(await access.isOwner(project))) {
             abort(403);
@@ -900,6 +901,7 @@ web.put('/p/:slug/uploads', async (c) => {
         if (!active || active.id !== project.id) {
             abort(404);
         }
+        allowVideo = true;
         maxBytes = PUBLIC_MAX_IMAGE_BYTES;
         limits = publicLimits();
     } else {

@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Storage;
  * 在回饋單留言（可附圖）；網頁、MCP 共用。記下留言者的帳號與 AI 工具，並把這張單標成留言者那一方讀過。
  *
  * 留言自動切狀態（applyStatusRule）：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；
- * 團隊在等工程師的單留言 → 等客戶。已完成的單不因留言改狀態。
+ * 團隊在等工程師的單留言 → 等客戶；已完成的單客戶又留言 → 等工程師（重新開啟，事件記 reopen_by_message）。
+ * 團隊在已完成的單留言不改狀態。
  */
 class PostFeedbackMessageAction
 {
@@ -107,13 +108,17 @@ class PostFeedbackMessageAction
         $next = match (true) {
             $actor->isTeam && $report->status === FeedbackReportStatus::New => FeedbackReportStatus::NeedsInput,
             ! $actor->isTeam && $report->status === FeedbackReportStatus::NeedsInput => FeedbackReportStatus::New,
+            ! $actor->isTeam && $report->status === FeedbackReportStatus::Completed => FeedbackReportStatus::New,
             default => null,
         };
         if ($next === null) {
             return false;
         }
 
-        $this->changeStatus->handle($report, $next, $actor);
+        $eventKind = $report->status === FeedbackReportStatus::Completed
+            ? ChangeFeedbackReportStatusAction::EVENT_REOPEN_BY_MESSAGE
+            : ChangeFeedbackReportStatusAction::EVENT_STATUS;
+        $this->changeStatus->handle($report, $next, $actor, $eventKind);
 
         return true;
     }

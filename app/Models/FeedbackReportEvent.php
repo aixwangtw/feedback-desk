@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FeedbackReportStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,11 +20,25 @@ class FeedbackReportEvent extends Model
         'message_edit' => '修改留言',
         'adjustment' => '寫調整重點',
         'status' => '改狀態',
+        'reopen_by_message' => '留言後改回',
+        'reopen_by_client' => '按「待處理」改回',
         'claim' => '認領',
         'release' => '釋放認領',
         'takeover' => '接手',
         'handoff' => '寫交接紀錄',
     ];
+
+    /**
+     * 顯示用名稱。客戶重新開啟的兩種事件把目標狀態名稱接在後面（例如「留言後改回等工程師」），狀態名稱照看板設定。
+     */
+    public static function labelFor(string $kind, ?FeedbackProject $project = null): string
+    {
+        $label = self::LABELS[$kind] ?? $kind;
+
+        return in_array($kind, ['reopen_by_message', 'reopen_by_client'], true)
+            ? $label.FeedbackReportStatus::New->label($project)
+            : $label;
+    }
 
     /** @return BelongsTo<FeedbackDeveloper, $this> */
     public function feedbackDeveloper(): BelongsTo

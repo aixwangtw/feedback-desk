@@ -43,7 +43,7 @@ A lightweight issue-reporting desk for talking to clients and teammates about pr
 
 - 多專案：每個專案內容、截圖彼此隔離，各自有獨立入口。
 - 問題清單：新增問題（標題、說明、頁面網址、多張截圖）、搜尋、依狀態與建立者篩選、欄位排序、列表／看板兩種檢視。
-- 三種狀態，名稱直接寫出在等誰：等工程師（new）、等客戶（needs_input，客戶稱呼照 `FEEDBACK_LABEL_CLIENT`，例如等老師、等業主）、已完成（completed，客戶按「完成」）。狀態會自己切換：客戶留言變等工程師，團隊留言或送出待審留言變等客戶；網頁上沒有改狀態的下拉選單。名稱可用 `FEEDBACK_STATUS_LABEL_NEW`／`FEEDBACK_STATUS_LABEL_NEEDS_INPUT`／`FEEDBACK_STATUS_LABEL_COMPLETED` 改。
+- 三種狀態，名稱直接寫出在等誰：等工程師（new）、等客戶（needs_input，客戶稱呼照 `FEEDBACK_LABEL_CLIENT`，例如等老師、等業主）、已完成（completed，客戶按「完成」）。狀態會自己切換：客戶留言變等工程師（已完成的單客戶又留言也會改回等工程師），團隊留言或送出待審留言變等客戶；網頁上沒有改狀態的下拉選單，客戶可在留言區按「待處理」自己把單改回等工程師。名稱可用 `FEEDBACK_STATUS_LABEL_NEW`／`FEEDBACK_STATUS_LABEL_NEEDS_INPUT`／`FEEDBACK_STATUS_LABEL_COMPLETED` 改。
 - 留言串與附圖；單的詳情是 Jira 版面（電腦版右側滑出、手機整頁）：左邊說明、附件、相簿（集中看這張單所有附件）、活動時間軸（留言＋狀態變更）、輸入框；右邊窄欄是狀態、建立者、時間、「完成」。「調整重點」已停用，改成直接寫留言；舊內容在詳情裡唯讀顯示為「過去的處理說明」。
 - 「完成」：客戶按了直接結案；開發團隊（網頁、artisan、MCP、巡檢 API）按「完成」只會發一則可改字的確認留言（`feedback:request-completion`、MCP `request_completion`、巡檢 `POST .../request-completion`），單維持等客戶，留言上附「通過」按鈕，客戶按「通過」才變已完成。
 - 客戶刪除的問題只是隱藏，開發團隊仍看得到並可還原。

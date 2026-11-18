@@ -1,6 +1,7 @@
 // 「完成」的兩個動作：
 //  1. 開發團隊按「完成」→ 跳出可改字的確認留言，送出只發一則附「通過」按鈕的留言，單維持等老師，不會結案；
-//  2. 老師在確認留言上按「通過」→ 單改成已完成（走原本的狀態端點，只有老師按得了）。
+//  2. 老師在確認留言上按「通過」→ 單改成已完成（走原本的狀態端點，只有老師按得了）；
+//  3. 老師在留言區按「待處理」（confirm-dialog.js 先確認）→ 單改回等工程師，同樣走狀態端點。
 // 沒有 JS 時兩個 <form> 都照一般表單送出。成功後整頁重新載入，並記下要重新開啟的詳情視窗。
 
 const REOPEN_KEY = 'feedback:reopen-dialog';
@@ -76,7 +77,7 @@ const reload = (reopenDialogId) => {
 if (typeof document !== 'undefined') {
     document.addEventListener('submit', async (event) => {
         const requestForm = event.target.closest?.('form[data-request-completion-form]');
-        const approveForm = event.target.closest?.('form[data-completion-approve-form]');
+        const approveForm = event.target.closest?.('form[data-completion-approve-form], form[data-reopen-form]');
         if (!requestForm && !approveForm) {
             return;
         }

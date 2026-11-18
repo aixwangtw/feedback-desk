@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Feedback;
 
 use App\Actions\ManageFeedbackMessageAction;
 use App\Actions\PostFeedbackMessageAction;
+use App\Enums\FeedbackReportStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackMessageRequest;
 use App\Http\Requests\Feedback\UpdateFeedbackMessageRequest;
@@ -33,7 +34,13 @@ class FeedbackMessageController extends Controller
 
         $previous = $feedbackReport->status;
         $postMessage->handle($feedbackReport, $actor, $validated['body'], $validated['screenshots'] ?? []);
-        $notice = '訊息已送出。'.($actor->isTeam && $feedbackReport->status !== $previous ? PostFeedbackMessageAction::statusChangeNotice($feedbackProject) : '');
+        $notice = '訊息已送出。'.match (true) {
+            $feedbackReport->status === $previous => '',
+            $actor->isTeam => PostFeedbackMessageAction::statusChangeNotice($feedbackProject),
+            // 已完成的單客戶又留言：單重新開啟，告訴客戶狀態變了。
+            $previous === FeedbackReportStatus::Completed => '狀態已改回「'.$feedbackReport->status->label($feedbackProject).'」。',
+            default => '',
+        };
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $notice, 'status' => $feedbackReport->status->value], 201);

@@ -70,7 +70,7 @@
             <ol class="mt-2 grid gap-1.5 text-xs text-slate-600">
                 @foreach ($work['recent_activity'] as $event)
                     <li>
-                        <x-feedback.time :at="$event['at']" relative class="text-slate-400" /> <span class="font-semibold text-slate-800">{{ $event['by'] }}</span> {{ $event['label'] }}@if ($event['kind'] === 'status' && $event['detail'] && str_contains($event['detail'], '>'))：{{ $statusLabel(explode('>', $event['detail'])[0]) }} → {{ $statusLabel(explode('>', $event['detail'])[1]) }}@elseif (in_array($event['kind'], ['takeover', 'release'], true) && $event['detail'])（原本是 {{ $event['detail'] }}）@endif
+                        <x-feedback.time :at="$event['at']" relative class="text-slate-400" /> <span class="font-semibold text-slate-800">{{ $event['by'] }}</span> {{ $event['label'] }}@if ($event['kind'] === 'status' && $event['detail'] && str_contains($event['detail'], '>'))：{{ $statusLabel(explode('>', $event['detail'])[0]) }} → {{ $statusLabel(explode('>', $event['detail'])[1]) }}@elseif (in_array($event['kind'], ['reopen_by_message', 'reopen_by_client'], true) && $event['detail'] && str_contains($event['detail'], '>'))（原本是{{ $statusLabel(explode('>', $event['detail'])[0]) }}）@elseif (in_array($event['kind'], ['takeover', 'release'], true) && $event['detail'])（原本是 {{ $event['detail'] }}）@endif
                     </li>
                 @endforeach
             </ol>

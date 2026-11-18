@@ -187,7 +187,7 @@ class FeedbackReportWork
                 ->get()
                 ->map(fn (FeedbackReportEvent $event): array => [
                     'kind' => $event->kind,
-                    'label' => FeedbackReportEvent::LABELS[$event->kind] ?? $event->kind,
+                    'label' => FeedbackReportEvent::labelFor($event->kind, $report->feedbackProject),
                     'by' => FeedbackAgentName::label($event->feedbackDeveloper?->name ?? $event->feedbackClientAccount?->name ?? (FeedbackTeamName::isShared((string) $event->actor_name) ? FeedbackTeamName::shared() : $event->actor_name), $event->agent, $event->feedback_client_account_id === null && ($event->feedback_developer_id !== null || FeedbackTeamName::isShared((string) $event->actor_name))),
                     'detail' => $event->detail,
                     'at' => $event->created_at,

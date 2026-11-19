@@ -120,7 +120,7 @@
                 @include('feedback.reports._work', ['project' => $project, 'report' => $report, 'work' => $work, 'canClaim' => $canClaim])
             @endif
             @if ($canManage)
-                {{-- 狀態不用下拉切換：留言時自動切換；客戶確認沒問題按「完成」或留言上的「通過」，開發團隊按「完成」只會請客戶確認。 --}}
+                {{-- 狀態留言時自動切換；雙方也能用右側欄與留言區下面的狀態切換鈕隨時改。 --}}
                 <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" data-report-status-panel>
                     @include('feedback.reports._detail-side', ['project' => $project, 'report' => $report, 'isOwner' => $isOwner, 'context' => 'page'])
                 </section>

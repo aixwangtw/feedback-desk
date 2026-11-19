@@ -136,6 +136,11 @@ class FeedbackPortalTest extends TestCase
         $this->get(route('feedback.portal', [$project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('data-status-guide', false)
+            // 說明寫出三個頁籤、會自動切換，以及雙方都能自己切換。
+            ->assertSee('data-status-auto-guide', false)
+            ->assertSee('狀態會自動切換')
+            ->assertSee('雙方都能隨時在操作欄、詳情或留言區下面按')
+            ->assertSee('待回覆（'.FeedbackReportStatus::NeedsInput->label().'）')
             ->assertSee('bg-amber-50 text-amber-800 ring-amber-200', false)
             ->assertSee(FeedbackReportStatus::NeedsInput->label())
             // 清單上狀態用三顆切換鈕（待處理／待回覆／已完成），不是下拉選單。

@@ -163,7 +163,7 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $this->assertStringContainsString('data-chat-album-back', $html);
     }
 
-    public function test_team_status_switch_is_in_list_and_board_and_marks_the_current_status(): void
+    public function test_team_status_toggle_is_in_list_and_board_and_flips_with_the_status(): void
     {
         $this->actingAsOwner();
         $id = $this->report->public_id;
@@ -171,16 +171,22 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
         $row = Str::between($list, 'data-report-row="'.$id.'"', '</tr>');
         $this->assertStringContainsString('data-status-switch="'.$id.'"', $row);
-        foreach (['new', 'needs_input', 'completed'] as $value) {
-            $this->assertStringContainsString('data-status-option="'.$value.'"', $row);
-        }
+        // 只有一顆，按一下切換：還沒完成顯示「完成」。
+        $this->assertStringContainsString('data-status-option="completed"', $row);
+        $this->assertStringContainsString('>完成</button>', $row);
+        $this->assertStringNotContainsString('data-status-option="new"', $row);
+        $this->assertStringNotContainsString('data-status-option="needs_input"', $row);
 
         $board = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->getContent();
         $this->assertStringContainsString('data-status-switch="'.$id.'"', Str::between($board, 'data-report-id="'.$id.'"', '</article>'));
 
         $this->report->update(['status' => FeedbackReportStatus::Completed]);
         $done = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
-        $this->assertMatchesRegularExpression('/value="completed"[^>]*data-status-option="completed"[^>]*disabled aria-pressed="true"/s', Str::between($done, 'data-report-row="'.$id.'"', '</tr>'));
+        // 已完成的單改顯示「待處理」，按一下改回。
+        $doneRow = Str::between($done, 'data-report-row="'.$id.'"', '</tr>');
+        $this->assertStringContainsString('data-status-option="new"', $doneRow);
+        $this->assertStringContainsString('>待處理</button>', $doneRow);
+        $this->assertStringNotContainsString('data-status-option="completed"', $doneRow);
     }
 
     public function test_detail_side_is_label_value_rows_with_complete_button_and_overflow_menu(): void

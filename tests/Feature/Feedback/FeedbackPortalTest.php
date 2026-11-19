@@ -139,7 +139,7 @@ class FeedbackPortalTest extends TestCase
             // 說明寫出三個頁籤、會自動切換，以及雙方都能自己切換。
             ->assertSee('data-status-auto-guide', false)
             ->assertSee('狀態會自動切換')
-            ->assertSee('雙方都能隨時在操作欄、詳情或留言區下面按')
+            ->assertSee('雙方也都能隨時在操作欄、詳情或留言區下面按一下「完成」（已完成的單是「待處理」）自己切換。')
             ->assertSee('待回覆（'.FeedbackReportStatus::NeedsInput->label().'）')
             ->assertSee('bg-amber-50 text-amber-800 ring-amber-200', false)
             ->assertSee(FeedbackReportStatus::NeedsInput->label())

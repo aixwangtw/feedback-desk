@@ -1,43 +1,34 @@
 {{--
-    狀態切換鈕（清單操作欄、看板卡片、詳情右側欄、留言區最下面共用）：待處理／待回覆／已完成三顆，
-    老師、業主與開發團隊都能隨時按（2026-11-19 使用者：「3個頁籤 雙方都可透過操作欄位 已經留言內隨時切換 程式也會自動切」）。
-    目前的狀態那顆反白、不能按；按其他顆直接送出，送出後回到原頁。留言時的自動切換照舊（PostFeedbackMessageAction）。
+    狀態切換鈕（清單操作欄、看板卡片、詳情右側欄、留言區最下面共用）：只有一顆，按一下就切換
+    （2026-11-19 使用者：「操作欄位 完成 待處理 … 不用並列3個」「按一下切換 不是2顆」）。
+    還沒完成的單顯示「完成」，按了改成已完成；已完成的單顯示「待處理」，按了改回待處理。
+    老師、業主與開發團隊都能按；「待回覆」不放按鈕，由回覆時自動切換（PostFeedbackMessageAction）。
 --}}
 @use('App\Enums\FeedbackReportStatus')
 @use('App\Support\FeedbackWaitingOn')
 @props(['project', 'report', 'compact' => false])
 
 @php
-    $options = [
-        FeedbackReportStatus::New->value => [FeedbackWaitingOn::tabLabel(FeedbackWaitingOn::DEVELOPER), FeedbackReportStatus::New->label($project)],
-        FeedbackReportStatus::NeedsInput->value => [FeedbackWaitingOn::tabLabel(FeedbackWaitingOn::CLIENT), FeedbackReportStatus::NeedsInput->label($project)],
-        FeedbackReportStatus::Completed->value => [FeedbackWaitingOn::tabLabel(FeedbackWaitingOn::COMPLETED), FeedbackReportStatus::Completed->label($project)],
-    ];
-    $activeClass = [
-        FeedbackReportStatus::New->value => 'bg-slate-700 text-white',
-        FeedbackReportStatus::NeedsInput->value => 'bg-amber-500 text-white',
-        FeedbackReportStatus::Completed->value => 'bg-emerald-600 text-white',
-    ];
+    $isCompleted = $report->status === FeedbackReportStatus::Completed;
+    $target = $isCompleted ? FeedbackReportStatus::New : FeedbackReportStatus::Completed;
+    $label = $isCompleted ? FeedbackWaitingOn::tabLabel(FeedbackWaitingOn::DEVELOPER) : '完成';
+    $hint = $isCompleted
+        ? '改回「'.$label.'」（'.FeedbackReportStatus::New->label($project).'）'
+        : '改成「'.FeedbackReportStatus::Completed->label($project).'」';
 @endphp
 
 <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" {{ $attributes->merge(['class' => 'inline-flex']) }} data-status-switch="{{ $report->public_id }}">
     @csrf
     @method('PATCH')
-    <div class="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white" role="group" aria-label="「{{ $report->title }}」的狀態">
-        @foreach ($options as $value => [$label, $hint])
-            @php $isCurrent = $report->status->value === $value; @endphp
-            <button type="submit" name="status" value="{{ $value }}"
-                @class([
-                    'border-l border-slate-300 font-semibold transition first:border-l-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600',
-                    'h-8 px-2.5 text-xs' => ! $compact,
-                    'h-7 px-2 text-[11px]' => $compact,
-                    $activeClass[$value] => $isCurrent,
-                    'text-slate-600 hover:bg-slate-100' => ! $isCurrent,
-                ])
-                title="{{ $isCurrent ? '目前：'.$hint : '改成「'.$label.'」（'.$hint.'）' }}"
-                data-status-option="{{ $value }}"
-                @if ($attributes->has('data-card-action')) data-card-action @endif
-                @if ($isCurrent) disabled aria-pressed="true" @else aria-pressed="false" @endif>{{ $label }}</button>
-        @endforeach
-    </div>
+    <button type="submit" name="status" value="{{ $target->value }}"
+        @class([
+            'inline-flex items-center justify-center rounded-lg border font-semibold transition focus:outline-none focus-visible:ring-2',
+            'min-h-8 px-3 text-xs' => ! $compact,
+            'h-7 px-2 text-[11px]' => $compact,
+            'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-600' => ! $isCompleted,
+            'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus-visible:ring-teal-600' => $isCompleted,
+        ])
+        title="{{ $hint }}"
+        data-status-option="{{ $target->value }}"
+        @if ($attributes->has('data-card-action')) data-card-action @endif>{{ $label }}</button>
 </form>

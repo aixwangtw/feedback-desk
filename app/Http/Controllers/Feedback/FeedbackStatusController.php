@@ -24,8 +24,8 @@ class FeedbackStatusController extends Controller
         abort_unless($feedbackReport->feedback_project_id === $feedbackProject->id, 404);
         $status = FeedbackReportStatus::from($request->validated('status'));
 
-        // 網頁上只有客戶能改（見 UpdateFeedbackStatusRequest）；改回等工程師另記事件，團隊看得出是客戶手動重新開啟。
-        $eventKind = $status === FeedbackReportStatus::New
+        // 雙方都能改；客戶改回等工程師另記事件，團隊看得出是客戶手動重新開啟。
+        $eventKind = $status === FeedbackReportStatus::New && ! $access->isOwner($feedbackProject)
             ? ChangeFeedbackReportStatusAction::EVENT_REOPEN_BY_CLIENT
             : ChangeFeedbackReportStatusAction::EVENT_STATUS;
         $changeStatus->handle($feedbackReport, $status, $access->actor($feedbackProject), $eventKind);

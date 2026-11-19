@@ -163,23 +163,24 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $this->assertStringContainsString('data-chat-album-back', $html);
     }
 
-    public function test_team_complete_button_is_in_list_and_board_and_hidden_once_completed(): void
+    public function test_team_status_switch_is_in_list_and_board_and_marks_the_current_status(): void
     {
         $this->actingAsOwner();
         $id = $this->report->public_id;
 
         $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
         $row = Str::between($list, 'data-report-row="'.$id.'"', '</tr>');
-        $this->assertStringContainsString('data-request-completion="'.$id.'"', $row);
-        $this->assertStringContainsString('data-dialog-open="request-completion-'.$id.'"', $row);
-        $this->assertStringContainsString('id="request-completion-'.$id.'"', $list);
+        $this->assertStringContainsString('data-status-switch="'.$id.'"', $row);
+        foreach (['new', 'needs_input', 'completed'] as $value) {
+            $this->assertStringContainsString('data-status-option="'.$value.'"', $row);
+        }
 
         $board = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->getContent();
-        $this->assertStringContainsString('data-request-completion="'.$id.'"', Str::between($board, 'data-report-id="'.$id.'"', '</article>'));
+        $this->assertStringContainsString('data-status-switch="'.$id.'"', Str::between($board, 'data-report-id="'.$id.'"', '</article>'));
 
         $this->report->update(['status' => FeedbackReportStatus::Completed]);
         $done = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
-        $this->assertStringNotContainsString('data-request-completion="'.$id.'"', Str::between($done, 'data-report-row="'.$id.'"', '</tr>'));
+        $this->assertMatchesRegularExpression('/value="completed"[^>]*data-status-option="completed"[^>]*disabled aria-pressed="true"/s', Str::between($done, 'data-report-row="'.$id.'"', '</tr>'));
     }
 
     public function test_detail_side_is_label_value_rows_with_complete_button_and_overflow_menu(): void
@@ -191,7 +192,7 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         foreach (['狀態', '建立者', '建立時間', '最後更新'] as $label) {
             $this->assertStringContainsString('>'.$label.'</dt>', $side);
         }
-        $this->assertStringContainsString('data-request-completion', $side);
+        $this->assertStringContainsString('data-status-switch', $side);
         $this->assertStringContainsString('data-action-menu', $side);
         $menu = Str::after($side, 'data-action-menu');
         $this->assertStringContainsString('text-rose-700', $menu);

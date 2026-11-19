@@ -511,9 +511,8 @@ class FeedbackPublicReportingTest extends TestCase
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'creator' => 'client']))
             ->assertDontSee('陌生人的單');
 
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::New, $report->fresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->fresh()->status);
     }
 
     public function test_existing_clients_cannot_see_public_reports(): void

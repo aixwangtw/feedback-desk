@@ -2,7 +2,7 @@
     留言時間軸（留言泡泡），單頁、詳情視窗、右下角對話面板共用。看的人自己這一方的訊息靠右。
     不列狀態變更紀錄（單目前的狀態在右側欄）；團隊一律顯示人名（FeedbackTeamName），不顯示「開發者」或 AI 工具名稱。
     「請確認完成」的留言：客戶端（能按完成的一方）在最新一則上看到「通過」按鈕，開發團隊端看不到也按不了。
-    「待處理」鈕：客戶端在單不是等工程師（new）時（已完成、等客戶）於留言串最下面看到，先跳確認視窗再改回等工程師（completion.js 送出後重新載入）。
+    留言串最下面有狀態切換鈕（x-feedback.status-switch），老師、業主與開發團隊都能隨時切換待處理、待回覆、已完成。
 --}}
 @use('App\Enums\FeedbackAuthorType')
 @use('App\Enums\FeedbackReportStatus')
@@ -14,7 +14,7 @@
     $timeline = app(\App\Support\FeedbackTimeline::class)->entries($report);
     $latestCompletionRequestId = $report->feedbackMessages()->withTrashed()->where('is_completion_request', true)->max('id');
     $canApprove = ! $viewerIsOwner && $access->canManage($project) && $report->status !== FeedbackReportStatus::Completed;
-    $canReopen = ! $viewerIsOwner && $access->canManage($project) && $report->status !== FeedbackReportStatus::New;
+    $canSwitchStatus = $access->canManage($project);
 @endphp
 
 <ol class="grid grid-cols-[minmax(0,1fr)] gap-4" data-chat-messages>
@@ -81,12 +81,9 @@
     @endforelse
 </ol>
 
-@if ($canReopen)
-    <form method="POST" action="{{ route('feedback.reports.status.update', [$project, $report]) }}" class="mt-4 flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5" data-reopen-form {{ app(\App\Support\FeedbackConfirmText::class)->attributes(app(\App\Support\FeedbackConfirmText::class)->reopenReport($report)) }}>
-        @csrf
-        @method('PATCH')
-        <input type="hidden" name="status" value="{{ FeedbackReportStatus::New->value }}">
-        <span class="text-xs text-slate-500">問題還沒解決或又出現了？</span>
-        <button type="submit" class="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 disabled:opacity-60" data-reopen-report="{{ $report->public_id }}">{{ \App\Support\FeedbackConfirmText::REOPEN }}</button>
-    </form>
+@if ($canSwitchStatus)
+    <div class="mt-4 flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5" data-thread-status-switch>
+        <span class="text-xs text-slate-500">狀態</span>
+        <x-feedback.status-switch :$project :$report />
+    </div>
 @endif

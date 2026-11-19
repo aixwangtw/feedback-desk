@@ -8,7 +8,6 @@ use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Models\FeedbackReportEvent;
-use App\Support\FeedbackConfirmText;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -49,37 +48,22 @@ class FeedbackReopenReportTest extends TestCase
         $this->assertSame($account->id, $event->feedback_client_account_id);
     }
 
-    public function test_client_sees_the_reopen_button_only_when_the_report_is_not_new(): void
+    public function test_both_sides_see_the_status_switch_under_the_thread(): void
     {
         $completed = $this->report(FeedbackReportStatus::Completed);
-        $needsInput = $this->report(FeedbackReportStatus::NeedsInput);
-        $new = $this->report(FeedbackReportStatus::New);
         $this->actingAsClient();
 
-        foreach ([$completed, $needsInput] as $report) {
-            $this->get(route('feedback.reports.show', [$this->project, $report]))
-                ->assertOk()
-                ->assertSee('data-reopen-form', false)
-                ->assertSee('>'.FeedbackConfirmText::REOPEN.'</button>', false)
-                ->assertSee('data-confirm-title="確定把這張單改回待處理？"', false);
-            // 詳情視窗與右下角面板的留言串來自對話端點，同一個按鈕。
-            $this->getJson(route('feedback.conversations.show', [$this->project, $report]))
-                ->assertOk()
-                ->assertJsonPath('html', fn (string $html): bool => str_contains($html, 'data-reopen-form'));
-        }
-
-        $this->get(route('feedback.reports.show', [$this->project, $new]))->assertOk()->assertDontSee('data-reopen-form', false);
-        $this->getJson(route('feedback.conversations.show', [$this->project, $new]))
+        $this->get(route('feedback.reports.show', [$this->project, $completed]))
             ->assertOk()
-            ->assertJsonPath('html', fn (string $html): bool => ! str_contains($html, 'data-reopen-form'));
-    }
+            ->assertSee('data-thread-status-switch', false)
+            ->assertDontSee('data-reopen-form', false);
+        // 詳情視窗與右下角面板的留言串來自對話端點，同一組切換鈕。
+        $this->getJson(route('feedback.conversations.show', [$this->project, $completed]))
+            ->assertOk()
+            ->assertJsonPath('html', fn (string $html): bool => str_contains($html, 'data-thread-status-switch'));
 
-    public function test_team_does_not_see_the_reopen_button(): void
-    {
-        $completed = $this->report(FeedbackReportStatus::Completed);
         $this->actingAsTeam();
-
-        $this->get(route('feedback.reports.show', [$this->project, $completed]))->assertOk()->assertDontSee('data-reopen-form', false);
+        $this->get(route('feedback.reports.show', [$this->project, $completed]))->assertOk()->assertSee('data-thread-status-switch', false);
     }
 
     public function test_client_reopens_a_completed_or_needs_input_report_and_it_is_logged(): void
@@ -122,17 +106,19 @@ class FeedbackReopenReportTest extends TestCase
         $new = $this->report(FeedbackReportStatus::New);
         $this->actingAsClient();
 
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $new]), ['status' => 'new'])->assertForbidden();
+        // 已經是待處理再按一次不改狀態、不記事件。
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $new]), ['status' => 'new'])->assertOk();
         $this->assertSame(0, FeedbackReportEvent::query()->count());
     }
 
-    public function test_team_still_cannot_change_the_status_on_the_web(): void
+    public function test_team_can_change_the_status_on_the_web_without_a_client_reopen_event(): void
     {
         $completed = $this->report(FeedbackReportStatus::Completed);
         $this->actingAsTeam();
 
-        $this->patchJson(route('feedback.owner.status.update', [$this->project, $completed]), ['status' => 'new'])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::Completed, $completed->refresh()->status);
+        $this->patchJson(route('feedback.owner.status.update', [$this->project, $completed]), ['status' => 'new'])->assertOk();
+        $this->assertSame(FeedbackReportStatus::New, $completed->refresh()->status);
+        $this->assertSame(0, FeedbackReportEvent::where('kind', 'reopen_by_client')->count());
     }
 
     public function test_client_of_another_project_cannot_reopen(): void

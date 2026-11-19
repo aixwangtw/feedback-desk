@@ -157,11 +157,9 @@ class FeedbackHandoffTest extends TestCase
         $this->post(route('feedback.reports.claim', [$this->project, $this->report]), ['action' => 'takeover'])->assertSessionHas('success');
         $this->assertSame($this->ben->id, $this->report->refresh()->claimed_by_developer_id);
 
-        // 網頁上團隊不能改狀態（任何值都 403），狀態維持不變。
-        $status = $this->report->refresh()->status;
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'needs_input'])->assertForbidden();
-        $this->assertSame($status, $this->report->refresh()->status);
+        // 2026-11-19 起網頁上團隊也能切換狀態。
+        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'needs_input'])->assertRedirect();
+        $this->assertSame('needs_input', $this->report->refresh()->status->value);
         $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertSee('data-activity-log', false);
     }
 

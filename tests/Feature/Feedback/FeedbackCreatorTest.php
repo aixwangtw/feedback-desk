@@ -272,9 +272,9 @@ class FeedbackCreatorTest extends TestCase
 
         $this->expireSession();
         $this->actingAsOwner();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'completed'])->assertForbidden();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'needs_input'])->assertForbidden();
-        $this->assertSame('completed', $client->refresh()->status->value);
+        // 2026-11-19 起開發團隊也能在網頁上切換狀態。
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $client]), ['status' => 'needs_input'])->assertOk();
+        $this->assertSame('needs_input', $client->refresh()->status->value);
     }
 
     public function test_teacher_gets_404_on_every_route_for_developer_reports(): void
@@ -317,9 +317,8 @@ class FeedbackCreatorTest extends TestCase
         $this->actingAsOwner();
 
         $this->get(route('feedback.reports.show', [$this->project, $report]))->assertOk();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
-        $this->assertSame('new', $report->refresh()->status->value);
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertOk();
+        $this->assertSame('needs_input', $report->refresh()->status->value);
         $this->post(route('feedback.messages.store', [$this->project, $report]), ['body' => '開發者留言'])->assertRedirect();
     }
 

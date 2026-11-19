@@ -138,8 +138,8 @@ class FeedbackPortalTest extends TestCase
             ->assertSee('data-status-guide', false)
             ->assertSee('bg-amber-50 text-amber-800 ring-amber-200', false)
             ->assertSee(FeedbackReportStatus::NeedsInput->label())
-            // 清單上狀態只以文字顯示，沒有下拉選單，也沒有已完成的綠色圓點選項。
-            ->assertDontSee('name="status"', false)
+            // 清單上狀態用三顆切換鈕（待處理／待回覆／已完成），不是下拉選單。
+            ->assertSee('data-status-switch', false)
             ->assertDontSee('data-status-autosave', false)
             ->assertDontSee('data-dot="bg-emerald-500"', false);
     }
@@ -157,7 +157,7 @@ class FeedbackPortalTest extends TestCase
         $this->assertSame(FeedbackReportStatus::Completed, $kept->refresh()->status);
     }
 
-    public function test_owner_cannot_mark_a_report_completed_but_the_client_can(): void
+    public function test_owner_and_client_can_both_switch_the_status(): void
     {
         $ownerToken = Str::random(48);
         $clientToken = Str::random(48);
@@ -181,16 +181,17 @@ class FeedbackPortalTest extends TestCase
         $this->get(route('feedback.owner.authenticate', $project).'?token='.$ownerToken)
             ->assertRedirect(route('feedback.portal', $project));
 
+        // 2026-11-19 起開發團隊也能在網頁上切換狀態。
         $this->patch(route('feedback.owner.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
-        ])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
-        $this->assertNull($report->completed_at);
+        ])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+        $this->assertNotNull($report->completed_at);
 
         $this->patch(route('feedback.owner.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::NeedsInput->value,
-        ])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+        ])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
     }
 
     public function test_owner_authentication_preserves_https_behind_the_local_tunnel(): void

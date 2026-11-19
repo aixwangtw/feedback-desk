@@ -299,29 +299,26 @@ class FeedbackReportManagementTest extends TestCase
         $this->assertSame(['工程師新增', '老師新增'], $project->feedbackReports()->orderBy('title')->pluck('title')->all());
     }
 
-    public function test_engineer_gets_403_for_every_status_and_the_status_stays(): void
+    public function test_engineer_can_switch_to_every_status(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
 
         $this->actingAsEngineer($project);
-        foreach (FeedbackReportStatus::cases() as $status) {
-            $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => $status->value])->assertForbidden();
+        foreach ([FeedbackReportStatus::NeedsInput, FeedbackReportStatus::Completed, FeedbackReportStatus::New] as $status) {
+            $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => $status->value])->assertOk();
+            $this->assertSame($status, $report->refresh()->status);
         }
-
-        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
 
-    public function test_teacher_can_only_complete_and_gets_403_for_new_and_needs_input(): void
+    public function test_teacher_can_switch_to_every_status(): void
     {
         $project = FeedbackProject::factory()->create();
         $report = FeedbackReport::factory()->for($project)->create();
 
         $this->actingAsTeacher($project);
-        foreach ([FeedbackReportStatus::New, FeedbackReportStatus::NeedsInput] as $status) {
-            $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => $status->value])->assertForbidden();
-        }
-        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
+        $this->patchJson(route('feedback.reports.status.update', [$project, $report]), ['status' => FeedbackReportStatus::NeedsInput->value])->assertOk();
+        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
 
         $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
             'status' => FeedbackReportStatus::Completed->value,
@@ -341,7 +338,7 @@ class FeedbackReportManagementTest extends TestCase
         foreach (['in_progress', 'failed'] as $status) {
             $this->patchJson(route('feedback.reports.status.update', [$project, $report]), [
                 'status' => $status,
-            ])->assertForbidden();
+            ])->assertUnprocessable();
         }
 
         $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);

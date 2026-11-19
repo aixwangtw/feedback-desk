@@ -1,7 +1,7 @@
 {{--
     Jira 式右側「詳細資料」窄欄（詳情視窗與單頁共用，詳情視窗也靠對話端點的 side_html 隨狀態更新）：
     左右兩欄「標籤｜值」每列一行：狀態（左膠囊、右「完成」鈕）、建立者、建立時間、最後更新；標籤灰色小字、值一般字。
-    完成鈕是 x-feedback.complete-button（清單、看板共用）：客戶端按了直接把單改成已完成；開發團隊端按了只會跳出確認留言（見 _completion-dialog），單維持等客戶，不會直接結案；說明放在按鈕的提示文字。
+    狀態切換鈕是 x-feedback.status-switch（清單、看板、留言區共用）：老師、業主與開發團隊都能直接切成待處理、待回覆或已完成。
     $context：dialog（詳情視窗，另有編輯、完整頁與「⋯」選單）或 page（單頁，只有詳細資料）。
 --}}
 @php
@@ -16,8 +16,8 @@
         <dt class="text-slate-500">狀態</dt>
         <dd class="flex min-w-0 flex-wrap items-center justify-between gap-2">
             <x-feedback.status-badge :status="$report->status" :$project :deleted="$report->isDeletedByClient()" data-report-status-badge="{{ $report->public_id }}" />
-            @if ($canManage && ! $isCompleted)
-                <span data-detail-complete><x-feedback.complete-button :$project :$report :is-owner="$isOwner" /></span>
+            @if ($canManage)
+                <span data-detail-status-switch><x-feedback.status-switch :$project :$report /></span>
             @endif
         </dd>
         @unless ($report->isPublicReport() && ! $isOwner)

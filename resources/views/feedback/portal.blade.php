@@ -218,7 +218,7 @@
                             <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span><x-feedback.time :at="$report->latest_activity_at" relative /></td>
                             <td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center">
                                 <div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions>
-                                    <x-feedback.complete-button :$project :$report :is-owner="$isOwner" />
+                                    <x-feedback.status-switch :$project :$report />
                                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-{{ $report->public_id }}">編輯</button>
                                     @if ($isOwner && $report->isDeletedByClient())
                                         <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
@@ -268,7 +268,7 @@
                                                 <x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="mt-1" data-suffix="-card" data-card-action />
                                             </div>
                                             <div class="flex shrink-0 items-center gap-1" data-card-actions>
-                                                <x-feedback.complete-button :$project :$report :is-owner="$isOwner" compact data-card-action />
+                                                <x-feedback.status-switch :$project :$report compact data-card-action />
                                                 <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「{{ $report->title }}」" title="編輯" data-card-action data-dialog-open="edit-report-{{ $report->public_id }}">
                                                     <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                                                 </button>

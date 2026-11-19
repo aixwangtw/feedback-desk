@@ -115,7 +115,7 @@ class FeedbackWaitingTabsTest extends TestCase
         $report = $this->reports['waitingClient'];
 
         $html = $this->get(route('feedback.portal', $this->project))->assertOk()->getContent();
-        $this->assertStringContainsString('data-complete-report="'.$report->public_id.'"', $html);
+        $this->assertStringContainsString('data-status-switch="'.$report->public_id.'"', $html);
         $this->assertStringNotContainsString('confirm(', $html);
 
         $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertRedirect();
@@ -125,26 +125,19 @@ class FeedbackWaitingTabsTest extends TestCase
         $this->assertStringNotContainsString('data-report-row="'.$report->public_id.'"', $html);
     }
 
-    public function test_team_cannot_mark_reports_completed(): void
+    public function test_team_can_switch_status_from_the_actions_column(): void
     {
         $this->actingAsTeam();
         $report = $this->reports['waitingClient'];
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'client']))->assertOk()->getContent();
-        // 團隊按「完成」只會跳出確認留言視窗，不是改狀態的表單。
-        $this->assertStringNotContainsString('data-complete-report=', $html);
-        $this->assertStringContainsString('data-request-completion=', $html);
-        $this->assertStringNotContainsString('<option value="completed"', $html);
-        $this->assertStringNotContainsString('name="status"', $html);
+        $this->assertStringContainsString('data-status-switch="'.$report->public_id.'"', $html);
         $this->assertStringNotContainsString('data-status-autosave', $html);
 
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
-
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'new'])->assertForbidden();
-        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'needs_input'])->assertForbidden();
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $report->refresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'completed'])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::Completed, $report->refresh()->status);
+        $this->patch(route('feedback.reports.status.update', [$this->project, $report]), ['status' => 'new'])->assertRedirect();
+        $this->assertSame(FeedbackReportStatus::New, $report->refresh()->status);
     }
 
     private function report(string $title, FeedbackReportStatus $status): FeedbackReport

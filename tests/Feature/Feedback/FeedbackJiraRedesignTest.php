@@ -104,7 +104,7 @@ class FeedbackJiraRedesignTest extends TestCase
         $this->assertStringContainsString('data-dialog-thread-form', $dialog);
         $this->assertStringContainsString('data-attachment-rules', $dialog);
         $this->assertStringContainsString('data-dialog-thread-drafts', $dialog);
-        $this->assertStringContainsString('data-request-completion="'.$this->report->public_id.'"', $dialog);
+        $this->assertStringContainsString('data-status-switch="'.$this->report->public_id.'"', $dialog);
     }
 
     public function test_conversation_json_carries_side_column_and_status_badge_for_live_updates(): void
@@ -272,15 +272,12 @@ class FeedbackJiraRedesignTest extends TestCase
         $this->assertStringNotContainsString('request-completion-', $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent());
     }
 
-    public function test_team_still_cannot_set_the_report_to_completed_from_the_web(): void
+    public function test_team_can_set_the_report_to_completed_from_the_web(): void
     {
         $this->actingAsOwner();
 
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
-        $this->patchJson(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
-        $this->postJson(route('feedback.reports.completion-request', [$this->project, $this->report]), [])->assertCreated();
-
-        $this->assertSame(FeedbackReportStatus::NeedsInput, $this->report->refresh()->status);
+        $this->patchJson(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertOk();
+        $this->assertSame(FeedbackReportStatus::Completed, $this->report->refresh()->status);
     }
 
     public function test_the_teacher_cannot_request_completion_and_guests_are_sent_to_login(): void
@@ -316,7 +313,6 @@ class FeedbackJiraRedesignTest extends TestCase
         $this->assertStringNotContainsString('data-completion-approve', $ownerThread);
         $this->assertStringNotContainsString('data-completion-approve', $this->get(route('feedback.reports.show', [$this->project, $this->report]))->getContent());
         $this->assertStringNotContainsString('data-completion-approve', $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent());
-        $this->patch(route('feedback.reports.status.update', [$this->project, $this->report]), ['status' => 'completed'])->assertForbidden();
 
         $this->actingAsClient();
         $clientThread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->json('html');

@@ -105,7 +105,6 @@ class FeedbackReportNumberTest extends TestCase
             ->assertJsonPath('counts.completed', 1)
             ->assertJsonMissingPath('counts.failed');
 
-        $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'needs_input'])->assertForbidden();
         $this->patchJson(route('feedback.reports.status.update', [$project, $second]), ['status' => 'completed'])
             ->assertOk()
             ->assertJson(['counts' => ['new' => 1, 'completed' => 2]]);

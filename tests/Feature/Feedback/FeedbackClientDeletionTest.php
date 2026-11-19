@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Feedback;
 
+use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackReportStatus;
 use App\Models\FeedbackAttachment;
+use App\Models\FeedbackMessage;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -148,6 +150,38 @@ class FeedbackClientDeletionTest extends TestCase
         $this->get(route('feedback.reports.show', [$this->project, $deleted]))
             ->assertOk()
             ->assertSee('老師已刪除');
+    }
+
+    public function test_deleted_report_is_only_a_record_not_waiting_for_the_engineer(): void
+    {
+        FeedbackReport::factory()->for($this->project)->create(['title' => '還在的問題', 'status' => FeedbackReportStatus::New]);
+        $deleted = FeedbackReport::factory()->for($this->project)->create([
+            'title' => '老師刪掉的',
+            'status' => FeedbackReportStatus::New,
+            'client_deleted_at' => now()->subHour(),
+            'owner_last_read_at' => now()->subDay(),
+        ]);
+        FeedbackMessage::factory()->for($deleted)->create(['author_type' => FeedbackAuthorType::Reporter]);
+
+        $this->assertSame([FeedbackReportStatus::New->value => 1], FeedbackReport::statusCountsForProject($this->project, includeClientDeleted: false));
+        $this->assertSame(0, $this->project->feedbackReports()->unreadByOwner()->count());
+        $this->assertSame(FeedbackReport::DELETED_RECORD_LABEL, $deleted->displayStatusLabel($this->project));
+
+        $this->actingAsEngineer();
+        $this->get(route('feedback.portal', $this->project))
+            ->assertOk()
+            ->assertSee('data-status-value="deleted"', false)
+            ->assertSee(FeedbackReport::DELETED_RECORD_LABEL);
+        $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))
+            ->assertOk()
+            ->assertSee('data-kanban-card data-report-id="', false)
+            ->assertDontSee('data-kanban-card data-report-id="'.$deleted->public_id.'"', false);
+        $this->get(route('feedback.reports.show', [$this->project, $deleted]))
+            ->assertOk()
+            ->assertSee(FeedbackReport::DELETED_RECORD_LABEL);
+
+        $deleted->update(['client_deleted_at' => null]);
+        $this->assertSame(FeedbackReportStatus::New->label($this->project), $deleted->refresh()->displayStatusLabel($this->project));
     }
 
     public function test_owner_can_restore_and_teacher_sees_the_report_again(): void

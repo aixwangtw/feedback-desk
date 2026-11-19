@@ -95,7 +95,7 @@ class FeedbackPortalController extends Controller
             ? count($sequenceNumbers)
             : $feedbackProject->feedbackReports()->createdByClient()->visibleToClient()->count();
 
-        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $isOwner, clientCreatedOnly: ! $isOwner);
+        $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: false, clientCreatedOnly: ! $isOwner);
 
         // 欄位要在留言統計之前指定，否則 select 會蓋掉 withCount／withMax 加上的欄位。
         $baseFilteredReports = fn (array $columns = ['feedback_reports.*']) => $feedbackProject->feedbackReports()
@@ -213,7 +213,8 @@ class FeedbackPortalController extends Controller
      */
     private function defaultSortKey(FeedbackReport $report, array $sequenceNumbers, bool $isOwner): array
     {
-        $statusRank = match ($report->status) {
+        // 客戶已刪除的單只留紀錄，排在最後。
+        $statusRank = $report->isDeletedByClient() ? -1 : match ($report->status) {
             FeedbackReportStatus::New => $isOwner ? 2 : 1,
             FeedbackReportStatus::NeedsInput => $isOwner ? 1 : 2,
             default => 0,

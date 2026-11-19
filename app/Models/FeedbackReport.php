@@ -164,11 +164,24 @@ class FeedbackReport extends Model
     }
 
     /**
+     * 客戶刪除的單在開發者端顯示的狀態：只留紀錄，不算待處理、不排進看板欄位、不算未讀。
+     */
+    public const DELETED_RECORD_LABEL = '已刪除・只留紀錄';
+
+    /**
      * 老師刪除的問題只是隱藏，開發者仍看得到並可還原。
      */
     public function isDeletedByClient(): bool
     {
         return $this->client_deleted_at !== null;
+    }
+
+    /**
+     * 畫面上的狀態文字：客戶已刪除時改寫「已刪除・只留紀錄」，資料庫的狀態不動，還原後照原狀態顯示。
+     */
+    public function displayStatusLabel(?FeedbackProject $project = null): string
+    {
+        return $this->isDeletedByClient() ? self::DELETED_RECORD_LABEL : $this->status->label($project);
     }
 
     /**
@@ -349,7 +362,9 @@ class FeedbackReport extends Model
     #[Scope]
     protected function unreadByOwner(Builder $query): void
     {
-        $query->whereHas('feedbackMessages', fn (Builder $query) => static::constrainToUnreadByOwner($query));
+        // 客戶已刪除的單只留紀錄，新留言不算開發者未讀。
+        $query->whereNull('client_deleted_at')
+            ->whereHas('feedbackMessages', fn (Builder $query) => static::constrainToUnreadByOwner($query));
     }
 
     /**

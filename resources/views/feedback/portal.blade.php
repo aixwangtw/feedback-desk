@@ -49,7 +49,7 @@
         $isGuest = app(\App\Support\FeedbackAccess::class)->isGuest($project);
         $editingReport = old('editing_report');
         $boardStatuses = \App\Enums\FeedbackReportStatus::cases();
-        $pageStatusCounts = $reports->getCollection()->countBy(fn ($report) => $report->status->value);
+        $pageStatusCounts = $reports->getCollection()->reject(fn ($report) => $report->isDeletedByClient())->countBy(fn ($report) => $report->status->value);
     @endphp
 
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -218,7 +218,7 @@
                                 @endif
                             </td>
                             <td class="block sm:table-cell sm:px-2 sm:py-3 sm:align-middle sm:text-center">
-                                <x-feedback.status-badge :status="$report->status" :$project data-report-status-badge="{{ $report->public_id }}" />
+                                <x-feedback.status-badge :status="$report->status" :$project :deleted="$report->isDeletedByClient()" data-report-status-badge="{{ $report->public_id }}" />
                             </td>
                             @if ($reportCategories !== [])
                                 <td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle" data-report-category-cell><x-feedback.category-select :$project :$report :categories="$reportCategories" compact class="justify-start sm:justify-center" data-suffix="-row" /></td>
@@ -265,7 +265,7 @@
                                 \App\Enums\FeedbackReportStatus::NeedsInput => 'border-amber-200 bg-amber-50/70',
                                 \App\Enums\FeedbackReportStatus::Completed => 'border-emerald-200 bg-emerald-50/70',
                             };
-                            $columnReports = $reports->getCollection()->filter(fn ($report) => $report->status === $boardStatus);
+                            $columnReports = $reports->getCollection()->filter(fn ($report) => $report->status === $boardStatus && ! $report->isDeletedByClient());
                         @endphp
                         <section class="overflow-hidden rounded-xl border {{ $columnClass }}" aria-labelledby="kanban-heading-{{ $boardStatus->value }}" data-kanban-column data-status="{{ $boardStatus->value }}">
                             <header class="flex items-center justify-between gap-3 border-b border-black/5 px-3.5 py-3">

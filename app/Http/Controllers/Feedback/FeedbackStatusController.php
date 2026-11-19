@@ -34,7 +34,7 @@ class FeedbackStatusController extends Controller
             return response()->json([
                 'status' => $status->value,
                 'label' => $status->label($feedbackProject),
-                'counts' => FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: $access->isOwner($feedbackProject), clientCreatedOnly: ! $access->isOwner($feedbackProject)),
+                'counts' => FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: false, clientCreatedOnly: ! $access->isOwner($feedbackProject)),
                 'message' => "狀態已更新為「{$status->label($feedbackProject)}」。",
             ]);
         }

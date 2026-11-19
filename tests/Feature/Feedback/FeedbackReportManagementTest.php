@@ -176,7 +176,7 @@ class FeedbackReportManagementTest extends TestCase
         $xpath = new \DOMXPath($document);
 
         $this->assertSame(0, $xpath->query('//form[@method="GET"]//select[@name="status"]')->length, 'the status filter dropdown was replaced by tabs.');
-        $this->assertSame(2, $xpath->query('//a[@data-waiting-tab]')->length);
+        $this->assertSame(3, $xpath->query('//a[@data-waiting-tab]')->length);
 
         foreach (FeedbackReportStatus::cases() as $status) {
             $column = $xpath->query('//*[@data-kanban-column and @data-status="'.$status->value.'"]');

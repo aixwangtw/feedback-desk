@@ -119,9 +119,9 @@ class FeedbackPortalController extends Controller
             ->get()
             ->mapWithKeys(fn (FeedbackReport $report): array => [$report->id => FeedbackWaitingOn::for($report)])
             ->all();
-        $tabCounts = array_count_values($waitingOn) + array_fill_keys([...FeedbackWaitingOn::TABS, FeedbackWaitingOn::COMPLETED], 0);
+        $tabCounts = array_count_values($waitingOn) + array_fill_keys(FeedbackWaitingOn::TABS, 0);
         $waitingTab = request()->string('tab')->toString();
-        if (! in_array($waitingTab, [...FeedbackWaitingOn::TABS, FeedbackWaitingOn::COMPLETED, FeedbackWaitingOn::ALL], true)) {
+        if (! in_array($waitingTab, [...FeedbackWaitingOn::TABS, FeedbackWaitingOn::ALL], true)) {
             $waitingTab = $isOwner ? FeedbackWaitingOn::DEVELOPER : FeedbackWaitingOn::CLIENT;
         }
         if ($selectedStatus !== null) {

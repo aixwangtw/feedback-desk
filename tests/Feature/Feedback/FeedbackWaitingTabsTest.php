@@ -57,9 +57,11 @@ class FeedbackWaitingTabsTest extends TestCase
         $newLabel = FeedbackReportStatus::New->label();
         $needsInputLabel = FeedbackReportStatus::NeedsInput->label();
         $this->assertSame('等老師', $needsInputLabel);
-        $this->assertStringContainsString($newLabel.' <span data-waiting-tab-count>2</span>', $html);
-        $this->assertStringContainsString($needsInputLabel.' <span data-waiting-tab-count>2</span>', $html);
-        $this->assertStringContainsString('data-completed-link', $html);
+        // 三個一樣大的頁籤：待處理（等開發者）、待回覆（等老師）、已完成；滑鼠移上去看狀態名稱。
+        $this->assertMatchesRegularExpression('/data-waiting-tab="developer" title="'.$newLabel.'的單"\\s*aria-current="page"\\s*>待處理 <span data-waiting-tab-count>2<\\/span>/u', $html);
+        $this->assertMatchesRegularExpression('/data-waiting-tab="client" title="'.$needsInputLabel.'的單"\\s*>待回覆 <span data-waiting-tab-count>2<\\/span>/u', $html);
+        $this->assertMatchesRegularExpression('/data-waiting-tab="completed"[^>]*>已完成 <span data-waiting-tab-count>1<\/span>/', $html);
+        $this->assertStringNotContainsString('data-completed-link', $html);
         foreach (['fresh', 'followUp'] as $key) {
             $this->assertStringContainsString('data-report-row="'.$this->reports[$key]->public_id.'"', $html);
         }

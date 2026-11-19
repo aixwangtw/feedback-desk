@@ -54,8 +54,8 @@ class FeedbackUnreadIndicatorsTest extends TestCase
             $this->assertStringContainsString('>3</span', $slot.'</span');
             $this->assertStringNotContainsString('data-unread-flag', $html);
             $this->assertStringNotContainsString('3 則未讀</button>', $html);
-            // 不新增「待回覆」標示：狀態只有待處理、待審核、已完成。
-            $this->assertStringNotContainsString('待回覆', $html);
+            // 「待回覆」只是頁籤名稱，每張單上不另加標示。
+            $this->assertStringNotContainsString('data-waiting-on', $html);
             $this->assertStringNotContainsString('data-unread-slot="'.$answered->public_id.'"><span', $html);
         }
     }
@@ -73,7 +73,7 @@ class FeedbackUnreadIndicatorsTest extends TestCase
         $slot = Str::between($html, 'data-unread-slot="'.$report->public_id.'"', '</span></span>');
         $this->assertStringContainsString('data-unread-dot', $slot);
         $this->assertStringContainsString('>2</span', $slot.'</span');
-        $this->assertStringNotContainsString('待回覆', $html);
+        $this->assertStringNotContainsString('data-waiting-on', $html);
     }
 
     public function test_team_bell_lists_only_client_messages_across_projects_and_drafts_separately(): void

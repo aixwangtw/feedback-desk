@@ -102,15 +102,10 @@
                     '-mb-px inline-flex min-h-10 items-center gap-1.5 rounded-t-lg border px-4 text-sm font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
                     'border-slate-200 border-b-white bg-white text-teal-800' => $waitingTab === $tab,
                     'border-transparent text-slate-500 hover:text-slate-900' => $waitingTab !== $tab,
-                ]) data-waiting-tab="{{ $tab }}" @if ($waitingTab === $tab) aria-current="page" @endif>{{ \App\Support\FeedbackWaitingOn::tabLabel($tab, $project) }} <span data-waiting-tab-count>{{ $tabCounts[$tab] ?? 0 }}</span></a>
+                ]) data-waiting-tab="{{ $tab }}" title="{{ \App\Support\FeedbackWaitingOn::tabHint($tab, $project) }}" @if ($waitingTab === $tab) aria-current="page" @endif>{{ \App\Support\FeedbackWaitingOn::tabLabel($tab) }} <span data-waiting-tab-count>{{ $tabCounts[$tab] ?? 0 }}</span></a>
             @endforeach
-            <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::COMPLETED], ['status', 'page']) }}" @class([
-                'mb-2 ml-auto rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
-                'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED,
-                'text-slate-400 hover:text-slate-700' => $waitingTab !== \App\Support\FeedbackWaitingOn::COMPLETED,
-            ]) data-completed-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::COMPLETED) aria-current="page" @endif>{{ \App\Enums\FeedbackReportStatus::Completed->label($project) }} {{ $tabCounts[\App\Support\FeedbackWaitingOn::COMPLETED] ?? 0 }}</a>
             <a href="{{ $portalUrl(['tab' => \App\Support\FeedbackWaitingOn::ALL], ['status', 'page']) }}" @class([
-                'mb-2 rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
+                'mb-2 ml-auto rounded px-2 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600',
                 'font-semibold text-teal-800 underline' => $waitingTab === \App\Support\FeedbackWaitingOn::ALL,
                 'text-slate-400 hover:text-slate-700' => $waitingTab !== \App\Support\FeedbackWaitingOn::ALL,
             ]) data-all-link @if ($waitingTab === \App\Support\FeedbackWaitingOn::ALL) aria-current="page" @endif>全部 {{ count($waitingOn) }}</a>

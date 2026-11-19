@@ -51,7 +51,7 @@ class FeedbackConversationPanelTest extends TestCase
         $response = $this->getJson(route('feedback.conversations.index', $this->project))->assertOk();
 
         $this->assertSame(
-            ['老師有新留言的單', '最近有回覆的單', '很久沒動的單', '沒有留言的單', '老師刪掉的單', '開發者自己的單'],
+            ['老師有新留言的單', '最近有回覆的單', '很久沒動的單', '沒有留言的單', '開發者自己的單'],
             array_column($response->json('items'), 'title'),
         );
         $first = $response->json('items.0');
@@ -72,7 +72,8 @@ class FeedbackConversationPanelTest extends TestCase
 
         $this->assertNull($response->json('items.3.preview'));
         $this->assertSame($empty->created_at->toIso8601String(), $response->json('items.3.created_at'));
-        $this->assertTrue($response->json('items.4.deleted'));
+        // 客戶刪除的單只留資料庫紀錄，開發者的對話面板也不列。
+        $this->assertFalse(collect($response->json('items'))->contains('deleted', true));
         $this->assertSame(2, $response->json('unread_total'));
         $this->assertNotNull($empty);
         $this->assertNotNull($deleted);

@@ -64,7 +64,8 @@ class FeedbackConversationController extends Controller
         $items = $reports
             ->values()
             ->map(fn (FeedbackReport $report, int $index): array => $this->listItem($feedbackProject, $report, $index + 1, $isOwner))
-            ->when(! $isOwner, fn ($items) => $items->reject(fn (array $item): bool => $item['deleted']))
+            // 客戶刪除的單只留紀錄，兩端對話面板都不列；編號仍依全部單計算，所以取完再過濾。
+            ->reject(fn (array $item): bool => $item['deleted'])
             ->sort(fn (array $a, array $b): int => $this->sortKey($b) <=> $this->sortKey($a))
             ->values();
 

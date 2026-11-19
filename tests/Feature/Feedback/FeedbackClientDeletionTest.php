@@ -122,7 +122,7 @@ class FeedbackClientDeletionTest extends TestCase
         $this->get(route('feedback.reports.show', [$this->project, $report]).'?access='.$token)->assertNotFound();
     }
 
-    public function test_owner_sees_deleted_reports_with_a_label_and_can_filter(): void
+    public function test_owner_list_no_longer_shows_deleted_reports_but_the_record_stays(): void
     {
         FeedbackReport::factory()->for($this->project)->create(['title' => '還在的問題']);
         $deleted = FeedbackReport::factory()->for($this->project)->create([
@@ -134,19 +134,14 @@ class FeedbackClientDeletionTest extends TestCase
         $this->get(route('feedback.portal', $this->project))
             ->assertOk()
             ->assertSee('還在的問題')
-            ->assertSee('老師刪掉的')
-            ->assertSee('老師已刪除')
-            ->assertSee('共 2 題')
-            ->assertSee('data-deleted-filter', false)
-            ->assertSee('action="'.route('feedback.reports.restore', [$this->project, $deleted]).'"', false);
-
+            ->assertDontSee('老師刪掉的')
+            ->assertSee('共 1 題')
+            ->assertDontSee('data-deleted-filter', false);
         $this->get(route('feedback.portal', $this->project).'?deleted=only')
-            ->assertSee('老師刪掉的')
-            ->assertDontSee('還在的問題');
-        $this->get(route('feedback.portal', $this->project).'?deleted=hide')
             ->assertSee('還在的問題')
             ->assertDontSee('老師刪掉的');
 
+        $this->assertDatabaseHas('feedback_reports', ['id' => $deleted->id, 'title' => '老師刪掉的']);
         $this->get(route('feedback.reports.show', [$this->project, $deleted]))
             ->assertOk()
             ->assertSee('老師已刪除');
@@ -170,8 +165,7 @@ class FeedbackClientDeletionTest extends TestCase
         $this->actingAsEngineer();
         $this->get(route('feedback.portal', $this->project))
             ->assertOk()
-            ->assertSee('data-status-value="deleted"', false)
-            ->assertSee(FeedbackReport::DELETED_RECORD_LABEL);
+            ->assertDontSee('data-status-value="deleted"', false);
         $this->get(route('feedback.portal', [$this->project, 'view' => 'board']))
             ->assertOk()
             ->assertSee('data-kanban-card data-report-id="', false)

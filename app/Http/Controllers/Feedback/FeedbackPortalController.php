@@ -83,8 +83,6 @@ class FeedbackPortalController extends Controller
         $keyword = mb_substr(trim(request()->string('q')->toString()), 0, 100);
         $viewMode = request()->string('view')->toString() === 'board' ? 'board' : 'list';
         $unreadOnly = $isOwner && request()->boolean('unread');
-        $deletedFilter = request()->string('deleted')->toString();
-        $deletedFilter = $isOwner ? (in_array($deletedFilter, ['only', 'hide'], true) ? $deletedFilter : null) : 'hide';
 
         $creatorOptions = $isOwner ? $this->creatorOptions($feedbackProject) : [];
         $creator = $isOwner ? request()->string('creator')->toString() : '';
@@ -92,7 +90,7 @@ class FeedbackPortalController extends Controller
 
         $sequenceNumbers = FeedbackReport::sequenceNumbersForProject($feedbackProject, clientCreatedOnly: ! $isOwner);
         $totalCount = $isOwner
-            ? count($sequenceNumbers)
+            ? $feedbackProject->feedbackReports()->visibleToClient()->count()
             : $feedbackProject->feedbackReports()->createdByClient()->visibleToClient()->count();
 
         $statusCounts = FeedbackReport::statusCountsForProject($feedbackProject, includeClientDeleted: false, clientCreatedOnly: ! $isOwner);
@@ -113,8 +111,8 @@ class FeedbackPortalController extends Controller
             ->when($keyword !== '', fn ($query) => $query->where(fn ($query) => $query
                 ->whereLike('title', "%{$keyword}%")
                 ->orWhereLike('description', "%{$keyword}%")))
-            ->when($deletedFilter === 'hide', fn ($query) => $query->whereNull('client_deleted_at'))
-            ->when($deletedFilter === 'only', fn ($query) => $query->whereNotNull('client_deleted_at'));
+            // 客戶刪除的單只留在資料庫當紀錄，兩端畫面都不列（2026-11-19 使用者：「不用留老師已刪除的紀錄在前端」）。
+            ->whereNull('client_deleted_at');
 
         // 兩個頁籤（等開發／等客戶）與已完成直接對應狀態；舊網址帶 status 時照舊只用狀態篩選。
         $waitingOn = $baseFilteredReports(['feedback_reports.id', 'feedback_reports.status'])
@@ -162,7 +160,6 @@ class FeedbackPortalController extends Controller
             'keyword' => $keyword,
             'viewMode' => $viewMode,
             'isOwner' => $isOwner,
-            'deletedFilter' => $deletedFilter,
             'creator' => $creator,
             'creatorOptions' => $creatorOptions,
             'unreadOnly' => $unreadOnly,

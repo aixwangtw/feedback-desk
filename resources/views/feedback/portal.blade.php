@@ -6,7 +6,6 @@
             'status' => $selectedStatus?->value,
             'tab' => $selectedStatus === null ? $waitingTab : null,
             'category' => $selectedCategory !== '' ? $selectedCategory : null,
-            'deleted' => $isOwner ? $deletedFilter : null,
             'creator' => $isOwner ? $creator : null,
             'unread' => $unreadOnly ? 1 : null,
             'sort' => $sort === 'conversation' ? null : $sort,
@@ -71,7 +70,7 @@
         <h2 id="issue-list-heading" class="sr-only">已登記問題</h2>
 
         <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-700">
-            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if (($waitingTab !== null && $waitingTab !== \App\Support\FeedbackWaitingOn::ALL) || $viewMode === 'board' || $keyword !== '' || $selectedStatus || $selectedCategory !== '' || ($isOwner && ($deletedFilter || $creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
+            <p class="font-semibold" data-report-count>共 {{ $totalCount }} 題@if (($waitingTab !== null && $waitingTab !== \App\Support\FeedbackWaitingOn::ALL) || $viewMode === 'board' || $keyword !== '' || $selectedStatus || $selectedCategory !== '' || ($isOwner && ($creator !== '' || $unreadOnly)))（篩選後 {{ $reports->total() }} 題）@endif</p>
             <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-status-summary>
                 @foreach (\App\Enums\FeedbackReportStatus::cases() as $summaryStatus)
                     @php
@@ -151,13 +150,6 @@
                         @foreach ($creatorOptions as $creatorValue => $creatorName)
                             <option value="{{ $creatorValue }}" @selected($creator === $creatorValue)>{{ $creatorName }}</option>
                         @endforeach
-                    </select>
-                </label>
-                <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">{{ $project->clientRole() }}已刪除
-                    <select name="deleted" data-auto-submit data-deleted-filter class="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-4 focus:ring-teal-600/10">
-                        <option value="">一併顯示</option>
-                        <option value="hide" @selected($deletedFilter === 'hide')>隱藏</option>
-                        <option value="only" @selected($deletedFilter === 'only')>只看已刪除</option>
                     </select>
                 </label>
             @endif

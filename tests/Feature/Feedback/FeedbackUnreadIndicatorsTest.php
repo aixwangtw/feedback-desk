@@ -175,8 +175,8 @@ class FeedbackUnreadIndicatorsTest extends TestCase
             $this->assertStringContainsString('data-draft-badge="'.$withDraft->public_id.'"', $html);
             $this->assertStringNotContainsString('data-draft-badge="'.$plain->public_id.'"', $html);
         }
-        // 說明寫出草稿待審為什麼還在待處理、送出後會自動改成待回覆。
-        $this->assertStringContainsString('審過按「送出」後會自動改成「待回覆」', $html);
+        // 說明寫出待審留言為什麼還在待處理、送出後會自動改成待回覆。
+        $this->assertStringContainsString('在留言區下方的黃色「待審留言」框可以看內容、編輯、送出或捨棄，按「送出」後會自動改成「待回覆」', $html);
 
         $this->flushSession();
         $this->app['cookie']->flushQueuedCookies();
@@ -184,7 +184,7 @@ class FeedbackUnreadIndicatorsTest extends TestCase
         $client = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
         $this->assertStringContainsString('有草稿的單', $client);
         $this->assertStringNotContainsString('data-draft-badge', $client);
-        $this->assertStringNotContainsString('草稿待審', $client);
+        $this->assertStringNotContainsString('待審留言', $client);
     }
 
     private function bell(string $html): string

@@ -181,6 +181,7 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | `feedback:reports {project} {--status=*} {--creator=} {--include-deleted} {--unread} {--json}` | 列出專案的問題，最新在前；可依狀態、建立者（`client`、`client:<id>`、`public`、`shared`、`developer:<id>`）篩選，並顯示誰認領中。 |
 | `feedback:report {project} {report} {--json}` | 讀取單張問題的完整內容（含認領、交接紀錄、最近動態），附件與調整附圖會印出檔案路徑。 |
 | `feedback:status {project} {report} {status} {--as=} {--agent=} {--force}` | 改變問題狀態，輸出前後狀態；狀態可用 `new`／`needs_input`／`completed` 或目前的中文名稱（等工程師／等客戶／已完成），舊名稱「待處理／待審核」也接受。別人認領中要加 `--force`。 |
+| `feedback:merge {project} {duplicate} {target} {--as=} {--agent=}` | 把重複的單合併進保留的單：重複單隱藏（團隊端單頁顯示「已合併到編號 N」）、待審留言搬到保留的單，兩張各記一筆動態。客戶 30 分鐘內重複送出標題與說明都一樣的單，建立時會自動合併。 |
 | `feedback:claim` / `feedback:release {project} {report} {--as=} {--agent=} {--force}` | 認領／釋放，讓其他人與 AI 知道誰在處理。需要 `--as`（團隊個人帳號）。 |
 | `feedback:handoff {project} {report} {--note=} {--release} {--as=} {--agent=}` | 寫交接紀錄（做到哪、下一步），只有團隊看得到。需要 `--as`。 |
 

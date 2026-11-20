@@ -649,12 +649,15 @@ class FeedbackMcpTools
         }
 
         $images = $this->images($input);
-        $report = $this->createReport->handle($project, ['title' => $title, 'description' => $description, 'screenshots' => $images], $creator, $actor)['report'];
+        $created = $this->createReport->handle($project, ['title' => $title, 'description' => $description, 'screenshots' => $images], $creator, $actor);
+        // 同一個人剛送過一樣的單時會自動合併，回傳保留下來的那張。
+        $report = $created['merged_into'] ?? $created['report'];
 
         return [
             'public_id' => $report->public_id,
             'number' => $report->sequenceNumber(clientCreatedOnly: $clientNumbers),
             'url' => route('feedback.reports.show', [$project, $report]),
+            'merged_duplicate' => $created['merged_into'] !== null,
             'images_added' => count($images),
             'untrusted_content' => ['notice' => self::UNTRUSTED_NOTICE, 'title' => $report->title],
         ];

@@ -30,14 +30,23 @@ class FeedbackReportController extends Controller
         $issues = $request->validated('issues');
         $creator = $access->creatorFor($feedbackProject);
 
+        $mergedCount = 0;
         foreach ($issues as $issue) {
             $created = $createFeedbackReport->handle($feedbackProject, $issue, $creator, $access->actor($feedbackProject));
             $access->grantReporter($created['report']);
+            $mergedCount += $created['merged_into'] !== null ? 1 : 0;
+        }
+
+        $message = '已新增 '.count($issues).' 個問題。';
+        if ($mergedCount > 0) {
+            $message = $mergedCount === count($issues)
+                ? '這次送出的內容和剛才送出的單一樣，已自動合併成一張。'
+                : '已新增 '.(count($issues) - $mergedCount)." 個問題；另外 {$mergedCount} 個和剛才送出的單一樣，已自動合併。";
         }
 
         return redirect()
             ->route('feedback.portal', $feedbackProject)
-            ->with('success', '已新增 '.count($issues).' 個問題。');
+            ->with('success', $message);
     }
 
     public function update(
@@ -215,7 +224,8 @@ class FeedbackReportController extends Controller
         }
         $this->ensureProjectOwnsReport($feedbackProject, $feedbackReport);
 
-        $feedbackReport->update(['client_deleted_at' => null]);
+        // 合併掉的單還原時一併取消合併標記（原本搬到目標單的待審留言不搬回）。
+        $feedbackReport->update(['client_deleted_at' => null, 'merged_into_report_id' => null]);
 
         return back()->with('success', '已還原「'.$feedbackReport->title.'」，'.$feedbackProject->clientRole().'端會重新看到。');
     }

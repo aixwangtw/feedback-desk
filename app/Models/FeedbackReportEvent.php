@@ -26,6 +26,7 @@ class FeedbackReportEvent extends Model
         'release' => '釋放認領',
         'takeover' => '接手',
         'handoff' => '寫交接紀錄',
+        'merged' => '合併重複的單',
     ];
 
     /**

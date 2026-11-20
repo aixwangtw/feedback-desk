@@ -14,11 +14,13 @@ use Illuminate\Support\Str;
 
 class CreateFeedbackReportAction
 {
+    public function __construct(private MergeFeedbackReportAction $mergeReport) {}
+
     /**
      * @param  array{title: string, description: string, reporter_name?: string|null, category?: string|null, shared_with_client?: bool, screenshots?: list<UploadedFile>}  $data
      * @param  array{creator_type: FeedbackCreatorType, creator_developer_id: int|null, creator_client_account_id?: int|null}  $creator
      * @param  FeedbackActor|null  $actor  寫進最近動態與附件上傳者的帳號、AI 工具；公開回報不記
-     * @return array{report: FeedbackReport, reporter_token: string}
+     * @return array{report: FeedbackReport, reporter_token: string, merged_into: FeedbackReport|null}
      */
     public function handle(FeedbackProject $project, array $data, array $creator, ?FeedbackActor $actor = null): array
     {
@@ -69,12 +71,51 @@ class CreateFeedbackReportAction
             return $report;
         });
 
+        // 同一個人短時間內重複送出一樣的單（例如按了兩次送出）：併進先送出的那張，不另派自動處理。
+        $original = $this->findDuplicateOf($report);
+        if ($original !== null) {
+            $this->mergeReport->handle($report, $original, $actor);
+
+            return ['report' => $report->refresh(), 'reporter_token' => $reporterToken, 'merged_into' => $original];
+        }
+
         // 陌生人寫的文字不能直接驅動自動處理。
         if ($creator['creator_type'] !== FeedbackCreatorType::Public && $project->automation_enabled && config('feedback.automation.enabled')) {
             $run = $report->automationRuns()->create();
             ResolveFeedbackReport::dispatch($report, $run)->afterCommit();
         }
 
-        return ['report' => $report, 'reporter_token' => $reporterToken];
+        return ['report' => $report, 'reporter_token' => $reporterToken, 'merged_into' => null];
+    }
+
+    /**
+     * 客戶建立的單才自動合併（公開回報與開發團隊的單不合併）：同專案、同一個客戶帳號（都沒有帳號也算同一人）、
+     * 標題與說明去頭尾空白後完全相同、在合併時限內建立、還沒刪除或合併的較早一張。
+     */
+    private function findDuplicateOf(FeedbackReport $report): ?FeedbackReport
+    {
+        if ($report->creator_type !== FeedbackCreatorType::Client) {
+            return null;
+        }
+
+        $title = trim($report->title);
+        $description = trim($report->description);
+
+        return FeedbackReport::query()
+            ->where('feedback_project_id', $report->feedback_project_id)
+            ->where('creator_type', FeedbackCreatorType::Client->value)
+            ->when(
+                $report->creator_client_account_id === null,
+                fn ($query) => $query->whereNull('creator_client_account_id'),
+                fn ($query) => $query->where('creator_client_account_id', $report->creator_client_account_id),
+            )
+            ->whereKeyNot($report->id)
+            ->where('id', '<', $report->id)
+            ->whereNull('client_deleted_at')
+            ->whereNull('merged_into_report_id')
+            ->where('created_at', '>=', now()->subMinutes(MergeFeedbackReportAction::AUTO_MERGE_MINUTES))
+            ->orderBy('id')
+            ->get(['id', 'title', 'description'])
+            ->first(fn (FeedbackReport $candidate): bool => trim($candidate->title) === $title && trim($candidate->description) === $description);
     }
 }

@@ -62,6 +62,7 @@
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::COMPLETED) }}</span><span>問題已解決；之後{{ $project->clientRole() }}再留言會自動改回「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::DEVELOPER) }}」。</span></li>
             </ul>
             <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與狀態切換鈕都在詳情裡。標題右邊的紅色數字是未讀留言數。@if ($isOwner)標題旁的「待審留言」表示有回覆還沒送出，{{ $project->clientRole() }}還沒收到，所以單仍在「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::DEVELOPER) }}」；點開這張單，在留言區下方的黃色「待審留言」框可以看內容、編輯、送出或捨棄，按「送出」後會自動改成「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::CLIENT) }}」。右上角鈴鐺也會列出所有有待審留言的單。@endif</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-merge-guide>{{ \App\Actions\MergeFeedbackReportAction::AUTO_MERGE_GUIDE }}</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>

@@ -81,6 +81,7 @@ class ShowFeedbackReportCommand extends Command
             'creator_type' => $report->creator_type->value,
             'creator' => $report->creatorLabel(),
             'deleted_by_client' => $report->isDeletedByClient(),
+            'merged_into' => $report->mergedInto?->public_id,
             ...app(FeedbackReportWork::class)->stateForOutput($report, null),
             'created_at' => $report->created_at?->toIso8601String(),
             'updated_at' => $report->updated_at?->toIso8601String(),
@@ -127,7 +128,7 @@ class ShowFeedbackReportCommand extends Command
         $this->line('# '.$this->e($data['title']));
         $this->components->twoColumnDetail('編號', $data['number'].($data['client_number'] !== null && $data['client_number'] !== $data['number'] ? "（客戶頁面 {$data['client_number']}）" : ''));
         $this->components->twoColumnDetail('public_id', $this->e($data['public_id']));
-        $this->components->twoColumnDetail('狀態', "{$data['status']}（{$data['status_label']}）".($data['deleted_by_client'] ? '，客戶已刪除' : ''));
+        $this->components->twoColumnDetail('狀態', "{$data['status']}（{$data['status_label']}）".($data['merged_into'] !== null ? "，已合併到 {$data['merged_into']}" : ($data['deleted_by_client'] ? '，客戶已刪除' : '')));
         $this->components->twoColumnDetail('建立者', $this->e($data['creator']));
         $this->components->twoColumnDetail('建立時間', $this->time($data['created_at']));
         $this->components->twoColumnDetail('更新時間', $this->time($data['updated_at']));

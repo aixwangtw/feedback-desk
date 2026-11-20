@@ -29,7 +29,11 @@
                         @endif
                         @if ($isOwner && $report->isDeletedByClient())
                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500" data-client-deleted>
-                                <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ $project->clientRole() }}已刪除</span>
+                                @if ($report->isMerged())
+                                    <x-feedback.merged-into :$project :$report class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 ring-1 ring-inset ring-slate-300" />
+                                @else
+                                    <span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">{{ $project->clientRole() }}已刪除</span>
+                                @endif
                                 <x-feedback.time :at="$report->client_deleted_at" />
                                 <form method="POST" action="{{ route('feedback.reports.restore', [$project, $report]) }}">
                                     @csrf

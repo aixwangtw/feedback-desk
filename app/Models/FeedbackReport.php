@@ -41,6 +41,7 @@ use Illuminate\Support\Carbon;
     'status',
     'completed_at',
     'client_deleted_at',
+    'merged_into_report_id',
     'latest_activity_at',
     'owner_last_read_at',
     'client_last_read_at',
@@ -91,6 +92,21 @@ class FeedbackReport extends Model
     public function claimedBy(): BelongsTo
     {
         return $this->belongsTo(FeedbackDeveloper::class, 'claimed_by_developer_id');
+    }
+
+    /**
+     * 重複的單合併進的那張單（合併後這張也算客戶已刪除，只留紀錄）。
+     *
+     * @return BelongsTo<FeedbackReport, $this>
+     */
+    public function mergedInto(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'merged_into_report_id');
+    }
+
+    public function isMerged(): bool
+    {
+        return $this->merged_into_report_id !== null;
     }
 
     /** @return HasMany<FeedbackHandoffNote, $this> */
@@ -539,6 +555,7 @@ class FeedbackReport extends Model
             'shared_with_client' => 'boolean',
             'completed_at' => 'datetime',
             'client_deleted_at' => 'datetime',
+            'merged_into_report_id' => 'integer',
             'latest_activity_at' => 'datetime',
             'owner_last_read_at' => 'datetime',
             'client_last_read_at' => 'datetime',

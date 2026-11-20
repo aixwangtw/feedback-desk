@@ -29,8 +29,13 @@
         <dt class="text-slate-500">最後更新</dt>
         <dd class="font-medium text-slate-800"><x-feedback.time :at="$report->latest_activity_at" relative /></dd>
         @if ($isOwner && $report->isDeletedByClient())
-            <dt class="text-slate-500" data-client-deleted>{{ $project->clientRole() }}已刪除</dt>
-            <dd class="font-medium text-slate-800"><x-feedback.time :at="$report->client_deleted_at" /></dd>
+            @if ($report->isMerged())
+                <dt class="text-slate-500" data-client-deleted>合併</dt>
+                <dd class="min-w-0 font-medium text-slate-800"><x-feedback.merged-into :$project :$report /> · <x-feedback.time :at="$report->client_deleted_at" /></dd>
+            @else
+                <dt class="text-slate-500" data-client-deleted>{{ $project->clientRole() }}已刪除</dt>
+                <dd class="font-medium text-slate-800"><x-feedback.time :at="$report->client_deleted_at" /></dd>
+            @endif
         @endif
     </dl>
     @if ($context === 'dialog')

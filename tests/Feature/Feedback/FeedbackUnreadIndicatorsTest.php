@@ -163,6 +163,30 @@ class FeedbackUnreadIndicatorsTest extends TestCase
         $this->assertNull($response->headers->get('Content-Security-Policy'), '若新增 CSP，需同時含 media-src blob:');
     }
 
+    public function test_team_list_and_board_mark_reports_with_drafts_awaiting_review_and_client_never_sees_it(): void
+    {
+        $withDraft = $this->report('有草稿的單');
+        $plain = $this->report('沒有草稿的單');
+        FeedbackMessageDraft::create(['feedback_report_id' => $withDraft->id, 'author_name' => '開發團隊', 'body' => '草稿內容不外流']);
+
+        $this->actingAsTeam();
+        foreach ([[], ['view' => 'board']] as $query) {
+            $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', ...$query]))->assertOk()->getContent();
+            $this->assertStringContainsString('data-draft-badge="'.$withDraft->public_id.'"', $html);
+            $this->assertStringNotContainsString('data-draft-badge="'.$plain->public_id.'"', $html);
+        }
+        // 說明寫出草稿待審為什麼還在待處理、送出後會自動改成待回覆。
+        $this->assertStringContainsString('審過按「送出」後會自動改成「待回覆」', $html);
+
+        $this->flushSession();
+        $this->app['cookie']->flushQueuedCookies();
+        $this->actingAsClient();
+        $client = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
+        $this->assertStringContainsString('有草稿的單', $client);
+        $this->assertStringNotContainsString('data-draft-badge', $client);
+        $this->assertStringNotContainsString('草稿待審', $client);
+    }
+
     private function bell(string $html): string
     {
         $this->assertSame(1, preg_match('/<details[^>]*data-notification-bell.*?<\/details>/s', $html, $match), '頁首沒有通知鈴鐺');

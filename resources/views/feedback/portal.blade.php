@@ -61,7 +61,7 @@
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::NeedsInput->dotClass() }}" aria-hidden="true"></span>{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::CLIENT) }}（{{ \App\Enums\FeedbackReportStatus::NeedsInput->label($project) }}）</span><span>{{ $project->ownerRole() }}已回覆或改好並留言說明，等{{ $project->clientRole() }}回覆或確認。</span></li>
                 <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class="size-2.5 rounded-full {{ \App\Enums\FeedbackReportStatus::Completed->dotClass() }}" aria-hidden="true"></span>{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::COMPLETED) }}</span><span>問題已解決；之後{{ $project->clientRole() }}再留言會自動改回「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::DEVELOPER) }}」。</span></li>
             </ul>
-            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與狀態切換鈕都在詳情裡。標題右邊的紅色數字是未讀留言數。</p>
+            <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與狀態切換鈕都在詳情裡。標題右邊的紅色數字是未讀留言數。@if ($isOwner)標題旁的「草稿待審」表示有回覆草稿還沒送出，{{ $project->clientRole() }}還沒收到回覆，所以單仍在「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::DEVELOPER) }}」；審過按「送出」後會自動改成「{{ \App\Support\FeedbackWaitingOn::tabLabel(\App\Support\FeedbackWaitingOn::CLIENT) }}」。@endif</p>
         </div>
         <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
     </div>
@@ -196,6 +196,7 @@
                                 <div class="flex items-center gap-2">
                                     <x-feedback.report-link :$project :$report class="min-w-0 break-words font-semibold" data-report-title>{{ $report->title }}</x-feedback.report-link>
                                     <x-feedback.unread-dot :$report :is-owner="$isOwner" />
+                                    <x-feedback.draft-badge :$report :is-owner="$isOwner" />
                                 </div>
                                 @if ($isOwner && $report->isDeletedByClient())
                                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
@@ -295,6 +296,7 @@
                                         <div class="mt-1 flex items-start gap-2">
                                             <x-feedback.report-link :$project :$report class="min-w-0 flex-1 break-words text-sm font-semibold leading-5" data-report-title>{{ $report->title }}</x-feedback.report-link>
                                             <x-feedback.unread-dot :$report :is-owner="$isOwner" class="mt-0.5" />
+                                            <x-feedback.draft-badge :$report :is-owner="$isOwner" class="mt-0.5" />
                                         </div>
                                         @if ($isOwner && $report->isDeletedByClient())
                                             <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{{ $project->clientRole() }}已刪除</span>

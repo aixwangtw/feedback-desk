@@ -446,17 +446,6 @@
                             <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
                         </div>
                         <div class="mt-4 grid gap-4">
-                            @if ($reportCategories !== [])
-                                <div>
-                                    <label for="issue-category-{{ $index }}" class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
-                                    <select id="issue-category-{{ $index }}" name="issues[{{ $index }}][category]" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-issue-category>
-                                        <option value="">請選擇分類</option>
-                                        @foreach ($reportCategories as $reportCategory)
-                                            <option value="{{ $reportCategory }}" @selected(($issue['category'] ?? '') === $reportCategory)>{{ $reportCategory }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                            @endif
                             <div>
                                 <label for="issue-title-{{ $index }}" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                                 <input id="issue-title-{{ $index }}" name="issues[{{ $index }}][title]" value="{{ $issue['title'] ?? '' }}" required maxlength="160" placeholder="例如：答案儲存後重新整理會消失" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10">
@@ -491,9 +480,6 @@
                     <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
                 </div>
                 <div class="mt-4 grid gap-4">
-                    @if ($reportCategories !== [])
-                        <div><label for="issue-category-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label><select id="issue-category-__INDEX__" name="issues[__INDEX__][category]" required class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10" data-issue-category><option value="">請選擇分類</option>@foreach ($reportCategories as $reportCategory)<option value="{{ $reportCategory }}">{{ $reportCategory }}</option>@endforeach</select></div>
-                    @endif
                     <div><label for="issue-title-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label><input id="issue-title-__INDEX__" name="issues[__INDEX__][title]" required maxlength="160" placeholder="例如：答案儲存後重新整理會消失" class="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></div>
                     <div><label for="issue-description-__INDEX__" class="mb-2 block text-sm font-semibold text-slate-800">問題說明 <span class="text-rose-600">*</span></label><textarea id="issue-description-__INDEX__" name="issues[__INDEX__][description]" required maxlength="10000" rows="4" placeholder="請說明操作步驟、預期結果與實際結果。" class="block w-full resize-y rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm leading-6 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"></textarea></div>
                     <div>

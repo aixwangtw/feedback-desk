@@ -43,9 +43,10 @@ class StoreFeedbackReportRequest extends FormRequest
             'issues' => ['required', 'array', 'min:1', 'max:20'],
             'issues.*.title' => ['required', 'string', 'max:160'],
             'issues.*.description' => ['required', 'string', 'max:10000'],
+            // 開單不用選分類（2026-11-21 使用者：「回報單選擇分類不用必選 也不用再新增問題手動填」）；之後在清單上照舊可改。
             'issues.*.category' => $categories === []
                 ? ['prohibited']
-                : ['required', 'string', Rule::in($categories)],
+                : ['nullable', 'string', Rule::in($categories)],
             'issues.*.screenshots' => ['nullable', 'array', 'max:5'],
             'issues.*.screenshots.*' => FeedbackAttachmentRules::uploadRules(),
         ];

@@ -130,9 +130,9 @@
                 <form method="POST" action="{{ route('feedback.project.categories', $project) }}" class="mt-5 grid gap-3" data-categories-form>
                     @csrf
                     @method('PUT')
-                    <label for="report-categories" class="text-sm font-semibold text-slate-800">開單分類</label>
+                    <label for="report-categories" class="text-sm font-semibold text-slate-800">單的分類</label>
                     <input id="report-categories" name="categories" type="text" maxlength="{{ \App\Http\Controllers\Feedback\FeedbackProjectSettingsController::MAX_INPUT_LENGTH }}" value="{{ old('categories', implode(',', $project->reportCategories())) }}" placeholder="例如：程式使用問題,版面排版,其他" class="{{ $input }}" data-categories-input>
-                    <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在下拉選單。留空就不分類，開單與清單都不顯示分類欄位。已經分好類的單不會被改掉。</p>
+                    <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在清單的分類下拉選單。開單時不用選分類，之後在清單上替每張單選；留空就不分類，清單不顯示分類欄位。已經分好類的單不會被改掉。</p>
                     <button type="submit" class="{{ $primary }}">儲存分類</button>
                 </form>
                 @if ($statusLabelErrors->any())

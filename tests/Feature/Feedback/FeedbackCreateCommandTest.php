@@ -45,9 +45,12 @@ class FeedbackCreateCommandTest extends TestCase
     {
         $project = FeedbackProject::factory()->create(['report_categories' => ['A', 'B']]);
 
-        $this->artisan('feedback:create', ['project' => $project->slug, '--title' => 'T', '--description' => 'D'])->assertFailed();
+        // 分類可省略（2026-11-21 起開單不用選分類）；有給就要在清單裡。
         $this->artisan('feedback:create', ['project' => $project->slug, '--title' => 'T', '--description' => 'D', '--category' => 'C'])->assertFailed();
         $this->assertSame(0, FeedbackReport::count());
+        $this->artisan('feedback:create', ['project' => $project->slug, '--title' => 'T0', '--description' => 'D'])->assertSuccessful();
+        $this->assertNull(FeedbackReport::sole()->category);
+        FeedbackReport::query()->delete();
 
         $this->artisan('feedback:create', ['project' => $project->slug, '--title' => 'T', '--description' => 'D', '--category' => 'B'])->assertSuccessful();
         $this->assertSame('B', FeedbackReport::sole()->category);

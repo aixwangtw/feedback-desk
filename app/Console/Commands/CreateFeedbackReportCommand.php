@@ -19,7 +19,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
     {project : 回報專案 slug（網址 /p/ 後面那段）}
     {--title= : 回饋單標題（必填，160 字內）}
     {--description= : 回饋單說明（必填，10000 字內）}
-    {--category= : 分類（專案有設定分類時必填，且須是其中之一）}
+    {--category= : 分類（可省略；有給時須是專案設定的分類之一）}
     {--attach=* : '.FeedbackAttachmentRules::CLI_ATTACH_HELP.'}
     {--for-client : 這張單也給客戶看（出現在客戶的清單與看板，並留一則通知讓客戶看到紅色未讀數字）}
     {--notice= : 搭配 --for-client 的通知留言內容（省略時用預設文字）}
@@ -40,7 +40,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 說明：
   - 沒加 --for-client 的團隊單，客戶完全看不到。
   - 圖片只接受 jpg／png／webp（PDF 請先轉成圖片），原檔只會被複製，不會移動或刪除。
-  - 專案沒有設定分類時不能給 --category；有設定時必填。
+  - 專案沒有設定分類時不能給 --category；有設定時可省略，有給就要是其中之一。
   - 輸出的「編號」是開發團隊頁面的清單編號（會隨新單變動），穩定指定請用 public_id。
 HELP)]
 class CreateFeedbackReportCommand extends Command
@@ -87,8 +87,8 @@ class CreateFeedbackReportCommand extends Command
             return self::FAILURE;
         }
 
-        if ($categories !== [] && ! in_array($category, $categories, true)) {
-            $this->components->error('請用 --category 指定分類，可用值：'.implode('、', $categories));
+        if ($categories !== [] && $category !== '' && ! in_array($category, $categories, true)) {
+            $this->components->error('分類不在專案的分類清單裡，可用值：'.implode('、', $categories));
 
             return self::FAILURE;
         }

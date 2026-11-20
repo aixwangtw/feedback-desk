@@ -48,7 +48,8 @@ class FeedbackGuestClientTest extends TestCase
         $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))
             ->assertOk()
             ->assertSee('舊的單')
-            ->assertSee('data-issue-category', false)
+            // 開單表單不再有分類欄（2026-11-21）；分類只出現在清單的篩選與改分類下拉。
+            ->assertDontSee('name="issues[0][category]"', false)
             ->assertSee('程式使用問題')
             ->assertSee('經典排版')
             ->assertDontSee('data-account-link', false)
@@ -77,10 +78,12 @@ class FeedbackGuestClientTest extends TestCase
         $this->post(route('feedback.reports.store', $this->project), $this->payload('亂填'))
             ->assertSessionHasErrors('issues.0.category');
 
-        $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b']]])
-            ->assertSessionHasErrors('issues.0.category');
-
         $this->assertSame(0, FeedbackReport::query()->count());
+
+        // 不選分類也能開單，分類留空。
+        $this->post(route('feedback.reports.store', $this->project), ['issues' => [['title' => 'a', 'description' => 'b']]])
+            ->assertSessionHasNoErrors();
+        $this->assertNull(FeedbackReport::query()->sole()->category);
     }
 
     public function test_guest_honeypot_blocks_submission(): void

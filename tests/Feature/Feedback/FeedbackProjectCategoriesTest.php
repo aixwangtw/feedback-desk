@@ -37,13 +37,15 @@ class FeedbackProjectCategoriesTest extends TestCase
     {
         $this->loginDeveloper();
         $this->get(route('feedback.account', $this->project))->assertOk()->assertSee('data-categories-form', false);
+        // 說明寫明開單時不用選分類（2026-11-21）。
+        $this->get(route('feedback.account', $this->project))->assertSee('開單時不用選分類，之後在清單上替每張單選');
 
         $this->put(route('feedback.project.categories', $this->project), ['categories' => ' 程式使用問題，版面排版, ,其他,其他 '])
             ->assertRedirect(route('feedback.account', $this->project).'#project-settings')
             ->assertSessionHas('success');
 
         $this->assertSame(['程式使用問題', '版面排版', '其他'], $this->project->refresh()->reportCategories());
-        $this->get(route('feedback.portal', $this->project))->assertSee('data-issue-category', false)->assertSee('版面排版');
+        $this->get(route('feedback.portal', $this->project))->assertSee('data-category-filter', false)->assertSee('版面排版');
     }
 
     public function test_clearing_categories_hides_the_field(): void

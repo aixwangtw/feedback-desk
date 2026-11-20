@@ -377,7 +377,7 @@
                         <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
                             @foreach ($report->feedbackAttachments as $attachment)
                                 <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                    <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover" />
+                                    <x-feedback.attachment-media :$attachment :name="\App\Support\FeedbackAttachmentRules::numberedTitle($loop->iteration, $attachment->isVideo())" :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="aspect-video w-full object-cover" />
                                     <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                         <input type="checkbox" name="remove_attachments[]" value="{{ $attachment->id }}" @checked($isEditing && in_array((string) $attachment->id, array_map('strval', old('remove_attachments', [])), true)) class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">
                                         刪除

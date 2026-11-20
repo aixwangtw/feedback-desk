@@ -130,8 +130,10 @@ class FeedbackAttachmentDropTest extends TestCase
         foreach (['client' => fn () => $this->actingAsClient(), 'team' => fn () => $this->actingAsTeam()] as $side) {
             $side();
             $page = $this->get(route('feedback.reports.show', [$this->project, $this->report]))->assertOk()->getContent();
-            $this->assertStringContainsString('title="圖一-紅框位置.png" data-attachment-title>圖一-紅框位置</span>', $page);
-            $this->assertStringContainsString('title="影片-操作.mp4" data-attachment-title>影片-操作</span>', $page);
+            $this->assertStringContainsString('title="圖1" data-attachment-title>圖1</span>', $page);
+            $this->assertStringContainsString('title="影片2" data-attachment-title>影片2</span>', $page);
+            $this->assertStringNotContainsString('圖一-紅框位置', $page);
+            $this->assertStringNotContainsString('影片-操作', $page);
         }
     }
 

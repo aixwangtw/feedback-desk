@@ -14,9 +14,9 @@
             @foreach ($message->feedbackAttachments as $attachment)
                 <label class="attachment-tile flex min-w-0 cursor-pointer flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1 has-[:checked]:opacity-50 has-[:checked]:ring-2 has-[:checked]:ring-rose-400">
                     <span class="attachment-tile-thumb block overflow-hidden rounded bg-slate-50">
-                        <x-feedback.attachment-media :$attachment :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
+                        <x-feedback.attachment-media :$attachment :name="\App\Support\FeedbackAttachmentRules::numberedTitle($loop->iteration, $attachment->isVideo())" :src="route('feedback.attachments.show', [$project, $report, $attachment])" class="size-full object-cover" />
                     </span>
-                    <x-feedback.attachment-caption :name="$attachment->original_name" />
+                    <x-feedback.attachment-caption :name="$attachment->original_name" :number="$loop->iteration" :video="$attachment->isVideo()" />
                     <span class="flex items-center gap-1.5 text-[11px] font-semibold text-rose-700"><input type="checkbox" name="remove_attachments[]" value="{{ $attachment->id }}" class="rounded border-slate-300 text-rose-600 focus:ring-rose-600">移除</span>
                 </label>
             @endforeach

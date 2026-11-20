@@ -57,18 +57,19 @@
                     @if ($message->feedbackAttachments->isNotEmpty())
                         <div class="mt-2 flex flex-wrap gap-2" data-chat-attachments>
                             @foreach ($message->feedbackAttachments as $attachment)
+                                @php $attachmentTitle = \App\Support\FeedbackAttachmentRules::numberedTitle($loop->iteration, $attachment->isVideo()); @endphp
                                 @if ($attachment->isVideo())
                                     <div class="min-w-0 w-full max-w-md">
-                                        <video controls playsinline preload="metadata" src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" class="{{ $compact ? 'max-h-48' : 'max-h-72' }} w-full rounded-lg border border-white bg-black shadow-sm" data-chat-video title="{{ $attachment->original_name }}"></video>
-                                        <x-feedback.attachment-caption :name="$attachment->original_name" class="mt-0.5" />
+                                        <video controls playsinline preload="metadata" src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" class="{{ $compact ? 'max-h-48' : 'max-h-72' }} w-full rounded-lg border border-white bg-black shadow-sm" data-chat-video title="{{ $attachmentTitle }}"></video>
+                                        <x-feedback.attachment-caption :name="$attachment->original_name" :number="$loop->iteration" :video="$attachment->isVideo()" class="mt-0.5" />
                                     </div>
                                     @continue
                                 @endif
                                 <div class="attachment-tile min-w-0">
-                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" title="放大預覽" data-chat-attachment>
-                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="size-full object-cover" loading="lazy">
+                                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="attachment-tile-thumb block overflow-hidden rounded-lg border border-white bg-white shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachmentTitle }}" title="放大預覽" data-chat-attachment>
+                                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachmentTitle }}" class="size-full object-cover" loading="lazy">
                                 </a>
-                                <x-feedback.attachment-caption :name="$attachment->original_name" class="mt-0.5" />
+                                <x-feedback.attachment-caption :name="$attachment->original_name" :number="$loop->iteration" :video="$attachment->isVideo()" class="mt-0.5" />
                                 </div>
                             @endforeach
                         </div>

@@ -16,8 +16,9 @@
     @if ($report->adjustmentAttachments->isNotEmpty())
         <div class="mt-3 {{ $compact ? 'flex flex-wrap gap-2' : 'grid grid-cols-2 gap-3 sm:grid-cols-3' }}">
             @foreach ($report->adjustmentAttachments as $attachment)
-                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="{{ $compact ? 'block size-20' : 'group relative' }} overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachment->original_name }}" data-adjustment-image title="放大預覽">
-                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachment->original_name }}" class="{{ $compact ? 'size-full' : 'aspect-video w-full' }} object-cover" loading="lazy">
+                @php $attachmentTitle = \App\Support\FeedbackAttachmentRules::numberedTitle($loop->iteration, $attachment->isVideo()); @endphp
+                <a href="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" target="_blank" rel="noreferrer" class="{{ $compact ? 'block size-20' : 'group relative' }} overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-lightbox-trigger data-lightbox-alt="{{ $attachmentTitle }}" data-adjustment-image title="放大預覽">
+                    <img src="{{ route('feedback.attachments.show', [$project, $report, $attachment]) }}" alt="{{ $attachmentTitle }}" class="{{ $compact ? 'size-full' : 'aspect-video w-full' }} object-cover" loading="lazy">
                 </a>
             @endforeach
         </div>

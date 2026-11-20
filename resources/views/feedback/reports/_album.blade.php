@@ -2,7 +2,7 @@
     附件（相簿，照 Jira 的「附件」區）：這張單所有附件集中成縮圖格狀（老師原始附件＋每則留言的圖片與影片；草稿附件只有團隊看得到，見 FeedbackAlbum）。
     位置：詳情視窗與單頁放在說明下方、活動時間軸上方，預設展開，超過一排顯示「顯示全部」（album.js）；
     右下角面板不放在對話串裡，改由標題列的相簿鈕切到面板內的附件頁（樣式 data-album-force-all：永遠全部顯示）。
-    縮圖直接用原檔、lazy 載入，點圖放大、點影片播放；名稱完整換行，來源與時間在名稱下面。
+    縮圖直接用原檔、lazy 載入，點圖放大、點影片播放；名稱一律是編號「圖N／影片N」（FeedbackAttachmentRules::numberedTitle，不顯示原始檔名），來源與時間在名稱下面。
     可以傳入 $albumItems（呼叫端已經查好）避免重複查詢。
 --}}
 @php
@@ -12,6 +12,7 @@
 @if ($albumItems->isNotEmpty())
     <section class="grid gap-3 text-sm" data-chat-album data-album-key="{{ $report->public_id }}" aria-label="附件">
         <h3 class="text-sm font-bold text-slate-900">附件（<span data-album-count>{{ $albumItems->count() }}</span>）</h3>
+        <p class="-mt-2 text-xs text-slate-500" data-album-numbering>附件依上傳順序稱「圖1、圖2」（影片稱「影片1」），原始附件與每則留言各自從 1 起算；下載時仍是原始檔名。</p>
         <ul class="album-grid grid grid-cols-[repeat(auto-fill,var(--attachment-tile-width))] justify-start gap-x-3" data-album-grid data-collapsed>
             @foreach ($albumItems as $item)
                 <li class="attachment-tile min-w-0 pb-3" data-album-item data-album-kind="{{ $item['kind'] }}">

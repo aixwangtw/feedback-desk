@@ -40,11 +40,11 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
 
     public function test_list_thumbnails_include_message_attachments_newest_first_with_a_plus_counter(): void
     {
-        $this->attach(null, 'original.png', now()->subHours(5));
+        $original = $this->attach(null, 'original.png', now()->subHours(5));
         $message = $this->message(FeedbackAuthorType::Reporter);
-        $this->attach($message, 'm-old.png', now()->subHours(4));
-        $this->attach($message, 'm-mid.png', now()->subHours(3));
-        $this->attach($message, 'm-new.png', now()->subHour());
+        $old = $this->attach($message, 'm-old.png', now()->subHours(4));
+        $mid = $this->attach($message, 'm-mid.png', now()->subHours(3));
+        $new = $this->attach($message, 'm-new.png', now()->subHour());
         $this->actingAsOwner();
 
         $html = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->assertOk()->getContent();
@@ -52,10 +52,15 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
 
         $this->assertStringContainsString('data-attachment-count="4"', $html);
         $this->assertSame(3, substr_count($cell, '<img'));
-        $this->assertLessThan(strpos($cell, 'm-mid.png'), strpos($cell, 'm-new.png'));
-        $this->assertLessThan(strpos($cell, 'm-old.png'), strpos($cell, 'm-mid.png'));
-        $this->assertStringNotContainsString('alt="original.png"', $cell);
-        $this->assertStringContainsString('original.png', $cell); // 燈箱清單含全部附件
+        // 縮圖用附件網址辨認（畫面上只顯示「圖N」編號，不顯示原始檔名）。
+        $this->assertNotFalse(strpos($cell, $this->src($new)));
+        $this->assertLessThan(strpos($cell, $this->src($mid)), strpos($cell, $this->src($new)));
+        $this->assertLessThan(strpos($cell, $this->src($old)), strpos($cell, $this->src($mid)));
+        $this->assertStringNotContainsString($this->src($original), $cell);
+        $this->assertContains($this->url($original), array_column($this->gallery($cell), 'url')); // 燈箱清單含全部附件
+        foreach (['original.png', 'm-old.png', 'm-mid.png', 'm-new.png'] as $name) {
+            $this->assertStringNotContainsString($name, $cell);
+        }
         $this->assertStringContainsString('+1', $cell);
         $this->assertStringContainsString('data-lightbox-gallery=', $cell);
         $this->assertStringContainsString('data-lightbox-index="0"', $cell);
@@ -67,14 +72,16 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
 
     public function test_board_card_uses_the_same_thumbnail_component(): void
     {
-        $this->attach($this->message(FeedbackAuthorType::Reporter), 'card.png', now());
+        $attachment = $this->attach($this->message(FeedbackAuthorType::Reporter), 'card.png', now());
         $this->actingAsOwner();
 
         $board = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all', 'view' => 'board']))->assertOk()->getContent();
         $card = Str::between($board, 'data-report-id="'.$this->report->public_id.'"', '</article>');
 
         $this->assertStringContainsString('data-attachment-thumbs="'.$this->report->public_id.'"', $card);
-        $this->assertStringContainsString('card.png', $card);
+        $this->assertStringContainsString($this->src($attachment), $card);
+        $this->assertStringContainsString('alt="圖1"', $card);
+        $this->assertStringNotContainsString('card.png', $card);
     }
 
     public function test_withdrawn_message_attachments_are_not_counted_anywhere(): void
@@ -82,7 +89,7 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $kept = $this->message(FeedbackAuthorType::Reporter);
         $this->attach($kept, 'kept.png', now()->subHour());
         $withdrawn = $this->message(FeedbackAuthorType::Reporter);
-        $this->attach($withdrawn, 'withdrawn.png', now());
+        $withdrawnAttachment = $this->attach($withdrawn, 'withdrawn.png', now());
         $withdrawn->delete();
         $this->actingAsOwner();
 
@@ -90,6 +97,7 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $cell = Str::between($html, 'data-attachment-thumbs="'.$this->report->public_id.'"', '</td>');
         $this->assertStringContainsString('data-attachment-count="1"', $html);
         $this->assertStringNotContainsString('withdrawn.png', $cell);
+        $this->assertStringNotContainsString($this->url($withdrawnAttachment), $cell);
 
         $json = $this->getJson(route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]))->assertOk();
         $this->assertSame(1, $json->json('reports.'.$this->report->public_id.'.count'));
@@ -100,7 +108,7 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
     public function test_client_never_gets_draft_attachments_and_the_list_never_shows_them_to_the_team(): void
     {
         $this->attach($this->message(FeedbackAuthorType::Reporter), 'real.png', now()->subHour());
-        FeedbackMessageDraft::create([
+        $draft = FeedbackMessageDraft::create([
             'feedback_report_id' => $this->report->id,
             'author_name' => '開發團隊',
             'body' => '草稿',
@@ -112,10 +120,15 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $this->actingAsOwner();
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
         // 團隊的相簿含草稿附件（徽章數 2），列表與輪詢端點不含。
+        $draftUrl = route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]);
         $thread->assertJsonPath('album_count', 2);
-        $this->assertStringContainsString('secret-draft.png', $thread->json('album_html'));
+        $this->assertStringContainsString($draftUrl, $thread->json('album_html'));
+        $this->assertStringNotContainsString('secret-draft.png', $thread->json('album_html'));
+        // 相簿說明寫出命名規則：依上傳順序稱「圖1、圖2」，原始附件與每則留言各自從 1 起算。
+        $this->assertStringContainsString('data-album-numbering>附件依上傳順序稱「圖1、圖2」', $thread->json('album_html'));
         $list = $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent();
         $this->assertStringNotContainsString('secret-draft.png', $list);
+        $this->assertStringNotContainsString($draftUrl, $list);
         $this->getJson(route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]))
             ->assertJsonPath('reports.'.$this->report->public_id.'.count', 1);
 
@@ -123,8 +136,10 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $thread = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();
         $thread->assertJsonPath('album_count', 1);
         $this->assertStringNotContainsString('secret-draft.png', $thread->json('album_html'));
+        $this->assertStringNotContainsString($draftUrl, $thread->json('album_html'));
         $json = $this->getJson(route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]))->assertOk();
         $this->assertStringNotContainsString('secret-draft', json_encode($json->json()));
+        $this->assertStringNotContainsString('/drafts/', json_encode($json->json(), JSON_UNESCAPED_SLASHES));
         $this->assertStringNotContainsString('secret-draft', $this->get(route('feedback.portal', [$this->project, 'tab' => 'all']))->getContent());
     }
 
@@ -134,11 +149,12 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         $url = route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]);
         $this->getJson($url)->assertJsonPath('reports.'.$this->report->public_id.'.count', 0);
 
-        $this->attach($this->message(FeedbackAuthorType::Reporter), 'fresh.png', now());
+        $fresh = $this->attach($this->message(FeedbackAuthorType::Reporter), 'fresh.png', now());
 
         $entry = $this->getJson($url)->json('reports.'.$this->report->public_id);
         $this->assertSame(1, $entry['count']);
-        $this->assertStringContainsString('fresh.png', $entry['row_html']);
+        $this->assertStringContainsString($this->src($fresh), $entry['row_html']);
+        $this->assertStringNotContainsString('fresh.png', $entry['row_html']);
         $this->assertStringContainsString('data-card-action', $entry['card_html']);
         $this->assertStringNotContainsString('data-card-action', $entry['row_html']);
     }
@@ -234,6 +250,26 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
         ]);
     }
 
+    private function url(FeedbackAttachment $attachment): string
+    {
+        return route('feedback.attachments.show', [$this->project, $this->report, $attachment]);
+    }
+
+    private function src(FeedbackAttachment $attachment): string
+    {
+        return 'src="'.$this->url($attachment).'"';
+    }
+
+    /**
+     * @return list<array{url: string, name: string, video: bool, source: string, at: string}>
+     */
+    private function gallery(string $html): array
+    {
+        preg_match('/data-lightbox-gallery="([^"]*)"/', $html, $matches);
+
+        return json_decode(html_entity_decode($matches[1]), true);
+    }
+
     private function actingAsOwner(): void
     {
         $this->flushSession();
@@ -256,21 +292,25 @@ class FeedbackAttachmentLiveUpdateTest extends TestCase
     {
         $this->attach(null, 'original.png', now()->subHours(5));
         $message = $this->message(FeedbackAuthorType::Reporter);
+        $attachments = [];
         foreach (['a.png', 'b.png', 'c.png', 'd.png'] as $index => $name) {
-            $this->attach($message, $name, now()->subHours(4 - $index));
+            $attachments[] = $this->attach($message, $name, now()->subHours(4 - $index));
         }
         $other = FeedbackReport::factory()->for($this->project)->create();
-        $this->attach(null, 'someone-elses.png', now(), $other);
+        $foreign = $this->attach(null, 'someone-elses.png', now(), $other);
         $this->actingAsOwner();
 
         $json = $this->getJson(route('feedback.attachment-thumbs.index', [$this->project, 'ids' => [$this->report->public_id]]))->assertOk();
         $html = $json->json('reports.'.$this->report->public_id.'.row_html');
-        preg_match('/data-lightbox-gallery="([^"]*)"/', $html, $matches);
-        $gallery = json_decode(html_entity_decode($matches[1]), true);
+        $gallery = $this->gallery($html);
 
         $this->assertCount(5, $gallery);
-        $this->assertNotContains('someone-elses.png', array_column($gallery, 'name'));
+        $this->assertNotContains(route('feedback.attachments.show', [$this->project, $other, $foreign]), array_column($gallery, 'url'));
         $this->assertSame(['url', 'name', 'video', 'source', 'at'], array_keys($gallery[0]));
-        $this->assertSame('d.png', $gallery[0]['name']);
+        // 最新的是留言裡第 4 張：網址對得上，名稱是編號「圖4」，原始檔名不出現；原始附件自己從「圖1」起算。
+        $this->assertSame($this->url($attachments[3]), $gallery[0]['url']);
+        $this->assertSame('圖4', $gallery[0]['name']);
+        $this->assertSame(['圖4', '圖3', '圖2', '圖1', '圖1'], array_column($gallery, 'name'));
+        $this->assertStringNotContainsString('.png', $html);
     }
 }

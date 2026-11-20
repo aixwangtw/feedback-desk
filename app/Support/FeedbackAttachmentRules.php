@@ -97,7 +97,17 @@ final class FeedbackAttachmentRules
     }
 
     /**
-     * 附件顯示用的短標題：檔名去掉副檔名（「圖一-缺圖的位置.png」顯示成「圖一-缺圖的位置」）。
+     * 畫面上附件一律用順序編號「圖1、圖2」（影片「影片1」），不顯示原始檔名：每張單、每則留言附件檔名都不同又長，
+     * 留言裡也用「圖1」稱呼（2026-11-21 使用者：「附圖 … 不要這麼長的名稱 … 統一轉換為1 2 3 留言也是」）。
+     * 編號在同一則留言（或待審留言、單的原始附件）裡從 1 起算；原始檔名仍存在資料庫，下載時照舊。
+     */
+    public static function numberedTitle(int $number, bool $isVideo = false): string
+    {
+        return ($isVideo ? '影片' : '圖').$number;
+    }
+
+    /**
+     * 附件顯示用的短標題（沒給編號時才用；上傳前的預覽在 JS 端用同規則）：檔名去掉副檔名（「圖一-缺圖的位置.png」顯示成「圖一-缺圖的位置」）。
      * JS 端對應 attachment-files.js 的 attachmentTitle，兩邊規則一致。
      */
     public static function displayTitle(string $name): string

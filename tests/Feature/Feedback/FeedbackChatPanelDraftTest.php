@@ -78,9 +78,11 @@ class FeedbackChatPanelDraftTest extends TestCase
         $video = e(route('feedback.drafts.file', [$this->project, $this->report, $draft, 0]));
         $this->assertStringContainsString('<video controls playsinline preload="metadata" src="'.$video.'"', $html);
         $this->assertStringContainsString('src="'.e(route('feedback.drafts.file', [$this->project, $this->report, $draft, 1])).'"', $html);
-        // 每個附件下方的短標題：檔名去掉副檔名，完整檔名放 title。
-        $this->assertStringContainsString('title="教學.mp4" data-attachment-title>教學</span>', $html);
-        $this->assertStringContainsString('title="截圖.png" data-attachment-title>截圖</span>', $html);
+        // 每個附件下方的短標題是順序編號（影片1、圖2），不顯示原始檔名。
+        $this->assertStringContainsString('title="影片1" data-attachment-title>影片1</span>', $html);
+        $this->assertStringContainsString('title="圖2" data-attachment-title>圖2</span>', $html);
+        $this->assertStringNotContainsString('教學', $html);
+        $this->assertStringNotContainsString('截圖', $html);
 
         $this->actingAsClient();
         $client = $this->getJson(route('feedback.conversations.show', [$this->project, $this->report]))->assertOk();

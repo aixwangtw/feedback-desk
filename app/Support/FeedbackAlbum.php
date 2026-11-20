@@ -35,7 +35,7 @@ class FeedbackAlbum
                     $items->push([
                         'kind' => 'draft',
                         'url' => route('feedback.drafts.file', [$project, $report, $draft, $index]),
-                        'name' => $file['original_name'],
+                        'name' => FeedbackAttachmentRules::numberedTitle($index + 1, FeedbackAttachmentRules::isVideoMime($file['mime_type'])),
                         'is_video' => FeedbackAttachmentRules::isVideoMime($file['mime_type']),
                         'source' => '待審留言',
                         'at' => $draft->updated_at,
@@ -85,12 +85,14 @@ class FeedbackAlbum
             ->ofKind(FeedbackAttachmentKind::Feedback)
             ->orderBy('id')
             ->get();
+        $originalNumbers = [];
         foreach ($originals as $attachment) {
             $report = $reports[$attachment->feedback_report_id];
+            $originalNumbers[$report->id] = ($originalNumbers[$report->id] ?? 0) + 1;
             $grouped[$report->id]->push([
                 'kind' => 'original',
                 'url' => route('feedback.attachments.show', [$report->feedbackProject, $report, $attachment]),
-                'name' => $attachment->original_name,
+                'name' => FeedbackAttachmentRules::numberedTitle($originalNumbers[$report->id], $attachment->isVideo()),
                 'is_video' => $attachment->isVideo(),
                 'source' => '原始附件',
                 'at' => $report->created_at,
@@ -110,11 +112,11 @@ class FeedbackAlbum
         /** @var FeedbackMessage $message */
         foreach ($messages->sortBy('id') as $message) {
             $report = $reports[$message->feedback_report_id];
-            foreach ($message->feedbackAttachments as $attachment) {
+            foreach ($message->feedbackAttachments->values() as $position => $attachment) {
                 $grouped[$report->id]->push([
                     'kind' => 'message',
                     'url' => route('feedback.attachments.show', [$report->feedbackProject, $report, $attachment]),
-                    'name' => $attachment->original_name,
+                    'name' => FeedbackAttachmentRules::numberedTitle($position + 1, $attachment->isVideo()),
                     'is_video' => $attachment->isVideo(),
                     'source' => $message->displayAuthor($report, $viewerIsOwner).' 的留言',
                     'at' => $message->created_at,

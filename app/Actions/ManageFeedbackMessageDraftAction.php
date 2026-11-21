@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Storage;
 /**
  * 待審留言（草稿）的新增、修改、送出、捨棄；artisan 指令、排程 API、網頁共用。
  * 草稿只存在 feedback_message_drafts，送出前不會建立任何留言或附件紀錄，客戶端讀不到、也不算未讀。
+ * 同一張單最多一則待審留言：再建立時併進原本那一則（見 create）。
  */
 class ManageFeedbackMessageDraftAction
 {
@@ -47,6 +48,25 @@ class ManageFeedbackMessageDraftAction
             }
 
             return DB::transaction(function () use ($report, $actor, $body, $replacesMessageId, $stored): FeedbackMessageDraft {
+                // 同一張單只留一則待審留言（2026-11-21 使用者：「留言草稿也不用分2則」）：
+                // 已有一則時把新內容接在後面、附件接在後面，不另建一則；內容完全相同就不重複接。
+                $existing = FeedbackMessageDraft::query()
+                    ->where('feedback_report_id', $report->id)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->first();
+                if ($existing !== null) {
+                    $mergedBody = str_contains($existing->body, $body) ? $existing->body : $this->validatedBody($existing->body."\n\n".$body);
+                    $existing->update([
+                        'body' => $mergedBody,
+                        'replaces_message_id' => $existing->replaces_message_id ?? $replacesMessageId,
+                        'attachments' => [...$existing->attachmentList(), ...$stored] ?: null,
+                    ]);
+                    $report->recordEvent('draft', $actor);
+
+                    return $existing->refresh();
+                }
+
                 $draft = FeedbackMessageDraft::create([
                     'feedback_report_id' => $report->id,
                     'replaces_message_id' => $replacesMessageId,

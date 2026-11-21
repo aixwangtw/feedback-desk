@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Feedback;
 
+use App\Actions\ManageFeedbackMessageDraftAction;
 use App\Enums\FeedbackAuthorType;
 use App\Models\FeedbackAttachment;
 use App\Models\FeedbackDeveloper;
@@ -11,10 +12,12 @@ use App\Models\FeedbackPatrolLog;
 use App\Models\FeedbackPatrolToken;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
+use App\Support\FeedbackActor;
 use App\Support\StandardInput;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\ViewErrorBag;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
@@ -254,22 +257,40 @@ class FeedbackMessageDraftTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('draft.body', self::DRAFT_TEXT)
             ->assertJsonPath('draft.replaces_message_id', null);
+        // 同一張單只留一則待審留言：第二次建立併進原本那則，內容接在後面。
         $this->withToken($plain)->postJson($url, ['body' => '改原留言', 'replace_message_id' => $original->id])
             ->assertCreated()
-            ->assertJsonPath('draft.replaces_message_id', $original->id);
+            ->assertJsonPath('draft.body', self::DRAFT_TEXT."\n\n改原留言");
         $this->withToken($plain)->postJson($url, ['body' => ' '])->assertUnprocessable();
         $this->withToken($plain)->postJson($url, ['body' => 'x', 'replace_message_id' => 999999])->assertUnprocessable();
         $this->withToken($plain)->postJson(route('feedback.patrol.draft', ['site', Str::uuid()->toString()]), ['body' => 'x'])->assertNotFound();
 
         $drafts = FeedbackMessageDraft::orderBy('id')->get();
-        $this->assertCount(2, $drafts);
+        $this->assertCount(1, $drafts);
         $this->assertSame($alex->id, $drafts[0]->author_developer_id);
         $this->assertSame('Claude Code', $drafts[0]->author_agent);
-        // 只有原本那則團隊留言算未讀；兩則草稿都不算。
+        // 只有原本那則團隊留言算未讀；草稿不算。
         $this->assertSame(1, FeedbackMessage::count());
         $this->assertSame(1, $this->clientUnread());
         $this->assertSame(2, FeedbackPatrolLog::where('action', 'draft')->where('succeeded', true)->count());
         $this->assertSame(3, FeedbackPatrolLog::where('action', 'draft')->where('succeeded', false)->count());
+    }
+
+    public function test_one_report_keeps_a_single_draft_and_identical_text_is_not_repeated(): void
+    {
+        $actor = FeedbackActor::sharedOwner('Claude Code');
+        $action = app(ManageFeedbackMessageDraftAction::class);
+
+        $first = $action->create($this->report, $actor, '第一段');
+        $second = $action->create($this->report, $actor, '第二段');
+        $again = $action->create($this->report, $actor, '第二段');
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame($first->id, $again->id);
+        $this->assertSame(1, FeedbackMessageDraft::where('feedback_report_id', $this->report->id)->count());
+        $this->assertSame("第一段\n\n第二段", $again->body);
+        // 待審留言區的說明寫出同一張單只留一則。
+        $this->assertStringContainsString('同一張單只留一則，之後新增的內容會接在這一則後面', view('feedback.reports._drafts', ['project' => $this->project, 'report' => $this->report, 'drafts' => FeedbackMessageDraft::where('feedback_report_id', $this->report->id)->get(), 'errors' => new ViewErrorBag])->render());
     }
 
     public function test_deleting_the_report_removes_its_drafts(): void

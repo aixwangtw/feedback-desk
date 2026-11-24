@@ -2,7 +2,8 @@ import type { Notifications } from '../lib/notifications';
 import { MAX_CATEGORY_INPUT_LENGTH } from '../../shared/categories';
 import type { FC } from 'hono/jsx';
 import type { Developer, Project, Report } from '../lib/models';
-import { PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES } from '../lib/uploads';
+import { MAX_VIDEO_BYTES, PUBLIC_MAX_SCREENSHOTS, PUBLIC_MAX_IMAGE_BYTES } from '../lib/uploads';
+import { MESSAGE_ACCEPT } from '../../shared/attachment-rules';
 import { paths } from '../routes/paths';
 import { ErrorList, Layout, StatusBadge, Time, type ViewContext } from './components';
 
@@ -137,8 +138,8 @@ export const PublicHomePage: FC<{
                             <input id="reporter_name" name="reporter_name" value={form?.reporter_name ?? ''} maxlength={50} class={INPUT_WITH_PLACEHOLDER} />
                         </div>
                         <div>
-                            <label for="screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳截圖<input id="screenshots" type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target="public-preview" data-upload-url={`${paths.uploads(project.slug)}?purpose=public`} data-upload-name="upload_ids[]" data-upload-max={String(PUBLIC_MAX_SCREENSHOTS)} data-upload-max-bytes={String(PUBLIC_MAX_IMAGE_BYTES)} /></label>
-                            <span class="ml-2 text-xs text-slate-500">選填，最多 {PUBLIC_MAX_SCREENSHOTS} 張，每張 5 MB，jpg、png、webp。</span>
+                            <label for="screenshots" class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳圖片或影片<input id="screenshots" type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target="public-preview" data-upload-url={`${paths.uploads(project.slug)}?purpose=public`} data-upload-name="upload_ids[]" data-upload-max={String(PUBLIC_MAX_SCREENSHOTS)} data-upload-max-bytes={String(PUBLIC_MAX_IMAGE_BYTES)} data-upload-allow-video /></label>
+                            <span class="ml-2 text-xs text-slate-500">選填，最多 {PUBLIC_MAX_SCREENSHOTS} 個；圖片每張 {PUBLIC_MAX_IMAGE_BYTES / 1024 / 1024} MB（jpg、png、webp），影片每支 {MAX_VIDEO_BYTES / 1024 / 1024} MB（mp4、mov、webm）。</span>
                             <div id="public-preview" class="mt-3 grid grid-cols-3 gap-3" aria-live="polite"></div>
                         </div>
 
@@ -367,9 +368,9 @@ export const AccountPage: FC<{
                     <p class="mt-1 text-sm text-slate-600">只有{v.cfg.labels.owner}看得到。改動會套用到「{project.name}」的所有人。</p>
                     <ErrorList errors={projectSettings.errors} class="mt-4" />
                     <form method="post" action={paths.projectCategories(project.slug)} class="mt-5 grid gap-3" data-categories-form>
-                        <label for="report-categories" class="text-sm font-semibold text-slate-800">開單分類</label>
+                        <label for="report-categories" class="text-sm font-semibold text-slate-800">單的分類</label>
                         <input id="report-categories" name="categories" type="text" maxlength={MAX_CATEGORY_INPUT_LENGTH} value={projectSettings.categories} placeholder="例如：程式使用問題,版面排版,其他" class={INPUT} data-categories-input />
-                        <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在下拉選單。留空就不分類，開單與清單都不顯示分類欄位。已經分好類的單不會被改掉。</p>
+                        <p class="text-xs leading-5 text-slate-500">用逗號分隔，依序顯示在清單的分類下拉選單。開單時不用選分類，之後在清單上替每張單選；留空就不分類，清單不顯示分類欄位。已經分好類的單不會被改掉。</p>
                         <button type="submit" class={PRIMARY_BUTTON}>儲存分類</button>
                     </form>
                 </section>

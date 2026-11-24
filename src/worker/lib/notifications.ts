@@ -71,7 +71,7 @@ export async function teamNotifications(db: D1Database, projectIds: number[]): P
                     SELECT r.id, r.project_id, r.public_id, r.title,
                         (SELECT COUNT(*) FROM messages um WHERE um.deleted_at IS NULL AND um.report_id = r.id AND um.author_type = 'reporter'
                             AND (r.owner_last_read_at IS NULL OR um.created_at > r.owner_last_read_at)) AS unread
-                    FROM reports r WHERE ${inProjects}
+                    FROM reports r WHERE ${inProjects} AND r.client_deleted_at IS NULL
                 ), latest AS (
                     SELECT u.*, (SELECT lm.id FROM messages lm WHERE lm.deleted_at IS NULL AND lm.report_id = u.id AND lm.author_type = 'reporter' ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1) AS latest_id
                     FROM unread u WHERE u.unread > 0

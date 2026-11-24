@@ -91,7 +91,8 @@ describe('chat panel list', () => {
 
         const owner = await new Browser().asOwner(seeded);
         const data = await list(owner, seeded);
-        expect(data.items.map((item) => item.title)).toEqual(['有未讀', '已讀有留言', '開發者建的', '沒留言最新', '沒留言較舊']);
+        // 客戶刪除的單只留紀錄，團隊端面板也不列。
+        expect(data.items.map((item) => item.title)).toEqual(['有未讀', '已讀有留言', '開發者建的', '沒留言最新']);
         const [first, second] = data.items;
         expect(first).toMatchObject({ id: unread.public_id, unread: 2, messages_count: 2, has_update: true, preview_is_mine: false, number: 3, status: '等工程師', deleted: false });
         expect(first.preview).toBe(`${'很長的留言'.repeat(6)}...`);
@@ -103,7 +104,7 @@ describe('chat panel list', () => {
         expect(data.items[3].preview).toBeNull();
         expect(data.items[3].latest_label).toBeNull();
         expect(data.items[3].created_at).toBe(emptyNew.created_at);
-        expect(data.items[4].deleted).toBe(true);
+        expect(data.items.some((item) => item.deleted)).toBe(false);
         expect(data.unread_total).toBe(2);
         expect(fromTeam.id).toBeGreaterThan(0);
     });

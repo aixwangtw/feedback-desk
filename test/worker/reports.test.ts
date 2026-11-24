@@ -16,7 +16,8 @@ describe('uploads', () => {
         }
         const gif = await client.upload(seeded.project.slug, 'purpose=report', GIF, 'fake.png');
         expect(gif.status).toBe(415);
-        expect(((await gif.json()) as { message: string }).message).toContain('jpg、png 或 webp');
+        // 開單也收影片，所以錯誤訊息寫出圖片與影片可用的格式。
+        expect(((await gif.json()) as { message: string }).message).toBe('附件只接受 JPG、PNG、WebP 圖片或 MP4、MOV、WebM 影片。');
         const text = await client.upload(seeded.project.slug, 'purpose=report', new TextEncoder().encode('<script>alert(1)</script>'), 'x.jpg');
         expect(text.status).toBe(415);
     });

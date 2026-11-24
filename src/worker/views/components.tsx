@@ -1,6 +1,6 @@
 import { raw } from 'hono/html';
 import type { Child, FC } from 'hono/jsx';
-import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
+import { DELETED_RECORD_LABEL, statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, unreadDotLabel } from '../../shared/conversation';
 import { formatAbsolute, formatRelative, formatShort } from '../../shared/time';
 import type { FeedbackConfig } from '../env';
@@ -8,10 +8,10 @@ import type { Notifications } from '../lib/notifications';
 import { charSlice } from '../../shared/text';
 import { paths } from '../routes/paths';
 import { ASSET_VERSION } from '../version';
-import { attachmentTitle } from '../../shared/attachment-list';
+import { attachmentTitle, numberedTitle } from '../../shared/attachment-list';
 import { LIST_THUMB_LIMIT, lightboxGalleryJson, type RowThumb } from '../../shared/album-thumbs';
-import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
-import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
+import { statusSwitchClass, statusSwitchView } from '../../shared/status-switch';
+import { DRAFT_BADGE_CLASS, draftBadgeText, draftBadgeTitle } from '../../shared/report-guides';
 import { CONFIRM_CANCEL, type ConfirmText } from '../../shared/confirm';
 import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
 import { CHAT_ICON_PATHS, REPORT_LINK_CLASS, UNREAD_DOT_CLASS } from './chat-classes';
@@ -88,21 +88,27 @@ export const Thumb: FC<{ href: string; name: string; mime: string | null | undef
 );
 
 /** 附件的短標題：檔名去掉副檔名，完整顯示、太長換行（最多 3 行），滑鼠移上去仍可看完整檔名（留言、待審留言、相簿、編輯表單共用；拖曳預覽的 client 版樣式要一致）。 */
-export const AttachmentCaption: FC<{ name: string; class?: string }> = ({ name, class: className }) => (
-    <span class={cx('attachment-caption block text-[11px] leading-4 text-slate-600', className)} title={name} data-attachment-title>{attachmentTitle(name)}</span>
-);
+/** 附件的短標題：有 number 時一律顯示「圖N」／「影片N」（shared/attachment-list.ts 的 numberedTitle），沒有才用檔名去掉副檔名。 */
+export const AttachmentCaption: FC<{ name: string; number?: number; video?: boolean; class?: string }> = ({ name, number, video = false, class: className }) => {
+    const title = number === undefined ? attachmentTitle(name) : numberedTitle(number, video);
+    return <span class={cx('attachment-caption block text-[11px] leading-4 text-slate-600', className)} title={number === undefined ? name : title} data-attachment-title>{title}</span>;
+};
 
 /** 附件縮圖連結的 title：圖片放大預覽、影片開新分頁播放。 */
 export function attachmentLinkTitle(mime: string | null | undefined): string {
     return isVideoMime(mime) ? '開新分頁播放' : '放大預覽';
 }
 
-export const StatusBadge: FC<{ status: ReportStatus; labels: StatusLabels }> = ({ status, labels }) => (
-    <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`} data-status-badge={status}>{statusLabel(status, labels)}</span>
-);
+/** 狀態膠囊；deleted（只有開發團隊端會給）時改寫「已刪除・只留紀錄」。 */
+export const StatusBadge: FC<{ status: ReportStatus; labels: StatusLabels; deleted?: boolean }> = ({ status, labels, deleted = false }) =>
+    deleted ? (
+        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-status-badge="deleted">{DELETED_RECORD_LABEL}</span>
+    ) : (
+        <span class={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${BADGE_CLASSES[status]}`} data-status-badge={status}>{statusLabel(status, labels)}</span>
+    );
 
 /**
- * 清單列的狀態欄：只顯示狀態文字（狀態由留言自動切換、客戶按「完成」，網頁上沒有下拉）。
+ * 清單列的狀態欄：只顯示狀態文字（狀態由留言自動切換，或按操作欄的狀態切換鈕，網頁上沒有下拉）。
  * rows.ts 的 statusTextHtml 是同一份 HTML 的字串版。
  */
 export const StatusText: FC<{ status: ReportStatus; labels: StatusLabels }> = ({ status, labels }) => (
@@ -479,26 +485,27 @@ export const ChatPanel: FC<{ v: ViewContext; slug: string; viewer: 'owner' | 'cl
 );
 
 /**
- * 「完成」鈕：清單、看板卡片、詳情右側窄欄共用（清單用字串版 rows.ts 的 completeButtonHtml，測試逐位元比對）。
- * 客戶端：按了直接把單改成已完成（不跳確認）；開發團隊端：跳出確認留言視窗（RequestCompletionDialog），單維持等客戶。已完成的單不顯示。
+ * 狀態切換鈕：清單操作欄、看板卡片、詳情右側窄欄、留言串最下面共用（清單用字串版 rows.ts 的 statusSwitchHtml，測試逐位元比對）。
+ * 只有一顆：還沒完成顯示「完成」、已完成顯示「待處理」，按一下就切換；客戶與開發團隊都能按（規則見 shared/status-switch.ts）。
+ * 沒有 JS 時照一般表單送出；有 JS 時 client/completion.js 送出後重新載入，並重開原本的詳情視窗。
  */
-export const CompleteButton: FC<{ slug: string; publicId: string; status: ReportStatus; isOwner: boolean; clientLabel: string; backPath: string; compact?: boolean; cardAction?: boolean; approveForm?: boolean }> = ({ slug, publicId, status, isOwner, clientLabel, backPath, compact = false, cardAction = false, approveForm = false }) => {
-    if (status === 'completed') {
-        return null;
-    }
-    if (isOwner) {
-        return (
-            <button type="button" class={completeButtonClass(compact)} data-dialog-open={`request-completion-${publicId}`} data-request-completion={publicId} data-card-action={cardAction ? true : undefined} title={teamCompleteTitle(clientLabel, COMPLETION_APPROVE_LABEL)}>完成</button>
-        );
-    }
+export const StatusSwitch: FC<{ slug: string; publicId: string; status: ReportStatus; labels: StatusLabels; backPath: string; compact?: boolean; cardAction?: boolean }> = ({ slug, publicId, status, labels, backPath, compact = false, cardAction = false }) => {
+    const view = statusSwitchView(status, labels);
     return (
-        <form method="post" action={paths.reportStatus(slug, publicId)} data-completion-approve-form={approveForm ? true : undefined}>
+        <form method="post" action={paths.reportStatus(slug, publicId)} class="inline-flex" data-status-switch={publicId}>
             <input type="hidden" name="_back" value={backPath} />
-            <input type="hidden" name="status" value="completed" />
-            <button type="submit" class={completeButtonClass(compact)} data-complete-report data-card-action={cardAction ? true : undefined} title="確認沒問題，改成已完成">完成</button>
+            <input type="hidden" name="status" value={view.target} />
+            <button type="submit" class={statusSwitchClass(status, compact)} title={view.title} data-status-option={view.target} data-card-action={cardAction ? true : undefined}>{view.label}</button>
         </form>
     );
 };
+
+/**
+ * 開發團隊端標題右邊的「待審留言」標示（清單、看板共用；字串版是 rows.ts 的 draftBadgeHtml）：有還沒送出的回覆草稿。
+ * 客戶端不顯示（drafts 一律 0）。文字與說明在 shared/report-guides.ts。
+ */
+export const DraftBadge: FC<{ publicId: string; drafts: number; class?: string }> = ({ publicId, drafts, class: className }) =>
+    drafts > 0 ? <span class={cx(DRAFT_BADGE_CLASS, className)} data-draft-badge={publicId} title={draftBadgeTitle(drafts)}>{draftBadgeText(drafts)}</span> : null;
 
 const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
 

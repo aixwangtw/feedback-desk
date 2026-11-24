@@ -1,12 +1,14 @@
 import type { FC } from 'hono/jsx';
-import { STATUSES, statusDotClass, statusLabel, WAITING_STATUS, type ReportStatus, type StatusLabels } from '../../shared/status';
+import { STATUS_SWITCH_COMPLETE_LABEL } from '../../shared/status-switch';
+import { AUTO_MERGE_GUIDE, DRAFT_BADGE_LABEL } from '../../shared/report-guides';
+import { STATUSES, statusDotClass, statusLabel, TAB_LABELS, tabHint, type ReportStatus, type StatusLabels, type WaitingSide } from '../../shared/status';
 import type { Attachment, Project, Report } from '../lib/models';
 import type { Notifications } from '../lib/notifications';
 import type { PortalTab } from '../lib/reports';
 import { paths } from '../routes/paths';
 import { deleteReportText } from '../../shared/confirm';
 import { AttachmentMedia, ConfirmDialog, cx, ErrorList, Layout, Pagination, type ViewContext } from './components';
-import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastNotes, RequestCompletionDialog } from './report';
+import { CategoryAutosave, DetailActions, DetailSide, editCategoryOptions, PastNotes } from './report';
 import { UNREAD_FILTER_CLASS, UNREAD_SUMMARY_TONES } from './chat-classes';
 import { HONEYPOT_FIELD } from './pages';
 import { RichText } from './rich-text';
@@ -14,7 +16,8 @@ import { THREAD_HEADING, type RowThumb } from '../../shared/album-thumbs';
 import { boardCardHtml, listRowHtml, type RowContext } from './rows';
 import { buildPayload, payloadScript, PORTAL_ROWS_ELEMENT_ID, SERVER_ROW_LIMIT } from './rows-client';
 import { raw } from 'hono/html';
-import { MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
+import { isVideoMime, MESSAGE_ACCEPT, MESSAGE_HINT, MESSAGE_UPLOAD_LABEL } from '../../shared/attachment-rules';
+import { numberedTitle } from '../../shared/attachment-list';
 import { projectCategories } from '../../shared/categories';
 
 export interface PortalRow {
@@ -30,6 +33,8 @@ export interface PortalRow {
     thumbs: RowThumb[];
     /** 這張單所有附件的數量（縮圖之外用「+N」表示）。 */
     thumbTotal: number;
+    /** 還沒送出的待審留言數，只有開發團隊端有（標題旁「待審留言」標示）；客戶端一律 0。 */
+    drafts?: number;
 }
 
 /** 詳情視窗要的資料：清單列再加上舊的調整重點附件（清單本身不載入）。 */
@@ -65,7 +70,6 @@ export interface PortalProps {
     selectedCategory?: string;
     keyword: string;
     viewMode: 'list' | 'board';
-    deletedFilter: 'only' | 'hide' | null;
     /** Team side: list only reports with unread client messages. */
     unreadOnly: boolean;
     /** Team side: reports in the whole project with unread client messages (0 for the client). */
@@ -102,43 +106,35 @@ function query(base: Record<string, string | number | null | undefined>): string
 
 
 /**
- * 清單與看板頂部的頁籤（取代狀態篩選下拉），直接對應狀態、文字＝狀態名稱：「等工程師 N」「等{客戶} N」，
- * 最右邊兩個不顯眼的小連結「已完成 N」「全部 N」。
+ * 清單與看板頂部的三個頁籤「待處理 N」「待回覆 N」「已完成 N」（一樣大，名稱固定，滑鼠移上去顯示站台的狀態名稱），
+ * 最右邊一個不顯眼的小連結「全部 N」。頁籤直接對應狀態：待處理＝new、待回覆＝needs_input、已完成＝completed。
  */
 const PortalTabs: FC<{ statusLabels: StatusLabels; selectedTab: PortalTab | null; counts: Record<PortalTab, number>; url: (tab: PortalTab) => string }> = ({ statusLabels, selectedTab, counts, url }) => {
-    const main: Array<[PortalTab, string]> = [
-        ['developer', statusLabels[WAITING_STATUS.developer]],
-        ['client', statusLabels[WAITING_STATUS.client]],
-    ];
-    const minor: Array<[PortalTab, string]> = [
-        ['completed', statusLabels.completed],
-        ['all', '全部'],
-    ];
+    const tabs: WaitingSide[] = ['developer', 'client', 'completed'];
     return (
         <nav class="flex flex-wrap items-end gap-x-1 border-b border-slate-200 px-4 pt-2" aria-label="頁籤" data-portal-tabs>
-            {main.map(([tab, label]) => (
+            {tabs.map((tab) => (
                 <a
                     href={url(tab)}
                     class={cx('-mb-px inline-flex min-h-10 items-center gap-1.5 border-b-2 px-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', selectedTab === tab ? 'border-teal-700 text-teal-800' : 'border-transparent text-slate-600 hover:text-slate-950')}
+                    title={tabHint(tab, statusLabels)}
                     aria-current={selectedTab === tab ? 'page' : undefined}
                     data-portal-tab={tab}
                 >
-                    {label} <span class="rounded-full bg-slate-100 px-1.5 text-xs text-slate-700">{counts[tab]}</span>
+                    {TAB_LABELS[tab]} <span class="rounded-full bg-slate-100 px-1.5 text-xs text-slate-700">{counts[tab]}</span>
                 </a>
             ))}
             <span class="ml-auto inline-flex items-center gap-3 pb-2 text-xs">
-                {minor.map(([tab, label]) => (
-                    <a href={url(tab)} class={cx('rounded underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', selectedTab === tab ? 'font-semibold text-teal-800' : 'text-slate-500')} aria-current={selectedTab === tab ? 'page' : undefined} data-portal-tab={tab}>
-                        {`${label} ${counts[tab]}`}
-                    </a>
-                ))}
+                <a href={url('all')} class={cx('rounded underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600', selectedTab === 'all' ? 'font-semibold text-teal-800' : 'text-slate-500')} aria-current={selectedTab === 'all' ? 'page' : undefined} data-portal-tab="all">
+                    {`全部 ${counts.all}`}
+                </a>
             </span>
         </nav>
     );
 };
 
 export const PortalPage: FC<PortalProps> = (props) => {
-    const { v, project, isOwner, rows, sort, direction, selectedStatus, keyword, viewMode, deletedFilter, creator } = props;
+    const { v, project, isOwner, rows, sort, direction, selectedStatus, keyword, viewMode, creator } = props;
     const unreadOnly = isOwner && props.unreadOnly;
     const labels = v.cfg.labels;
     const statusLabels = v.cfg.statusLabels;
@@ -149,7 +145,6 @@ export const PortalPage: FC<PortalProps> = (props) => {
         status: selectedStatus,
         tab: props.selectedTab ?? null,
         category: props.selectedCategory ? props.selectedCategory : null,
-        deleted: isOwner ? deletedFilter : null,
         creator: isOwner ? creator : null,
         unread: unreadOnly ? 1 : null,
         // The default order leaves sort and direction out of the links.
@@ -175,7 +170,7 @@ export const PortalPage: FC<PortalProps> = (props) => {
     for (const row of rows) {
         pageStatusCounts[row.report.status] = (pageStatusCounts[row.report.status] ?? 0) + 1;
     }
-    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedTab ?? 'all') !== 'all' || (props.selectedCategory ?? '') !== '' || (isOwner && (deletedFilter !== null || creator !== '' || unreadOnly));
+    const filtered = viewMode === 'board' || keyword !== '' || selectedStatus !== null || (props.selectedTab ?? 'all') !== 'all' || (props.selectedCategory ?? '') !== '' || (isOwner && (creator !== '' || unreadOnly));
     const attachmentUrl = (report: Report, attachment: Attachment) => paths.attachment(slug, report.public_id, attachment.id);
     const categories = projectCategories(project);
     const showCategory = categories.length > 0;
@@ -196,12 +191,14 @@ export const PortalPage: FC<PortalProps> = (props) => {
                 <div>
                     <p class="text-sm font-semibold text-teal-700">{v.cfg.portalTitle}</p>
                     <h1 class="mt-1 text-3xl font-bold tracking-tight text-slate-950">問題清單</h1>
-                    <p class="mt-2 text-sm leading-6 text-slate-600">狀態會自己切換：{labels.client}留言就變「{statusLabels.new}」，{labels.owner}回覆就變「{statusLabels.needs_input}」；{labels.client}確認沒問題後在單的詳情按「完成」（或確認留言上的「通過」）。點一下列或卡片可開詳情。{viewMode === 'board' ? '各欄' : '點欄名即可排序；'}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600" data-status-auto-guide>問題分成「{TAB_LABELS.developer}」「{TAB_LABELS.client}」「{TAB_LABELS.completed}」三個頁籤。<strong class="font-semibold text-slate-800">狀態會自動切換</strong>：{labels.client}留言就變「{TAB_LABELS.developer}」，{labels.owner}回覆就變「{TAB_LABELS.client}」；已完成的單{labels.client}又留言，也會自動改回「{TAB_LABELS.developer}」。雙方也都能隨時在操作欄、詳情或留言區下面按一下「{STATUS_SWITCH_COMPLETE_LABEL}」（已完成的單是「{TAB_LABELS.developer}」）自己切換。{viewMode === 'board' ? '各欄' : '點欄名即可排序；'}預設與右下角留言對話相同：有新留言的最前，再來是有留言的單（依最新留言時間），沒有留言的依建立時間，新的在前。</p>
                     <ul class="mt-2 grid gap-x-6 sm:grid-cols-[auto_1fr] text-sm leading-6 text-slate-600" data-status-guide>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>{statusLabels.new}</span><span>{labels.client}開了單或又留言，等{labels.owner}處理、回覆。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{statusLabels.needs_input}</span><span>{labels.owner}已回覆或改好，請{labels.client}確認。</span></li>
-                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>{statusLabels.completed}</span><span>{labels.client}確認沒問題，該問題修復成功。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('new')}`} aria-hidden="true"></span>{TAB_LABELS.developer}（{statusLabels.new}）</span><span>{labels.client}開了單或又留言，等{labels.owner}處理、回覆。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('needs_input')}`} aria-hidden="true"></span>{TAB_LABELS.client}（{statusLabels.needs_input}）</span><span>{labels.owner}已回覆或改好並留言說明，等{labels.client}回覆或確認。</span></li>
+                        <li class="flex items-baseline gap-3 sm:contents"><span class="flex shrink-0 items-center gap-2 font-semibold text-slate-800"><span class={`size-2.5 rounded-full ${statusDotClass('completed')}`} aria-hidden="true"></span>{TAB_LABELS.completed}</span><span>問題已解決；之後{labels.client}再留言會自動改回「{TAB_LABELS.developer}」。</span></li>
                     </ul>
+                    <p class="mt-2 text-sm leading-6 text-slate-600" data-preview-guide>點任何一列（或編號、標題）開啟詳情：電腦版從右側滑出，手機版整頁顯示；說明、附件、相簿、留言與狀態切換鈕都在詳情裡。標題右邊的紅色數字是未讀留言數。{isOwner ? `標題旁的「${DRAFT_BADGE_LABEL}」表示有回覆還沒送出，${labels.client}還沒收到，所以單仍在「${TAB_LABELS.developer}」；點開這張單，在留言區下方的黃色「${DRAFT_BADGE_LABEL}」框可以看內容、編輯、送出或捨棄，按「送出」後會自動改成「${TAB_LABELS.client}」。右上角鈴鐺也會列出所有有待審留言的單。` : ''}</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600" data-merge-guide>{AUTO_MERGE_GUIDE}</p>
                 </div>
                 <button type="button" data-dialog-open="new-issues" class="inline-flex min-h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 px-3 py-3 sm:px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2">＋ 新增問題</button>
             </div>
@@ -274,13 +271,6 @@ export const PortalPage: FC<PortalProps> = (props) => {
                                     {props.creatorOptions.map(([value, name]) => (
                                         <option value={value} selected={creator === value}>{name}</option>
                                     ))}
-                                </select>
-                            </label>
-                            <label class="col-span-2 grid min-w-0 gap-1 text-xs font-semibold text-slate-600 md:flex md:items-center md:gap-2">{labels.client}已刪除
-                                <select name="deleted" data-auto-submit data-deleted-filter class={FILTER_SELECT}>
-                                    <option value="">一併顯示</option>
-                                    <option value="hide" selected={deletedFilter === 'hide'}>隱藏</option>
-                                    <option value="only" selected={deletedFilter === 'only'}>只看已刪除</option>
                                 </select>
                             </label>
                         </>
@@ -464,7 +454,6 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                     </div>
                 </div>
             </dialog>
-            {isOwner ? <RequestCompletionDialog v={v} slug={slug} report={report} /> : null}
 
             <dialog id={`edit-report-${report.public_id}`} class="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-950/60" aria-labelledby={`edit-report-title-${report.public_id}`} data-open-on-load={editErrors.length > 0 ? '' : undefined}>
                 <form method="post" action={paths.reportUpdate(slug, report.public_id)} class="grid max-h-[calc(100dvh-2rem)] min-w-0 gap-5 overflow-y-auto p-5 sm:p-7" data-upload-form>
@@ -499,11 +488,11 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
 
                     {row.attachments.length > 0 ? (
                         <fieldset>
-                            <legend class="mb-2 text-sm font-semibold text-slate-800">目前截圖 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
+                            <legend class="mb-2 text-sm font-semibold text-slate-800">目前圖片或影片 <span class="font-normal text-slate-500">（勾選要刪除的）</span></legend>
                             <div class="grid grid-cols-3 gap-3 sm:grid-cols-5">
-                                {row.attachments.map((attachment) => (
+                                {row.attachments.map((attachment, index) => (
                                     <label class="group relative block cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-slate-50 has-[:checked]:border-rose-400 has-[:checked]:opacity-50">
-                                        <AttachmentMedia src={attachmentUrl(report, attachment)} name={attachment.original_name} mime={attachment.mime_type} class="aspect-video w-full object-cover" />
+                                        <AttachmentMedia src={attachmentUrl(report, attachment)} name={numberedTitle(index + 1, isVideoMime(attachment.mime_type))} mime={attachment.mime_type} class="aspect-video w-full object-cover" />
                                         <span class="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
                                             <input type="checkbox" name="remove_attachments[]" value={String(attachment.id)} checked={editing ? editing.remove.includes(String(attachment.id)) : false} class="rounded border-slate-300 text-rose-600 focus:ring-rose-600" />
                                             刪除
@@ -515,8 +504,8 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
                     ) : null}
 
                     <div>
-                        <label for={`edit-screenshots-${report.public_id}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增截圖<input id={`edit-screenshots-${report.public_id}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`edit-preview-${report.public_id}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name="upload_ids[]" data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
-                        <span class="ml-2 text-xs text-slate-500">截圖總數最多 5 張，每張 10 MB</span>
+                        <label for={`edit-screenshots-${report.public_id}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 新增圖片或影片<input id={`edit-screenshots-${report.public_id}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target={`edit-preview-${report.public_id}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name="upload_ids[]" data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} data-upload-allow-video /></label>
+                        <span class="ml-2 text-xs text-slate-500">{MESSAGE_HINT}</span>
                         <div id={`edit-preview-${report.public_id}`} class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
                     </div>
 
@@ -536,24 +525,14 @@ export const ReportDialogs: FC<RowProps & { categories: string[]; form?: PortalF
     );
 };
 
-const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: string; description?: string; category?: string; categories: string[] }> = ({ slug, index, number, title, description, category, categories }) => (
+/** 新增問題表單的一題：不用選分類（2026-11-21 使用者：「回報單選擇分類不用必選 也不用再新增問題手動填」），之後在清單上替每張單選。 */
+const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: string; description?: string }> = ({ slug, index, number, title, description }) => (
     <fieldset class="min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" data-issue-row>
         <div class="flex items-center justify-between gap-3">
             <legend class="text-sm font-bold text-slate-900">問題 <span data-issue-number>{number}</span></legend>
             <button type="button" class="text-xs font-semibold text-rose-700 hover:text-rose-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" data-remove-issue>移除</button>
         </div>
         <div class="mt-4 grid gap-4">
-            {categories.length > 0 ? (
-                <div>
-                    <label for={`issue-category-${index}`} class="mb-2 block text-sm font-semibold text-slate-800">分類 <span class="text-rose-600">*</span></label>
-                    <select id={`issue-category-${index}`} name={`issues[${index}][category]`} required class={INPUT} data-issue-category>
-                        <option value="">請選擇分類</option>
-                        {categories.map((option) => (
-                            <option value={option} selected={option === category}>{option}</option>
-                        ))}
-                    </select>
-                </div>
-            ) : null}
             <div>
                 <label for={`issue-title-${index}`} class="mb-2 block text-sm font-semibold text-slate-800">問題標題 <span class="text-rose-600">*</span></label>
                 <input id={`issue-title-${index}`} name={`issues[${index}][title]`} value={title ?? ''} required maxlength={160} placeholder="例如：答案儲存後重新整理會消失" class={INPUT} />
@@ -563,8 +542,8 @@ const IssueFieldset: FC<{ slug: string; index: string; number: string; title?: s
                 <textarea id={`issue-description-${index}`} name={`issues[${index}][description]`} required maxlength={10000} rows={4} placeholder="請說明操作步驟、預期結果與實際結果。" class={`${INPUT} resize-y leading-6`}>{description ?? ''}</textarea>
             </div>
             <div>
-                <label for={`issue-screenshots-${index}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳截圖<input id={`issue-screenshots-${index}`} type="file" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" data-image-input data-preview-target={`issue-preview-${index}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name={`issues[${index}][upload_ids][]`} data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} /></label>
-                <span class="ml-2 text-xs text-slate-500">最多 5 張，每張 10 MB</span>
+                <label for={`issue-screenshots-${index}`} class="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-teal-600">＋ 上傳圖片或影片<input id={`issue-screenshots-${index}`} type="file" accept={MESSAGE_ACCEPT} multiple class="sr-only" data-image-input data-preview-target={`issue-preview-${index}`} data-upload-url={`${paths.uploads(slug)}?purpose=report`} data-upload-name={`issues[${index}][upload_ids][]`} data-upload-max="5" data-upload-max-bytes={String(10 * 1024 * 1024)} data-upload-allow-video /></label>
+                <span class="ml-2 text-xs text-slate-500">{MESSAGE_HINT}</span>
                 <div id={`issue-preview-${index}`} class="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-5" aria-live="polite"></div>
             </div>
         </div>
@@ -601,7 +580,7 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
                     ) : null}
                     <div class="grid min-w-0 gap-5" data-issue-list>
                         {issueRows.map((issue, index) => (
-                            <IssueFieldset slug={slug} index={String(index)} number={String(index + 1)} title={issue.title} description={issue.description} category={issue.category} categories={categories} />
+                            <IssueFieldset slug={slug} index={String(index)} number={String(index + 1)} title={issue.title} description={issue.description} />
                         ))}
                     </div>
 
@@ -615,7 +594,7 @@ const NewIssuesDialog: FC<{ slug: string; form?: PortalFormState; issueRows: Arr
                 </form>
 
                 <template data-issue-template>
-                    <IssueFieldset slug={slug} index="__INDEX__" number="" categories={categories} />
+                    <IssueFieldset slug={slug} index="__INDEX__" number="" />
                 </template>
             </div>
         </dialog>

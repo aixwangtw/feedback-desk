@@ -17,7 +17,7 @@ export interface AttachmentOptions {
     allowVideo: boolean;
 }
 
-const EXTENSION_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4' };
+const EXTENSION_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' };
 
 /** MIME 優先；瀏覽器沒給（部分系統拖進來的檔案）才看副檔名。 */
 export function fileMimeType(file: AttachmentFile): string {
@@ -37,6 +37,18 @@ export function attachmentKind(file: AttachmentFile, options: AttachmentOptions)
 }
 
 /** 附件的一行短標題：檔名去掉副檔名（「圖一-缺圖的位置.png」顯示成「圖一-缺圖的位置」）；顯示端用 CSS 截斷、title 放完整檔名。 */
+/**
+ * 畫面上附件一律用順序編號「圖1、圖2」（影片「影片1」），不顯示原始檔名（2026-11-21 使用者：「附圖 … 不要這麼長的名稱 …
+ * 統一轉換為1 2 3 留言也是」）。編號在單的原始附件、每則留言、待審留言裡各自從 1 起算；原始檔名仍存在資料庫，下載時照舊。
+ */
+export function numberedTitle(number: number, isVideo = false): string {
+    return `${isVideo ? '影片' : '圖'}${number}`;
+}
+
+/** 相簿上方說明命名規則的一行字。 */
+export const ALBUM_NUMBERING_NOTE = '附件依上傳順序稱「圖1、圖2」（影片稱「影片1」），原始附件與每則留言各自從 1 起算；下載時仍是原始檔名。';
+
+/** 附件顯示用的短標題（沒有編號時才用，例如上傳前的預覽）：檔名去掉副檔名。 */
 export function attachmentTitle(name: string): string {
     const title = name.replace(/\.[A-Za-z0-9]{1,5}$/u, '');
     return title === '' ? name : title;

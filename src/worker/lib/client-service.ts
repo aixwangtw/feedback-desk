@@ -1,3 +1,4 @@
+import { autoMergeDuplicate } from './merge';
 import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * What a client account can do through the API (CLI) and MCP: the same as on the web pages, for
@@ -173,14 +174,24 @@ export async function createOwnReport(ctx: ClientContext, slug: string, input: {
     if (uploads === null) {
         throw new ServiceError('invalid_upload', '圖片上傳已失效或不屬於這個專案，請重新上傳。', 422);
     }
-    const { report } = await createReport(
+    const { report: created } = await createReport(
         ctx.env,
         project,
         { title, description, uploads, author: clientAuthor(ctx) },
         { creator_type: 'client', creator_developer_id: null, creator_client_account_id: ctx.account.id },
         ctx.now,
     );
-    return { public_id: report.public_id, number: await sequenceNumber(ctx.env.DB, report, true), title: report.title, url: `${ctx.origin}${paths.report(project.slug, report.public_id)}`, images_added: uploads.length };
+    // 同一個人剛送過一樣的單時會自動合併，回傳保留下來的那張（lib/merge.ts）。
+    const kept = await autoMergeDuplicate(ctx.env, created, clientAuthor(ctx), ctx.now);
+    const report = kept ?? created;
+    return {
+        public_id: report.public_id,
+        number: await sequenceNumber(ctx.env.DB, report, true),
+        title: report.title,
+        url: `${ctx.origin}${paths.report(project.slug, report.public_id)}`,
+        images_added: uploads.length,
+        merged_duplicate: kept !== null,
+    };
 }
 
 export async function postOwnMessage(ctx: ClientContext, slug: string, identifier: string, input: { body: string; upload_ids?: string[] }) {

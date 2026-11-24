@@ -237,11 +237,11 @@ describe('請客戶確認完成 與「通過」', () => {
             expect(html).not.toContain('data-completion-approve');
             expect(html).toContain('第二次確認');
         }
-        // The team's own 完成 button only opens the confirmation dialog; there is no status form for the team.
+        // Both sides have the same status switch in the side column (2026-11-19, Laravel 594e6c7); the web confirmation dialog is gone.
         const teamSide = (await thread(owner, seeded, report)).side_html;
-        expect(teamSide).toContain(`data-dialog-open="request-completion-${report.public_id}"`);
-        expect(teamSide).not.toContain('data-complete-report');
-        expect((await thread(client, seeded, report)).side_html).toContain('data-complete-report');
+        expect(teamSide).not.toContain('request-completion-');
+        expect(teamSide).toMatch(/data-status-switch="[^"]+">.*value="completed"\/><button[^>]*>完成</);
+        expect((await thread(client, seeded, report)).side_html).toMatch(/data-status-switch="[^"]+">.*value="completed"\/><button[^>]*>完成</);
 
         // Pressing 通過 goes through the client-only status endpoint and completes the report.
         const approved = await client.post(url(seeded, report, '/status'), { status: 'completed' }, JSON_HEADERS);
@@ -249,7 +249,7 @@ describe('請客戶確認完成 與「通過」', () => {
         expect(await statusOf(report)).toBe('completed');
         const after = await thread(client, seeded, report);
         expect(after.html).not.toContain('data-completion-approve');
-        expect(after.side_html).not.toContain('data-complete-report');
+        expect(after.side_html).toMatch(/value="new"\/><button[^>]*>待處理</);
         expect(after.status_value).toBe('completed');
     });
 
@@ -263,14 +263,10 @@ describe('請客戶確認完成 與「通過」', () => {
     });
 });
 
-describe('團隊不能直接結案', () => {
-    it('refuses completed from the team on the web, the API, the patrol API and MCP, while request-completion is open to all of them', async () => {
+describe('團隊不能用命令列、API、MCP 結案', () => {
+    it('refuses completed from the team on the API, the patrol API and MCP, while request-completion is open to all of them; the web switch is for people on both sides', async () => {
         const { seeded, report, owner } = await setup();
         const slug = seeded.project.slug;
-        // Web: the team gets 403 for every status value (JSON or form).
-        for (const accept of [{ accept: 'application/json' }, {} as Record<string, string>]) {
-            expect((await owner.post(url(seeded, report, '/status'), { status: 'completed' }, accept)).status).toBe(403);
-        }
         const { developer } = await seedDeveloper();
         const token = await seedToken(developer);
         // API (CLI): completed_by_client_only, with the new pointer to request-completion.
@@ -310,6 +306,14 @@ describe('團隊不能直接結案', () => {
         const done = await api('POST', `/projects/${slug}/reports/${report.public_id}/request-completion`, token, {});
         expect(done.status).toBe(422);
         expect(await done.json()).toMatchObject({ error: 'already_completed' });
+
+        // Web: the team (a person pressing the status switch) can reopen and complete (2026-11-19, Laravel a9b458f／594e6c7).
+        expect((await owner.post(url(seeded, report, '/status'), { status: 'new' }, { accept: 'application/json' })).status).toBe(200);
+        expect(await statusOf(report)).toBe('new');
+        expect((await owner.post(url(seeded, report, '/status'), { status: 'completed' })).status).toBe(302);
+        expect(await statusOf(report)).toBe('completed');
+        const kinds = await env.DB.prepare("SELECT kind FROM report_events WHERE report_id = ? AND detail IN ('completed>new', 'new>completed') ORDER BY id").bind(report.id).all<{ kind: string }>();
+        expect(kinds.results.map((row) => row.kind)).toEqual(['status', 'status']);
     });
 });
 
@@ -370,7 +374,7 @@ describe('詳情視窗右側窄欄', () => {
         expect(dialogs.indexOf('data-detail-side-box')).toBeLessThan(dialogs.indexOf('data-report-description'));
         expect(dialogs).toContain('grid-cols-[minmax(0,1fr)]');
         expect(dialogs).toContain('overflow-x-hidden');
-        expect(dialogs).toContain(`id="request-completion-${report.public_id}"`);
+        expect(dialogs).not.toContain(`id="request-completion-${report.public_id}"`);
         expect(await (await seedClientDialogs(client, seeded, report))).not.toContain('request-completion-');
     });
 });

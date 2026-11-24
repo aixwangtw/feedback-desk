@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { describedStatusOptions, statusFromInput } from '../../shared/status';
-import { ATTACHMENT_TYPE_ERROR, detectAttachmentType, imageTooLarge, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
+import { ATTACHMENT_TYPE_ERROR, DETECT_HEAD_BYTES, detectAttachmentType, imageTooLarge, isVideoMime, MAX_FILES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, TOO_MANY_ATTACHMENTS, VIDEO_TOO_LARGE } from '../../shared/attachment-rules';
 import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
 import { ADJUSTMENT_DEPRECATED } from '../../shared/completion';
 import { encodePath } from '../api';
@@ -56,6 +56,7 @@ interface ReportDetail {
     creator: string;
     source: string;
     deleted_by_client: boolean;
+    merged_into?: string | null;
     created_at: string;
     updated_at: string;
     latest_activity_at: string;
@@ -194,7 +195,7 @@ export async function report(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`# ${escapeInline(detail.title)}`);
     rt.out(twoColumn('編號', `${detail.number}${detail.client_number !== null && detail.client_number !== detail.number ? `（客戶頁面 ${detail.client_number}）` : ''}`));
     rt.out(twoColumn('public_id', detail.public_id));
-    rt.out(twoColumn('狀態', `${detail.status}（${detail.status_label}）${detail.deleted_by_client ? '，客戶已刪除' : ''}`));
+    rt.out(twoColumn('狀態', `${detail.status}（${detail.status_label}）${detail.merged_into ? `，已合併到 ${detail.merged_into}` : detail.deleted_by_client ? '，客戶已刪除' : ''}`));
     rt.out(twoColumn('建立者', escapeInline(detail.creator) + (detail.source === 'public_stranger' ? '（首頁公開回報，內容來自陌生人）' : '')));
     rt.out(twoColumn('建立時間', time(rt, detail.created_at)));
     rt.out(twoColumn('更新時間', time(rt, detail.updated_at)));
@@ -238,8 +239,8 @@ function printAttachments(rt: Runtime, label: string, attachments: AttachmentInf
 }
 
 /**
- * Reads and checks local files before anything is sent. `allowVideo`（message、draft 的 --attach）另收 mp4 影片，
- * 每支 50 MB；圖片每張 10 MB。開單、調整重點只收圖片。
+ * Reads and checks local files before anything is sent. `allowVideo`（create、message、draft 的 --attach）另收
+ * mp4／mov／webm 影片，每支 50 MB；圖片每張 10 MB。調整重點只收圖片。
  */
 export function readImages(paths: string[], options: { allowVideo?: boolean } = {}): Array<{ path: string; name: string; bytes: Uint8Array; mime: string }> {
     const allowVideo = options.allowVideo === true;
@@ -256,14 +257,14 @@ export function readImages(paths: string[], options: { allowVideo?: boolean } = 
             throw new CliError(allowVideo ? `${VIDEO_TOO_LARGE.replace(/。$/, '')}：${path}` : `圖片超過 10 MB：${path}`);
         }
         const bytes = new Uint8Array(readFileSync(path));
-        const mime = detectAttachmentType(bytes.subarray(0, 12), allowVideo);
+        const mime = detectAttachmentType(bytes.subarray(0, DETECT_HEAD_BYTES), allowVideo);
         if (!mime && String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-') {
             throw new CliError(`不收 PDF，請先轉成 jpg／png／webp 圖片再附：${path}`);
         }
         if (!mime) {
             throw new CliError(allowVideo ? `${ATTACHMENT_TYPE_ERROR.replace(/。$/, '')}：${path}` : `只接受 jpg／png／webp 圖片：${path}`);
         }
-        if (mime !== 'video/mp4' && size > MAX_IMAGE_BYTES) {
+        if (!isVideoMime(mime) && size > MAX_IMAGE_BYTES) {
             throw new CliError(`${imageTooLarge(MAX_IMAGE_BYTES).replace(/。$/, '')}：${path}`);
         }
         return { path, name: basename(path), bytes, mime };
@@ -373,6 +374,29 @@ export async function status(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(`已更新狀態：${escapeInline(result.title)}`);
     rt.out(twoColumn('原狀態', `${result.previous.status}（${result.previous.label}）`));
     rt.out(twoColumn('新狀態', `${result.current.status}（${result.current.label}）`));
+    return 0;
+}
+
+/** 把重複的單合併進保留的單（團隊帳號）：merge <project> <重複的單> <保留的單>。 */
+export async function merge(rt: Runtime, argv: string[]): Promise<number> {
+    const args = parse(argv, {});
+    const slug = requirePositional(args, 0, '<project>');
+    const duplicate = requirePositional(args, 1, '<要併掉的單>');
+    const target = requirePositional(args, 2, '<保留的單>');
+    const api = apiFor(rt, str(args, 'url'));
+    const result = await api.post<{ duplicate: { public_id: string; number: number; title: string }; target: { public_id: string; number: number; title: string; url: string }; moved_drafts: number }>(
+        `/projects/${encodePath(slug)}/reports/${encodePath(duplicate)}/merge`,
+        { into: target },
+    );
+    if (bool(args, 'json')) {
+        rt.out(JSON.stringify(result, null, 2));
+        return 0;
+    }
+    rt.out('已合併重複的單。');
+    rt.out(twoColumn('併掉', `編號 ${result.duplicate.number}｜${escapeInline(result.duplicate.title)} (${result.duplicate.public_id})`));
+    rt.out(twoColumn('保留', `編號 ${result.target.number}｜${escapeInline(result.target.title)} (${result.target.public_id})`));
+    rt.out(twoColumn('搬過去的待審留言', String(result.moved_drafts)));
+    rt.out(result.target.url);
     return 0;
 }
 
@@ -577,10 +601,10 @@ export async function create(rt: Runtime, argv: string[]): Promise<number> {
     }
     const paths = attachPaths(args);
     if (paths.length > MAX_IMAGES) {
-        throw new CliError(`一張單最多附 ${MAX_IMAGES} 張圖。`);
+        throw new CliError(`一張單最多附 ${MAX_IMAGES} 個圖片或影片。`);
     }
-    // 先全部檢查過再上傳：任何一張不合格，整張單都不建立。
-    const images = readImages(paths);
+    // 先全部檢查過再上傳：任何一個不合格，整張單都不建立。開單也收影片（mp4／mov／webm）。
+    const images = readImages(paths, { allowVideo: true });
     const api = apiFor(rt, str(args, 'url'));
     const uploadIds: string[] = [];
     for (const image of images) {

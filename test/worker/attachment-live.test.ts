@@ -37,11 +37,13 @@ const thumbsUrl = (seeded: SeededProject, ids: string[]) => `/p/${slugOf(seeded)
 describe('列表與看板的附件縮圖含留言附件', () => {
     it('lists message attachments newest first, at most 3 thumbnails plus a +N counter that opens the album', async () => {
         const { seeded, report, owner } = await setup();
-        await seedDatedAttachment(report, null, 'original.png', '2026-11-07T01:00:00.000Z');
+        const original = await seedDatedAttachment(report, null, 'original.png', '2026-11-07T01:00:00.000Z');
         const message = await seedMessage(report);
-        await seedDatedAttachment(report, message, 'm-old.png', '2026-11-07T02:00:00.000Z');
-        await seedDatedAttachment(report, message, 'm-mid.png', '2026-11-07T03:00:00.000Z');
-        await seedDatedAttachment(report, message, 'm-new.png', '2026-11-07T04:00:00.000Z');
+        const oldest = await seedDatedAttachment(report, message, 'm-old.png', '2026-11-07T02:00:00.000Z');
+        const middle = await seedDatedAttachment(report, message, 'm-mid.png', '2026-11-07T03:00:00.000Z');
+        const newest = await seedDatedAttachment(report, message, 'm-new.png', '2026-11-07T04:00:00.000Z');
+        // 畫面上附件名稱一律是「圖N」，用附件網址辨認順序。
+        const at = (block: string, id: number) => block.indexOf(`/attachments/${id}"`);
 
         for (const view of ['', '&view=board']) {
             const html = await (await owner.get(`/p/${slugOf(seeded)}?tab=all${view}`)).text();
@@ -49,9 +51,11 @@ describe('列表與看板的附件縮圖含留言附件', () => {
             const block = cell.slice(0, cell.indexOf('</div>'));
             expect(block).toContain('data-attachment-count="4"');
             expect(block.match(/<img /g)).toHaveLength(3);
-            expect(block.indexOf('m-new.png')).toBeLessThan(block.indexOf('m-mid.png'));
-            expect(block.indexOf('m-mid.png')).toBeLessThan(block.indexOf('m-old.png'));
-            expect(block).not.toContain('alt="original.png"');
+            expect(at(block, newest)).toBeGreaterThan(-1);
+            expect(at(block, newest)).toBeLessThan(at(block, middle));
+            expect(at(block, middle)).toBeLessThan(at(block, oldest));
+            expect(at(block, original)).toBe(-1);
+            expect(html).not.toContain('m-new.png');
             expect(block).toContain('>+1</button>');
             expect(block).toContain('data-lightbox-gallery=');
             expect(block).toContain('data-lightbox-index="3"');
@@ -66,7 +70,7 @@ describe('列表與看板的附件縮圖含留言附件', () => {
         const kept = await seedMessage(report);
         await seedDatedAttachment(report, kept, 'kept.png', '2026-11-07T01:00:00.000Z');
         const withdrawn = await seedMessage(report);
-        await seedDatedAttachment(report, withdrawn, 'withdrawn.png', '2026-11-07T02:00:00.000Z');
+        const withdrawnFile = await seedDatedAttachment(report, withdrawn, 'withdrawn.png', '2026-11-07T02:00:00.000Z');
         await env.DB.prepare("UPDATE messages SET deleted_at = '2026-11-07T03:00:00.000Z' WHERE id = ?").bind(withdrawn).run();
         const key = `p/${report.project_id}/${crypto.randomUUID()}`;
         await env.FILES.put(key, PNG_BYTES, { httpMetadata: { contentType: 'image/png' } });
@@ -77,7 +81,7 @@ describe('列表與看板的附件縮圖含留言附件', () => {
 
         const list = await (await owner.get(`/p/${slugOf(seeded)}?tab=all`)).text();
         expect(list).toContain('data-attachment-count="1"');
-        expect(list).not.toContain('withdrawn.png');
+        expect(list).not.toContain(`/attachments/${withdrawnFile}"`);
         expect(list).not.toContain('secret-draft.png');
 
         const polled = (await (await owner.get(thumbsUrl(seeded, [report.public_id]))).json()) as { reports: Record<string, { count: number; row_html: string }> };
@@ -87,7 +91,8 @@ describe('列表與看板的附件縮圖含留言附件', () => {
         // Badge number in the panel: the team's album includes the draft (2), the client's does not (1).
         const teamThread = (await (await owner.get(`/p/${slugOf(seeded)}/conversations/${report.public_id}`, JSON_HEADERS)).json()) as { album_count: number; album_html: string };
         expect(teamThread.album_count).toBe(2);
-        expect(teamThread.album_html).toContain('secret-draft.png');
+        expect(teamThread.album_html).toContain('data-album-kind="draft"');
+        expect(teamThread.album_html).not.toContain('secret-draft.png');
         const clientThread = (await (await client.get(`/p/${slugOf(seeded)}/conversations/${report.public_id}`, JSON_HEADERS)).json()) as { album_count: number; album_html: string };
         expect(clientThread.album_count).toBe(1);
         expect(JSON.stringify(clientThread)).not.toContain('secret-draft');
@@ -102,10 +107,10 @@ describe('列表與看板的附件縮圖含留言附件', () => {
         expect(before.reports[report.public_id].count).toBe(0);
 
         const message = await seedMessage(report);
-        await seedDatedAttachment(report, message, 'fresh.png', '2026-11-07T05:00:00.000Z');
+        const fresh = await seedDatedAttachment(report, message, 'fresh.png', '2026-11-07T05:00:00.000Z');
         const after = (await (await owner.get(url)).json()) as { reports: Record<string, { count: number; row_html: string; card_html: string }> };
         expect(after.reports[report.public_id].count).toBe(1);
-        expect(after.reports[report.public_id].row_html).toContain('fresh.png');
+        expect(after.reports[report.public_id].row_html).toContain(`/attachments/${fresh}"`);
         expect(after.reports[report.public_id].card_html).toContain('data-card-action');
         expect(after.reports[report.public_id].row_html).not.toContain('data-card-action');
 
@@ -142,19 +147,19 @@ describe('面板相簿鈕與前端輔助函式', () => {
     });
 });
 
-describe('團隊也有「完成」鈕與新的詳細資料排版', () => {
-    it('shows the complete button in list and board for the team, hidden once completed', async () => {
+describe('團隊也有狀態切換鈕與新的詳細資料排版', () => {
+    it('shows one status switch in list and board for the team: 完成 until completed, then 待處理', async () => {
         const { seeded, report, owner } = await setup();
         for (const view of ['', '&view=board']) {
             const html = await (await owner.get(`/p/${slugOf(seeded)}?tab=all${view}`)).text();
-            expect(html).toContain(`data-request-completion="${report.public_id}"`);
-            expect(html).toContain(`data-dialog-open="request-completion-${report.public_id}"`);
+            expect(html).toMatch(new RegExp(`data-status-switch="${report.public_id}"><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="completed"/><button[^>]*>完成</button>`));
+            expect(html).not.toContain('data-request-completion');
         }
         const dialogs = await (await owner.get(`/p/${slugOf(seeded)}/reports/${report.public_id}/dialogs`)).text();
-        expect(dialogs).toContain(`id="request-completion-${report.public_id}"`);
+        expect(dialogs).not.toContain(`id="request-completion-${report.public_id}"`);
         await env.DB.prepare("UPDATE reports SET status = 'completed' WHERE id = ?").bind(report.id).run();
         const done = await (await owner.get(`/p/${slugOf(seeded)}?tab=all`)).text();
-        expect(done).not.toContain(`data-request-completion="${report.public_id}"`);
+        expect(done).toMatch(new RegExp(`data-status-switch="${report.public_id}"><input type="hidden" name="_back"[^>]*/><input type="hidden" name="status" value="new"/><button[^>]*>待處理</button>`));
     });
 
     it('lays out the side column as label|value rows with an overflow menu and no wrapped long hint', async () => {
@@ -164,7 +169,8 @@ describe('團隊也有「完成」鈕與新的詳細資料排版', () => {
         for (const label of ['狀態', '建立者', '建立時間', '最後更新']) {
             expect(data.side_html).toContain(`>${label}</dt>`);
         }
-        expect(data.side_html).toContain('data-request-completion');
+        expect(data.side_html).toContain(`data-status-switch="${report.public_id}"`);
+        expect(data.side_html).not.toContain('data-request-completion');
         expect(data.side_html).not.toContain('不會直接結案。</p>');
         const dialogs = await (await owner.get(`/p/${slugOf(seeded)}/reports/${report.public_id}/dialogs`)).text();
         const menu = dialogs.slice(dialogs.indexOf('data-action-menu'));
@@ -193,7 +199,8 @@ describe('附件燈箱（點縮圖只看這張單的附件）', () => {
         const html = data.reports[report.public_id].row_html;
         const raw = /data-lightbox-gallery="([^"]*)"/.exec(html)?.[1] ?? '';
         const gallery = JSON.parse(raw.replaceAll('&quot;', '"').replaceAll('&amp;', '&')) as Array<{ url: string; name: string; video: boolean; source: string; at: string }>;
-        expect(gallery.map((item) => item.name)).toEqual(['d.png', 'c.png', 'b.png', 'a.png', 'original.png']);
+        // 名稱一律是編號：留言的四張是圖1～圖4（最新的排最前），原始附件自己從圖1算。
+        expect(gallery.map((item) => item.name)).toEqual(['圖4', '圖3', '圖2', '圖1', '圖1']);
         expect(gallery[0].source).toContain('的留言');
         expect(gallery[4].source).toBe('原始附件');
         expect(gallery[0].at).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/);

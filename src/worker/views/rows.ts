@@ -6,13 +6,13 @@
  * reference components in rows-reference.tsx (a test compares the two).
  *
  * Jira 式：標題右邊是未讀小圓點數字（取代留言按鈕與「N 則未讀」標籤），標題旁沒有標籤、每列沒有留言按鈕、沒有調整重點欄；
- * 其餘欄位照改版前：編號、標題、狀態、分類、附件、建立者、建立日期、最後更新、操作（編輯、刪除；客戶端另有完成）。
+ * 其餘欄位照改版前：編號、標題、狀態、分類、附件、建立者、建立日期、最後更新、操作（編輯、狀態切換鈕「完成／待處理」、刪除）。
  * 整列、整張卡片都能點開詳情（client/row-link.js）；編號與標題是藍色連結。
  */
 import { LIST_THUMB_LIMIT, lightboxGalleryJson, type RowThumb } from '../../shared/album-thumbs';
 import { isVideoMime } from '../../shared/attachment-rules';
-import { completeButtonClass, teamCompleteTitle } from '../../shared/complete-button';
-import { COMPLETION_APPROVE_LABEL } from '../../shared/completion';
+import { statusSwitchClass, statusSwitchView } from '../../shared/status-switch';
+import { DRAFT_BADGE_CLASS, draftBadgeText, draftBadgeTitle } from '../../shared/report-guides';
 import { statusDotClass, statusLabel, type ReportStatus, type StatusLabels } from '../../shared/status';
 import { badgeText, unreadDotLabel } from '../../shared/conversation';
 import { formatAbsolute, formatRelative, formatShort } from '../../shared/time';
@@ -75,18 +75,20 @@ export function attachmentMediaHtml(src: string, name: string, mime: string | nu
     return `<span class="relative block overflow-hidden bg-slate-900 ${className}" data-attachment-video="true"><video muted="" playsinline="" preload="metadata" src="${esc(`${src}#t=0.1`)}" class="pointer-events-none size-full object-cover" aria-hidden="true" tabindex="-1"></video><span class="pointer-events-none absolute inset-0 grid place-items-center"><span class="grid size-7 place-items-center rounded-full bg-black/60 text-white ring-2 ring-white/80"><svg class="ml-0.5 size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></span></span><span class="sr-only">影片：${esc(name)}</span></span>`;
 }
 
-/** CompleteButton（components.tsx）的字串版：清單、看板卡片用，已完成的單不顯示。 */
-export function completeButtonHtml(input: { slug: string; publicId: string; status: ReportStatus; isOwner: boolean; clientLabel: string; backPath: string; compact?: boolean; cardAction?: boolean; approveForm?: boolean }): string {
-    const { slug, publicId, status, isOwner, clientLabel, backPath, compact = false, cardAction = false, approveForm = false } = input;
-    if (status === 'completed') {
+/** StatusSwitch（components.tsx）的字串版：清單操作欄、看板卡片用。 */
+export function statusSwitchHtml(input: { slug: string; publicId: string; status: ReportStatus; labels: StatusLabels; backPath: string; compact?: boolean; cardAction?: boolean }): string {
+    const { slug, publicId, status, labels, backPath, compact = false, cardAction = false } = input;
+    const view = statusSwitchView(status, labels);
+    const card = cardAction ? ' data-card-action="true"' : '';
+    return `<form method="post" action="${esc(paths.reportStatus(slug, publicId))}" class="inline-flex" data-status-switch="${esc(publicId)}"><input type="hidden" name="_back" value="${esc(backPath)}"/><input type="hidden" name="status" value="${view.target}"/><button type="submit" class="${statusSwitchClass(status, compact)}" title="${esc(view.title)}" data-status-option="${view.target}"${card}>${esc(view.label)}</button></form>`;
+}
+
+/** DraftBadge（components.tsx）的字串版：團隊端「待審留言」標示，沒有草稿時是空字串。 */
+export function draftBadgeHtml(publicId: string, drafts: number, extra = ''): string {
+    if (drafts <= 0) {
         return '';
     }
-    const id = esc(publicId);
-    const card = cardAction ? ' data-card-action="true"' : '';
-    if (isOwner) {
-        return `<button type="button" class="${completeButtonClass(compact)}" data-dialog-open="request-completion-${id}" data-request-completion="${id}"${card} title="${esc(teamCompleteTitle(clientLabel, COMPLETION_APPROVE_LABEL))}">完成</button>`;
-    }
-    return `<form method="post" action="${esc(paths.reportStatus(slug, publicId))}"${approveForm ? ' data-completion-approve-form="true"' : ''}><input type="hidden" name="_back" value="${esc(backPath)}"/><input type="hidden" name="status" value="completed"/><button type="submit" class="${completeButtonClass(compact)}" data-complete-report="true"${card} title="確認沒問題，改成已完成">完成</button></form>`;
+    return `<span class="${DRAFT_BADGE_CLASS}${extra === '' ? '' : ` ${extra}`}" data-draft-badge="${esc(publicId)}" title="${esc(draftBadgeTitle(drafts))}">${esc(draftBadgeText(drafts))}</span>`;
 }
 
 const THUMB_TILE = 'block size-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600';
@@ -136,7 +138,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     const back = `<input type="hidden" name="_back" value="${esc(ctx.backPath)}"/>`;
     let html = `<tr class="block ${ROW_CLICK_CLASS} space-y-1 p-3 transition hover:bg-slate-50 sm:table-row sm:space-y-0 sm:p-0 sm:align-middle${deleted ? ' bg-slate-50 text-slate-500' : ''}" data-report-row="${id}" data-row-link="detail-report-${id}" data-dialogs-src="${esc(dialogsSrc(ctx, report.public_id))}">`;
     html += `<td class="block text-xs font-bold sm:table-cell sm:whitespace-nowrap sm:text-center sm:px-2 sm:py-3 sm:align-middle">${reportLinkHtml(ctx, report.public_id, `<span class="sm:hidden">編號 </span><span data-report-number="true">${row.number}</span>`)}</td>`;
-    html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle"><div class="flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left font-semibold')}${unreadDotHtml(report.public_id, row.unread)}</div>`;
+    html += `<td class="block sm:table-cell sm:px-3 sm:py-3 sm:align-middle"><div class="flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left font-semibold')}${unreadDotHtml(report.public_id, row.unread)}${draftBadgeHtml(report.public_id, row.drafts ?? 0)}</div>`;
     if (isOwner && deleted) {
         html += `<span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted="true"><span class="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 font-semibold text-slate-600 ring-1 ring-inset ring-slate-300">${esc(v.cfg.labels.client)}已刪除</span>${time(v, report.client_deleted_at as string)}</span>`;
     }
@@ -150,7 +152,7 @@ export function listRowHtml(ctx: RowContext, row: PortalRow): string {
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">建立：</span>${time(v, report.created_at, false, true)}</td>`;
     html += `<td class="block text-xs text-slate-600 sm:table-cell sm:text-center sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle"><span class="font-semibold text-slate-500 sm:hidden">最後更新：</span>${time(v, report.latest_activity_at, true)}</td>`;
     html += `<td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center"><div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions="true"><button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open="edit-report-${id}">編輯</button>`;
-    html += completeButtonHtml({ slug, publicId: report.public_id, status: report.status, isOwner, clientLabel: v.cfg.labels.client, backPath: ctx.backPath });
+    html += statusSwitchHtml({ slug, publicId: report.public_id, status: report.status, labels: v.cfg.statusLabels, backPath: ctx.backPath });
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="inline-flex min-h-8 items-center rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-800 transition hover:bg-teal-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-restore-report="true">還原</button></form>`;
     }
@@ -174,7 +176,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         html += categorySelectHtml(ctx, report, 'card-category', 'mt-1');
     }
     html += '</div>';
-    const complete = completeButtonHtml({ slug, publicId: report.public_id, status: report.status, isOwner, clientLabel: v.cfg.labels.client, backPath: ctx.backPath, compact: true, cardAction: true });
+    const complete = statusSwitchHtml({ slug, publicId: report.public_id, status: report.status, labels: v.cfg.statusLabels, backPath: ctx.backPath, compact: true, cardAction: true });
     html += `<div class="flex shrink-0 items-center gap-1" data-card-actions="true">${complete}<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="編輯「${title}」" title="編輯" data-card-action="true" data-dialog-open="edit-report-${id}"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>`;
     if (isOwner && deleted) {
         html += `<form method="post" action="${esc(paths.reportRestore(slug, report.public_id))}">${back}<button type="submit" class="grid size-8 cursor-pointer place-items-center rounded-lg text-teal-700 transition hover:bg-teal-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label="還原「${title}」" title="還原" data-card-action="true" data-restore-report="true"><svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button></form>`;
@@ -183,7 +185,7 @@ export function boardCardHtml(ctx: RowContext, row: PortalRow, order: number): s
         ? `<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「${title}」" title="刪除" data-card-action="true" data-dialog-open="delete-report-${id}" data-delete-report="true">${TRASH}</button>`
         : `<button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600" aria-label="刪除「${title}」" title="刪除" data-card-action="true" data-dialog-open="client-delete-report-${id}" data-client-delete-report="true">${TRASH}</button>`;
     html += '</div></div>';
-    html += `<div class="mt-1 flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left text-sm font-semibold leading-5')}${unreadDotHtml(report.public_id, row.unread)}</div>`;
+    html += `<div class="mt-1 flex items-start gap-2">${reportLinkHtml(ctx, report.public_id, esc(report.title), 'min-w-0 break-words text-left text-sm font-semibold leading-5')}${unreadDotHtml(report.public_id, row.unread)}${draftBadgeHtml(report.public_id, row.drafts ?? 0, 'mt-0.5')}</div>`;
     if (isOwner && deleted) {
         html += `<span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted="true">${esc(v.cfg.labels.client)}已刪除</span>`;
     }

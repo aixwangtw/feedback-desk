@@ -9,6 +9,9 @@ export type StatusLabels = Record<ReportStatus, string>;
 export const STATUS_LABEL_NEW = '等工程師';
 export const STATUS_LABEL_COMPLETED = '已完成';
 
+/** 客戶刪除的單在開發團隊端單頁顯示的狀態：只留紀錄（資料庫的狀態不動，還原後照原狀態顯示）。 */
+export const DELETED_RECORD_LABEL = '已刪除・只留紀錄';
+
 /**
  * 狀態顯示名稱的唯一來源。needs_input 跟著站台的客戶稱呼（FEEDBACK_LABEL_CLIENT）：客戶→等客戶、業主→等業主。
  * 網頁、對話面板、鈴鐺、CLI 輸出、MCP／API 的中文標籤都從這裡來（Worker 端用 config(env).statusLabels）。
@@ -25,6 +28,17 @@ export type WaitingSide = 'developer' | 'client' | 'completed';
 
 /** 頁籤／等誰對應的狀態：developer＝new（等工程師）、client＝needs_input（等客戶）、completed＝completed。 */
 export const WAITING_STATUS: Record<WaitingSide, ReportStatus> = { developer: 'new', client: 'needs_input', completed: 'completed' };
+
+/**
+ * 清單與看板三個頁籤的名稱，固定不跟著站台的狀態名稱（2026-11-19 使用者：「改回3個頁籤 待處理 待回覆 已完成
+ * 待處理就是等工程師 待回覆就是等老師或業主回覆 已完成不縮小」）。狀態切換鈕把已完成的單改回時也叫「待處理」。
+ */
+export const TAB_LABELS: Record<WaitingSide, string> = { developer: '待處理', client: '待回覆', completed: '已完成' };
+
+/** 頁籤滑鼠移上去的說明：待處理＝等工程師的單、待回覆＝等{客戶}的單（用站台的狀態名稱）。 */
+export function tabHint(side: WaitingSide, labels: StatusLabels): string {
+    return `${labels[WAITING_STATUS[side]]}的單`;
+}
 
 /** Tailwind background class of the colour dot shown beside each status. */
 const DOT_CLASSES: Record<ReportStatus, string> = {

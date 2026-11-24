@@ -47,8 +47,8 @@ describe('未讀標記與通知鈴鐺', () => {
             // 標題右邊的小圓點數字（純指示）；已回覆的單只有空容器。
             expect(html).toContain(`data-unread-slot="${waiting.public_id}"><span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white" data-unread-dot="" title="3 則未讀留言"`);
             expect(html).not.toContain('data-unread-flag');
-            // 不新增「待回覆」標示：狀態只有等工程師、等客戶、已完成。
-            expect(html).not.toContain('待回覆');
+            // 不新增「待回覆」狀態標示：狀態只有等工程師、等客戶、已完成（「待回覆」只是頁籤名稱）。
+            expect(html).not.toMatch(/data-status-text="[^"]*">待回覆/);
             expect(html).toContain(`data-unread-slot="${answered.public_id}"></span>`);
         }
     });
@@ -65,7 +65,7 @@ describe('未讀標記與通知鈴鐺', () => {
         const html = await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text();
         expect(html).toContain(`data-unread-slot="${mine.public_id}"><span class="grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[11px] font-bold leading-none text-white" data-unread-dot="" title="2 則未讀留言"`);
         expect(html).not.toContain('data-unread-flag');
-        expect(html).not.toContain('待回覆');
+        expect(html).not.toMatch(/data-status-text="[^"]*">待回覆/);
         // The team-only summary never shows on the client side.
         expect(html).not.toContain('有 <span data-unread-report-count');
     });
@@ -136,7 +136,7 @@ describe('未讀標記與通知鈴鐺', () => {
         expect(header).not.toContain('團隊內部單');
         expect(header).not.toContain(`data-bell-item="${quiet.public_id}"`);
         expect(header).toContain('新留言');
-        expect(html).not.toContain('未讀留言');
+        expect(html).not.toContain('張單有未讀留言');
         expect(html).not.toContain('待審留言');
         expect(html).not.toContain('草稿內容不外流');
         expect(html).not.toContain('data-bell-draft');

@@ -192,12 +192,18 @@ describe('isolation', () => {
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/restore`)).status).toBe(403);
         expect((await client.post(`/p/${seeded.project.slug}/reports/${report.public_id}/delete`)).status).toBe(403);
 
+        // 客戶刪除的單團隊端清單也不列（只留紀錄），單頁網址仍可開，狀態顯示「已刪除・只留紀錄」。
         const owner = await new Browser().asOwner(seeded);
-        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}?tab=all&deleted=only`)).text();
-        expect(ownerHtml).toContain('要刪的單');
-        expect(ownerHtml).toContain('客戶已刪除');
-        const restore = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/restore`, { _back: `/p/${seeded.project.slug}?deleted=only` });
-        expect(restore.headers.get('location')).toBe(`/p/${seeded.project.slug}?deleted=only`);
+        const ownerHtml = await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text();
+        expect(ownerHtml).not.toContain(`data-report-row="${report.public_id}"`);
+        expect(ownerHtml).not.toContain('data-deleted-filter');
+        const ownerPage = await (await owner.get(`/p/${seeded.project.slug}/reports/${report.public_id}`)).text();
+        expect(ownerPage).toContain('要刪的單');
+        expect(ownerPage).toContain('已刪除・只留紀錄');
+        expect(ownerPage).toContain('客戶已刪除');
+        const restore = await owner.post(`/p/${seeded.project.slug}/reports/${report.public_id}/restore`, { _back: `/p/${seeded.project.slug}/reports/${report.public_id}` });
+        expect(restore.headers.get('location')).toBe(`/p/${seeded.project.slug}/reports/${report.public_id}`);
+        expect(await (await owner.get(`/p/${seeded.project.slug}?tab=all`)).text()).toContain(`data-report-row="${report.public_id}"`);
         expect(await (await client.get(`/p/${seeded.project.slug}?tab=all`)).text()).toContain(`data-report-row="${report.public_id}"`);
     });
 

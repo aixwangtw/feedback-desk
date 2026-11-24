@@ -1,5 +1,5 @@
 import { MESSAGE_HINT } from '../shared/attachment-rules';
-import { adjust, claim, create, draft, handoff, message, messageEdit, messageWithdraw, release, report, reports, requestCompletion, status } from './commands/reports';
+import { adjust, claim, create, draft, handoff, merge, message, messageEdit, messageWithdraw, release, report, reports, requestCompletion, status } from './commands/reports';
 import { client, developer, project, publicReporting } from './commands/admin';
 import { login, logout, mcp, patrolToken, token } from './commands/auth';
 import { accountCommand, bootstrap, deploy, init } from './commands/deploy';
@@ -58,7 +58,7 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
   reports <project> [--status new] [--creator client] [--include-deleted] [--include-public] [--unread] [--json]
   report <project> <public_id|編號> [--json] [--no-download] [--download-dir 路徑]
                                    附件預設下載到 ~/.cache/feedback-desk（權限 700）
-  create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖檔]... [--for-client [--notice 通知文字]]
+  create <project> --title 標題 --description 說明 [--category 分類] [--attach 圖片／影片]... [--for-client [--notice 通知文字]]
                                    開新單（團隊與客戶帳號都可以）
   adjust <project> <public_id> [--note 文字] [--append] [--image 檔案]... [--by-id] [--force]
                                    【已停用，改用 message 留言】照常寫入但會附警告；網頁上只當成「過去的處理說明」唯讀顯示
@@ -67,8 +67,11 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
                                    沒給 --text 就用預設文字（不讀標準輸入）；已完成的單會被拒絕
   status <project> <public_id|編號> <new|needs_input|等工程師|等{客戶稱呼}> [--force]
                                    舊名稱待處理／待審核也接受；completed（已完成）只由客戶在網頁上按「完成」或確認留言上的「通過」，會被擋下
+  merge <project> <要併掉的單> <保留的單>
+                                   把重複的單合併進保留的單（public_id 或團隊端清單編號）：重複單兩端都不再列出，
+                                   待審留言搬到保留的單；客戶 30 分鐘內重複送出標題與說明都一樣的單，開單時會自動合併
   message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
-                                   --attach 附件：${MESSAGE_HINT}（mp4）
+                                   --attach 附件：${MESSAGE_HINT}（mp4、mov、webm）
                                    等工程師（new）的單留言後自動改成等客戶（needs_input）
   message-edit <project> <public_id|編號> <留言id> --body 新內容 [--attach 圖片／影片]... [--remove 附件id]...
                                    編輯團隊身分發的留言（留言 id 看 report 輸出）；不顯示「已編輯」、不改狀態
@@ -112,6 +115,7 @@ const COMMANDS: Record<string, Command> = {
     adjust,
     'request-completion': requestCompletion,
     status,
+    merge,
     message,
     'message-edit': messageEdit,
     'message-withdraw': messageWithdraw,

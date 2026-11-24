@@ -1,7 +1,8 @@
-// 「完成」的兩個動作：
-//  1. 開發團隊按「完成」→ 跳出可改字的確認留言，送出只發一則附「通過」按鈕的留言，單維持等客戶，不會結案；
-//  2. 客戶在確認留言上按「通過」（或在詳情按「完成」）→ 單改成已完成（走原本的狀態端點，只有客戶按得了）。
-// 沒有 JS 時兩個 <form> 都照一般表單送出。成功後整頁重新載入，並記下要重新開啟的那張單的詳情。
+// 改狀態的按鈕：
+//  1. 狀態切換鈕（data-status-switch，清單、看板、詳情、留言串最下面）→ 未完成按「完成」改成已完成、已完成按「待處理」改回等工程師，
+//     客戶與開發團隊都能按；
+//  2. 客戶在確認留言（CLI、MCP、API 發的「請確認完成」）上按「通過」→ 單改成已完成（走同一個狀態端點）。
+// 沒有 JS 時都照一般表單送出。成功後整頁重新載入，並記下要重新開啟的那張單的詳情。
 
 const REOPEN_KEY = 'feedback:reopen-report';
 
@@ -23,7 +24,7 @@ export const completionErrorMessage = (status, payload) => {
     return payload?.message ?? '操作失敗，請稍後再試。';
 };
 
-/** 確認留言視窗 id（request-completion-<單>）或詳情視窗 id（detail-report-<單>）→ 單的 public_id。 */
+/** 詳情視窗 id（detail-report-<單>）→ 單的 public_id。 */
 export const reportIdFromDialogId = (dialogId) => String(dialogId ?? '').replace(/^(request-completion|detail-report)-/, '');
 
 const storage = () => {
@@ -75,37 +76,11 @@ const reload = (reopenReportId) => {
 
 if (typeof document !== 'undefined') {
     document.addEventListener('submit', async (event) => {
-        const requestForm = event.target.closest?.('form[data-request-completion-form]');
-        const approveForm = event.target.closest?.('form[data-completion-approve-form]');
-        if (!requestForm && !approveForm) {
+        const approveForm = event.target.closest?.('form[data-completion-approve-form], form[data-status-switch]');
+        if (!approveForm) {
             return;
         }
-        // 「完成」的確認文字（data-confirm）由 feedback.js 在更早的階段處理，取消時不會走到這裡。
         event.preventDefault();
-
-        if (requestForm) {
-            const dialog = requestForm.closest('dialog');
-            const errorBox = requestForm.querySelector('[data-request-completion-error]');
-            const send = requestForm.querySelector('[data-request-completion-send]');
-            send.disabled = true;
-            errorBox.hidden = true;
-            try {
-                const result = await post(requestForm);
-                if (result.ok) {
-                    const reportId = reportIdFromDialogId(dialog.id);
-                    reload(document.getElementById(`detail-report-${reportId}`)?.open ? reportId : null);
-
-                    return;
-                }
-                errorBox.textContent = completionErrorMessage(result.status, result.payload);
-            } catch {
-                errorBox.textContent = '網路連線失敗，確認留言尚未送出。';
-            }
-            errorBox.hidden = false;
-            send.disabled = false;
-
-            return;
-        }
 
         const button = approveForm.querySelector('button[type=submit]');
         button.disabled = true;

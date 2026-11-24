@@ -135,9 +135,11 @@ describe('對話面板的待審留言', () => {
         const html = data.drafts_html ?? '';
         expect(html).toContain(`<video controls="" playsinline="" preload="metadata" src="${base}/0"`);
         expect(html).toContain(`src="${base}/1"`);
-        // 每個附件下方的短標題：檔名去掉副檔名，完整檔名放 title。
-        expect(html).toContain('title="教學.mp4" data-attachment-title="true">教學</span>');
-        expect(html).toContain('title="截圖.png" data-attachment-title="true">截圖</span>');
+        // 每個附件下方的短標題一律是編號「影片1」「圖2」（2026-11-21，對應 Laravel 版 fb7bc3c），不顯示原始檔名。
+        expect(html).toContain('title="影片1" data-attachment-title="true">影片1</span>');
+        expect(html).toContain('title="圖2" data-attachment-title="true">圖2</span>');
+        expect(html).not.toContain('教學.mp4');
+        expect(html).not.toContain('截圖.png');
 
         const client = await new Browser().asClient(seeded);
         const text = await (await client.get(`/p/${seeded.project.slug}/conversations/${report.public_id}`, JSON_HEADERS)).text();

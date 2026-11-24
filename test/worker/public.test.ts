@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Report } from '../../src/worker/lib/models';
-import { Browser, seedAttachment, seedProject, seedReport, unique } from './helpers';
+import { Browser, PNG_BYTES, seedAttachment, seedProject, seedReport, unique } from './helpers';
 
 async function publicSetup(options: { enabled?: boolean; vars?: Record<string, string> } = {}) {
     const seeded = await seedProject({ client: false, publicReporting: options.enabled ?? true });
@@ -130,8 +130,11 @@ describe('home page public reporting', () => {
         const html = await empty.text();
         expect(html).toContain('標題 為必填。');
         expect(html).toContain('稱呼 不能超過 50 個字元。');
-        const big = await visitor.request('PUT', `/p/${slug}/uploads?purpose=public`, { body: new Uint8Array(16), headers: { 'content-length': String(5 * 1024 * 1024 + 1) } });
+        // 首頁公開回報也收影片（每支 50 MB），所以圖片的 5 MB 上限在看過檔頭後才擋。
+        const big = await visitor.request('PUT', `/p/${slug}/uploads?purpose=public`, { body: PNG_BYTES, headers: { 'content-length': String(5 * 1024 * 1024 + 1) } });
         expect(big.status).toBe(413);
+        const tooBigVideo = await visitor.request('PUT', `/p/${slug}/uploads?purpose=public`, { body: new Uint8Array(16), headers: { 'content-length': String(50 * 1024 * 1024 + 1) } });
+        expect(tooBigVideo.status).toBe(413);
         const ids = [];
         for (let i = 0; i < 4; i++) ids.push(await visitor.uploadId(slug, 'purpose=public'));
         const tooMany = await submit(visitor, { 'upload_ids[]': ids });

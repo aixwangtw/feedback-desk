@@ -62,24 +62,34 @@ describe('per-project report categories', () => {
         expect(await categoriesOf(seeded.project.id)).toBeNull();
     });
 
-    it('categories belong to one project only; projects without them show no category field', async () => {
+    it('categories belong to one project only; the new-issue form never asks for one', async () => {
         const { slug, owner } = await setup();
         const other = await setup();
         await owner.post(`/p/${slug}/settings/categories`, { categories: '專屬分類' });
-        expect(await (await owner.get(`/p/${slug}?tab=all`)).text()).toContain('data-issue-category');
+        const html = await (await owner.get(`/p/${slug}?tab=all`)).text();
+        // 開單不用選分類（2026-11-21，對應 Laravel 版 e6ee426）：新增問題表單沒有分類欄，清單的篩選下拉仍有。
+        expect(html).not.toContain('data-issue-category');
+        expect(html).toContain('data-category-filter');
+        expect(html).toContain('專屬分類');
         const otherHtml = await (await other.owner.get(`/p/${other.slug}?tab=all`)).text();
-        expect(otherHtml).not.toContain('data-issue-category');
+        expect(otherHtml).not.toContain('data-category-filter');
         expect(otherHtml).not.toContain('專屬分類');
+        const account = await (await owner.get(`/p/${slug}/account`)).text();
+        expect(account).toContain('單的分類');
+        expect(account).toContain('開單時不用選分類，之後在清單上替每張單選');
     });
 
-    it('new reports require a project category; edit keeps a legacy category preselected and allows clearing', async () => {
+    it('new reports need no category (an unknown one is still refused); edit keeps a legacy category preselected and allows clearing', async () => {
         const { seeded, slug, owner } = await setup();
         await owner.post(`/p/${slug}/settings/categories`, { categories: '程式問題,排版' });
         const create = (category?: string) =>
             owner.post(`/p/${slug}/reports`, { 'issues[0][title]': '標題', 'issues[0][description]': '說明', ...(category === undefined ? {} : { 'issues[0][category]': category }) });
-        expect((await create()).status).toBe(422);
+        expect((await create()).status).toBe(302);
+        expect((await create('')).status).toBe(302);
         expect((await create('不存在')).status).toBe(422);
         expect((await create('排版')).status).toBe(302);
+        const { results: created } = await env.DB.prepare('SELECT category FROM reports WHERE project_id = ? ORDER BY id').bind(seeded.project.id).all<{ category: string | null }>();
+        expect(created.map((row) => row.category)).toEqual([null, null, '排版']);
 
         const { report } = await seedReport(seeded.project);
         await env.DB.prepare('UPDATE reports SET category = ? WHERE id = ?').bind('舊分類', report.id).run();

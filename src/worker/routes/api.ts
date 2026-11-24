@@ -311,6 +311,11 @@ api.post('/projects/:slug/reports/:ref/status', async (c) => {
     const input = await body<{ status?: string; force?: boolean }>(c);
     return c.json(await team.setReportStatus(ctx(c), c.req.param('slug'), c.req.param('ref'), String(input.status ?? ''), { force: input.force === true }));
 });
+/** 把重複的單（:ref）合併進 body 的 into（public_id 或團隊端清單編號）；團隊帳號限定。 */
+api.post('/projects/:slug/reports/:ref/merge', async (c) => {
+    const input = await body<{ into?: string }>(c);
+    return c.json(await team.mergeTeamReport(ctx(c), c.req.param('slug'), c.req.param('ref'), String(input.into ?? '')));
+});
 api.post('/projects/:slug/reports/:ref/adjustment', async (c) => {
     const input = await body<{ note?: string | null; append?: boolean; upload_ids?: string[]; force?: boolean }>(c);
     return c.json(await team.writeAdjustment(ctx(c), c.req.param('slug'), c.req.param('ref'), { ...input, force: input.force === true, by_id: c.req.query('by') === 'id' }));
@@ -360,7 +365,7 @@ api.post('/projects/:slug/reports/:ref/drafts', async (c) => {
 
 async function storeUpload(c: AppContext, target: { projectId: number; reportId: number | null; purpose: 'report' | 'message' | 'adjustment' }): Promise<Response> {
     try {
-        const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, allowVideo: target.purpose === 'message', nowIso: nowIso(c.get('now')) });
+        const upload = await storeImageStream(c.env, c.req.raw, { ...target, maxBytes: MAX_IMAGE_BYTES, allowVideo: target.purpose !== 'adjustment', nowIso: nowIso(c.get('now')) });
         return c.json({ id: upload.id, name: upload.original_name, size: upload.size, mime_type: upload.mime_type }, 201);
     } catch (error) {
         if (error instanceof UploadError) {

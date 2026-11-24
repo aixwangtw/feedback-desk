@@ -1,6 +1,7 @@
 import { ADJUSTMENT_DEPRECATED, completionSentNotice } from '../../shared/completion';
 import { COMPLETED_BY_CLIENT_ONLY } from '../../shared/work-rule';
 import { requestCompletion } from './completion';
+import { mergeReport } from './merge';
 import { TOO_MANY_ATTACHMENTS } from '../../shared/attachment-rules';
 /**
  * Operations performed by a signed-in team account through the API (CLI) or MCP. Both callers go
@@ -257,6 +258,9 @@ export async function getReport(ctx: TeamContext, slug: string, identifier: stri
         creator: withAgent(creatorLabel(ctx.env, report, project, developer?.name ?? null, clientAccount?.name ?? null), report.creator_agent, isDeveloperSideCreator(report.creator_type)),
         source: report.creator_type === 'public' ? 'public_stranger' : 'project_member',
         deleted_by_client: report.client_deleted_at !== null,
+        merged_into: report.merged_into_report_id
+            ? ((await ctx.env.DB.prepare('SELECT public_id FROM reports WHERE id = ?').bind(report.merged_into_report_id).first<{ public_id: string }>())?.public_id ?? null)
+            : null,
         ...(await workState(ctx, report)),
         created_at: report.created_at,
         updated_at: report.updated_at,
@@ -300,6 +304,22 @@ export async function setReportStatus(ctx: TeamContext, slug: string, identifier
         previous: { status: report.status, label: statusLabel(report.status, statusLabels) },
         current: { status, label: statusLabel(status, statusLabels) },
         took_over_from: takenOver,
+    };
+}
+
+/**
+ * 手動合併重複的單（CLI `merge`、團隊 API）：規則與開單時的自動合併相同（lib/merge.ts）。
+ * 編號是團隊端清單編號（最新為 1，含客戶刪除而隱藏的單）。
+ */
+export async function mergeTeamReport(ctx: TeamContext, slug: string, duplicateRef: string, targetRef: string) {
+    const project = await projectOrFail(ctx.env, slug);
+    const duplicate = await resolveReport(ctx.env, project, duplicateRef);
+    const target = await resolveReport(ctx.env, project, targetRef);
+    const result = await mergeReport(ctx.env, duplicate, target, teamAuthor(ctx), ctx.now);
+    return {
+        duplicate: { public_id: duplicate.public_id, number: result.duplicateNumber, title: duplicate.title },
+        target: { public_id: target.public_id, number: result.targetNumber, title: target.title, url: absolute(ctx, paths.report(project.slug, target.public_id)) },
+        moved_drafts: result.movedDrafts,
     };
 }
 

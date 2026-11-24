@@ -1,3 +1,4 @@
+import { isVideoMime } from '../shared/attachment-rules';
 import { Buffer } from 'node:buffer';
 import { McpServer } from '@modelcontextprotocol/server';
 import { createMcpHandler } from 'agents/mcp/server';
@@ -166,7 +167,8 @@ export function createServer(ctx: team.TeamContext): McpServer {
             const all = [...report.attachments, ...report.adjustment_attachments, ...report.messages.flatMap((message) => message.attachments)];
             let budget = INLINE_TOTAL_MAX_BYTES;
             for (const attachment of all) {
-                if (attachment.size > INLINE_IMAGE_MAX_BYTES || attachment.size > budget) {
+                // 影片不當圖片內嵌（AI 工具讀單時只拿到檔名與下載網址）。
+                if (isVideoMime(attachment.mime_type) || attachment.size > INLINE_IMAGE_MAX_BYTES || attachment.size > budget) {
                     continue;
                 }
                 const row = await ctx.env.DB.prepare('SELECT object_key FROM attachments WHERE id = ?').bind(attachment.id).first<{ object_key: string }>();

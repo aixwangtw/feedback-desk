@@ -8,7 +8,8 @@ import { api, BASE, Browser, mcpCall, rpcResult, seedDeveloper, seedProject, see
 /**
  * 留言自動切狀態：對應 Laravel 版 FeedbackMessageStatusRuleTest。
  * 等客戶（needs_input）的單客戶留言 → 等工程師（new）；團隊在等工程師的單送出留言 → 等客戶。
- * 已完成的單不因留言改狀態；草稿本身不改狀態；開單附的通知留言（--for-client）不套用。
+ * 已完成的單客戶又留言 → 等工程師（重新開啟，事件 reopen_by_message；2026-11-18 Laravel 版 bac47e3）；團隊在已完成的單留言不改狀態。
+ * 草稿本身不改狀態；開單附的通知留言（--for-client）不套用。
  */
 const REMINDER = '狀態已改為「等客戶」。';
 
@@ -44,18 +45,24 @@ describe('留言自動切狀態', () => {
         expect(await statusEvents(report)).toEqual(['needs_input>new']);
     });
 
-    it('a client message on a new or completed report keeps the status', async () => {
+    it('a client message on a new report keeps the status; on a completed report it reopens it as new', async () => {
         const seeded = await seedProject();
         const completed = await reportWith(seeded, 'completed');
         const fresh = await reportWith(seeded, 'new');
         const client = await new Browser().asClient(seeded);
 
-        expect((await client.post(messages(seeded, completed), { body: '謝謝' })).status).toBe(302);
+        expect((await client.post(messages(seeded, completed), { body: '又壞了' })).status).toBe(302);
         expect((await client.post(messages(seeded, fresh), { body: '補充' })).status).toBe(302);
 
-        expect(await current(completed)).toMatchObject({ status: 'completed', completed_at: completed.completed_at });
+        expect(await current(completed)).toMatchObject({ status: 'new', completed_at: null });
         expect((await current(fresh)).status).toBe('new');
         expect([...(await statusEvents(completed)), ...(await statusEvents(fresh))]).toEqual([]);
+        const reopened = await env.DB.prepare("SELECT kind, detail FROM report_events WHERE report_id = ? AND kind LIKE 'reopen%'").bind(completed.id).all<{ kind: string; detail: string }>();
+        expect(reopened.results).toEqual([{ kind: 'reopen_by_message', detail: 'completed>new' }]);
+        // 團隊端最近動態寫出是客戶留言後改回、原本是已完成。
+        const owner = await new Browser().asOwner(seeded);
+        const page = await (await owner.get(`/p/${seeded.project.slug}/reports/${completed.public_id}`)).text();
+        expect(page).toContain('留言後改回等工程師（原本是已完成）');
     });
 
     it('a team web message on a new report switches it to needs_input and reminds about the adjustment', async () => {

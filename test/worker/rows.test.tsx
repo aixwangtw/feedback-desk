@@ -30,6 +30,8 @@ const cases: Array<[string, PortalRow]> = [
     ['an unlisted category', row({ category: '舊分類' }, 1, [png])],
     ['with a plus counter', row({}, 0, [png, mp4], 4)],
     ['over 99 unread', row({}, 120)],
+    ['with pending drafts', { ...row({}), drafts: 2 }],
+    ['with one pending draft, completed', { ...row({ status: 'completed' }), drafts: 1 }],
     ['a long title and creator with markup', row({ title: '很長的標題 '.repeat(20) })],
 ];
 
@@ -87,17 +89,20 @@ describe('Jira-style list rows and board cards', () => {
         for (const gone of ['data-chat-open', '調整重點']) {
             expect(card, gone).not.toContain(gone);
         }
-        // both sides get the complete button; the team's opens the request-completion dialog, the client's is a status form
-        const clientRow = listRowHtml({ ...ctx, isOwner: false }, row({}));
-        expect(clientRow).toContain('data-complete-report');
-        expect(clientRow).not.toContain('data-request-completion');
-        const teamRow = listRowHtml(ctx, row({}));
-        expect(teamRow).toContain('data-request-completion="0199c3a1-0000-4000-8000-000000000001"');
-        expect(teamRow).toContain('data-dialog-open="request-completion-0199c3a1-0000-4000-8000-000000000001"');
-        expect(boardCardHtml(ctx, row({}), 0)).toContain('data-request-completion=');
-        // a completed report has no button on either side
-        expect(listRowHtml(ctx, row({ status: 'completed' }))).not.toContain('data-complete-report');
-        expect(boardCardHtml(ctx, row({ status: 'completed' }), 0)).not.toContain('data-complete-report');
+        // both sides get the same single status switch: 完成 until completed, then 待處理 (2026-11-19, Laravel 594e6c7)
+        const switchOf = (html: string) => /data-status-switch="[^"]+"><input type="hidden" name="_back" value="[^"]*"\/><input type="hidden" name="status" value="(\w+)"\/><button[^>]*>([^<]+)<\/button>/.exec(html)?.slice(1);
+        for (const isOwner of [true, false]) {
+            const sideCtx = { ...ctx, isOwner };
+            expect(switchOf(listRowHtml(sideCtx, row({})))).toEqual(['completed', '完成']);
+            expect(switchOf(boardCardHtml(sideCtx, row({ status: 'new' }), 0))).toEqual(['completed', '完成']);
+            expect(switchOf(listRowHtml(sideCtx, row({ status: 'completed' })))).toEqual(['new', '待處理']);
+            expect(switchOf(boardCardHtml(sideCtx, row({ status: 'completed' }), 0))).toEqual(['new', '待處理']);
+            expect(listRowHtml(sideCtx, row({}))).not.toContain('data-request-completion');
+        }
+        // the team sees a 待審留言 badge beside the title while a draft waits; the client never does
+        const drafted = { ...row({}), drafts: 2 };
+        expect(listRowHtml(ctx, drafted)).toContain('data-draft-badge="0199c3a1-0000-4000-8000-000000000001" title="有 2 則待審留言；點開這張單在留言區下方審核，按「送出」後會自動改成待回覆">待審留言 2</span>');
+        expect(boardCardHtml(ctx, { ...row({}), drafts: 1 }, 0)).toContain('mt-0.5" data-draft-badge="0199c3a1-0000-4000-8000-000000000001" title="有 1 則待審留言；點開這張單在留言區下方審核，按「送出」後會自動改成待回覆">待審留言</span>');
     });
 
     it('row click ignores the action buttons and thumbnails (they are links, buttons or forms)', () => {

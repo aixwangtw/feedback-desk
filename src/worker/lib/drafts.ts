@@ -83,6 +83,9 @@ export function parseReplaceMessageId(value: unknown): number | null {
 /**
  * Stores a draft. Uploaded images move from `uploads` into the draft's JSON (the R2 objects stay
  * where they are), so the cleanup job no longer sees them as unclaimed.
+ *
+ * 同一張單只留一則待審留言（2026-11-21 使用者：「留言草稿也不用分2則」）：已有一則時把新內容接在後面、
+ * 附件也接在後面，不另建一則；內容完全相同（已包含在原本那則裡）就不重複接。網頁、CLI、團隊 API、排程 API 都走這裡。
  */
 export async function createDraft(
     env: Env,
@@ -97,6 +100,19 @@ export async function createDraft(
     const at = nowIso(now);
     const files: StoredFile[] = data.uploads.map((upload) => ({ object_key: upload.object_key, original_name: upload.original_name, mime_type: upload.mime_type, size: upload.size }));
     const db = env.DB;
+    const existing = await db.prepare('SELECT * FROM message_drafts WHERE report_id = ? ORDER BY id LIMIT 1').bind(report.id).first<MessageDraft>();
+    if (existing) {
+        const mergedBody = existing.body.includes(body) ? existing.body : validatedDraftBody(`${existing.body}\n\n${body}`);
+        const mergedFiles = [...parseStoredFiles(existing.attachments), ...files];
+        const [updated] = await db.batch([
+            db
+                .prepare('UPDATE message_drafts SET body = ?, replaces_message_id = ?, attachments = ?, updated_at = ? WHERE id = ? RETURNING *')
+                .bind(mergedBody, existing.replaces_message_id ?? data.replacesMessageId, mergedFiles.length > 0 ? JSON.stringify(mergedFiles) : null, at, existing.id),
+            ...data.uploads.map((upload) => db.prepare('DELETE FROM uploads WHERE id = ?').bind(upload.id)),
+            eventStatement(db, report, 'draft', data.author, at),
+        ]);
+        return updated.results[0] as MessageDraft;
+    }
     const [inserted] = await db.batch([
         db
             .prepare(

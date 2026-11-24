@@ -32,6 +32,7 @@ export interface PortalRowsPayload {
         thumbs: PortalRow['thumbs'];
         thumbTotal: number;
         unread: number;
+        drafts: number;
     }>;
 }
 
@@ -64,6 +65,8 @@ export function buildPayload(ctx: RowContext, view: 'list' | 'board', rows: Port
             thumbTotal: row.thumbTotal,
             // Already computed for this viewer side (the team's unread state never reaches the client).
             unread: row.unread,
+            // 待審留言只有團隊端有，客戶端的資料一律 0。
+            drafts: ctx.isOwner ? row.drafts ?? 0 : 0,
         })),
     };
 }

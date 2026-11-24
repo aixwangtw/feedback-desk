@@ -62,6 +62,7 @@ import { messagePreview, shortTime } from '../../shared/conversation';
 import { isAwaitingReply } from '../../shared/chat-tabs';
 import { GlobalLoginPage, HomePage, HONEYPOT_FIELD, LoginPage, ProjectsOverviewPage, PublicHomePage, TURNSTILE_FIELD, type PublicFormState } from '../views/pages';
 import { PortalPage, ReportDialogs, editCategoryOptions, type DialogRow, type PortalFormState, type PortalRow } from '../views/portal';
+import { autoMergeDuplicate, mergedTarget } from '../lib/merge';
 import { Album, ConversationFragment, DetailSide, DraftsSection, messageAuthorLabel, ReportPage, Thread } from '../views/report';
 import { albumItems, listThumbsForReports } from '../lib/album';
 import { attachmentThumbsHtml } from '../views/rows';
@@ -563,8 +564,6 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     const selectedCategory = categories.length > 0 && (categoryInput === UNCATEGORIZED || categories.includes(categoryInput)) ? categoryInput : '';
     const keyword = charSlice((c.req.query('q') ?? '').trim(), 100);
     const viewMode: 'list' | 'board' = c.req.query('view') === 'board' ? 'board' : 'list';
-    const deletedInput = c.req.query('deleted') ?? '';
-    const deletedFilter: 'only' | 'hide' | null = isOwner ? (deletedInput === 'only' || deletedInput === 'hide' ? deletedInput : null) : 'hide';
     // Team-side only: the client never filters by (or learns about) the team's unread state.
     const unreadOnly = isOwner && c.req.query('unread') === '1';
     const pageInput = Number.parseInt(c.req.query('page') ?? '1', 10);
@@ -632,11 +631,8 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
     if (unreadOnly) {
         filters.push(hasUnreadMessagesSql('numbered'));
     }
-    if (deletedFilter === 'hide') {
-        filters.push('client_deleted_at IS NULL');
-    } else if (deletedFilter === 'only') {
-        filters.push('client_deleted_at IS NOT NULL');
-    }
+    // 客戶刪除的單只留在資料庫當紀錄，兩端畫面都不列（2026-11-19 使用者：「不用留老師已刪除的紀錄在前端」）；單頁網址仍可開啟。
+    filters.push('client_deleted_at IS NULL');
     const clientOnly = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL}`;
     const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
     const orderBy =
@@ -650,19 +646,19 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             SELECT id, project_id, waiting, public_id, reporter_name, creator_type, creator_developer_id, creator_client_account_id, creator_agent, title, status, client_deleted_at,
                 latest_activity_at, created_at, seq, COUNT(*) OVER () AS filtered_total, ${latestMessageSql('numbered')} AS latest_message_at,
                 ${viewerUnreadSql('numbered', isOwner, viewer, true)} AS unread_count, ${messagesCountSql('numbered')} AS messages_count,
-                ${creatorClientNameSql('numbered')} AS creator_client_name
+                ${creatorClientNameSql('numbered')} AS creator_client_name${isOwner ? ', (SELECT COUNT(*) FROM message_drafts md WHERE md.report_id = numbered.id) AS drafts_count' : ''}
             FROM numbered ${where}
         ) listed
         ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
     const totalSql = isOwner
-        ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ?'
+        ? 'SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND client_deleted_at IS NULL'
         : `SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
-    const countConditions = isOwner ? '' : `AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
+    const countConditions = isOwner ? 'AND client_deleted_at IS NULL' : `AND ${CLIENT_VISIBLE_SQL} AND client_deleted_at IS NULL`;
     const [list, total, counts, unread, tabRows] = await db.batch([
         db.prepare(listSql).bind(project.id, ...bindings, PER_PAGE, (page - 1) * PER_PAGE),
         db.prepare(totalSql).bind(project.id),
         db.prepare(`SELECT status, COUNT(*) AS aggregate FROM reports WHERE project_id = ? ${countConditions} GROUP BY status`).bind(project.id),
-        isOwner ? db.prepare(`SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND ${hasUnreadMessagesSql('reports')}`).bind(project.id) : db.prepare('SELECT 0 AS total'),
+        isOwner ? db.prepare(`SELECT COUNT(*) AS total FROM reports WHERE project_id = ? AND client_deleted_at IS NULL AND ${hasUnreadMessagesSql('reports')}`).bind(project.id) : db.prepare('SELECT 0 AS total'),
         db.prepare(`SELECT ${waitingSideSql('reports')} AS waiting, COUNT(*) AS aggregate FROM reports WHERE project_id = ? ${countConditions} GROUP BY 1`).bind(project.id),
     ]);
     const tabCounts: Record<PortalTab, number> = { developer: 0, client: 0, completed: 0, all: 0 };
@@ -670,7 +666,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         tabCounts[row.waiting] += row.aggregate;
         tabCounts.all += row.aggregate;
     }
-    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_count: number; messages_count: number; creator_client_name: string | null; waiting: WaitingSide }>;
+    const reports = list.results as Array<Report & { seq: number; filtered_total: number; unread_count: number; messages_count: number; creator_client_name: string | null; waiting: WaitingSide; drafts_count?: number }>;
     let filteredTotal = reports[0]?.filtered_total ?? 0;
     if (reports.length === 0 && page > 1) {
         const row = await db
@@ -699,6 +695,7 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
         unread: report.unread_count,
         thumbs: listThumbs.get(report.id)?.thumbs ?? [],
         thumbTotal: listThumbs.get(report.id)?.total ?? 0,
+        drafts: isOwner ? report.drafts_count ?? 0 : 0,
     }));
     // 編輯失敗重新顯示：被編輯的那張單要帶著錯誤重開對話框，所以只為它載入附件。
     const editingReport = form?.bag === 'editReport' ? reports.find((report) => report.public_id === form.editing?.publicId) : undefined;
@@ -725,7 +722,6 @@ async function renderPortal(c: AppContext, project: Project, form?: PortalFormSt
             selectedCategory={selectedCategory}
             keyword={keyword}
             viewMode={viewMode}
-            deletedFilter={deletedFilter}
             unreadOnly={unreadOnly}
             unreadReportCount={isOwner ? (unread.results[0] as { total: number }).total : 0}
             creator={creator}
@@ -809,8 +805,9 @@ web.post('/p/:slug/reports', async (c) => {
     for (const issue of issues.slice(0, 20)) {
         validateText(errors, issue.title, '問題標題', MAX_TITLE);
         validateText(errors, issue.description, '問題說明', MAX_DESCRIPTION);
-        if (categories.length > 0 && !categories.includes(issue.category)) {
-            errors.push(issue.category === '' ? '分類 為必填。' : '選擇的分類無效。');
+        // 分類不用選（新增問題表單已拿掉分類欄）；有送來時仍須是專案設定的分類之一。
+        if (issue.category !== '' && !categories.includes(issue.category)) {
+            errors.push('選擇的分類無效。');
         }
         if (issue.uploadIds.length > MAX_SCREENSHOTS) {
             errors.push(`截圖 最多只能有 ${MAX_SCREENSHOTS} 項。`);
@@ -841,11 +838,22 @@ web.post('/p/:slug/reports', async (c) => {
     }
     const creator = await access.creatorFor(project);
     const author = await access.author(project);
+    let mergedCount = 0;
     for (let i = 0; i < issues.length; i++) {
-        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, category: categories.length > 0 ? issues[i].category : null, uploads: claimed[i] ?? [], author }, creator, c.get('now'));
+        const { report } = await createReport(c.env, project, { title: issues[i].title, description: issues[i].description, category: categories.length > 0 && issues[i].category !== '' ? issues[i].category : null, uploads: claimed[i] ?? [], author }, creator, c.get('now'));
         await access.grantReporter(report);
+        // 同一個人短時間內重複送出一樣的單（例如按了兩次送出）：併進先送出的那張（lib/merge.ts）。
+        if (await autoMergeDuplicate(c.env, report, author, c.get('now'))) {
+            mergedCount += 1;
+        }
     }
-    access.setFlash({ success: `已新增 ${issues.length} 個問題。` });
+    let success = `已新增 ${issues.length} 個問題。`;
+    if (mergedCount > 0) {
+        success = mergedCount === issues.length
+            ? '這次送出的內容和剛才送出的單一樣，已自動合併成一張。'
+            : `已新增 ${issues.length - mergedCount} 個問題；另外 ${mergedCount} 個和剛才送出的單一樣，已自動合併。`;
+    }
+    access.setFlash({ success });
     return c.redirect(paths.portal(project.slug), 302);
 });
 
@@ -874,6 +882,8 @@ web.put('/p/:slug/uploads', async (c) => {
         if (!(await access.canManage(project))) {
             abort(403);
         }
+        // 開單與補上傳也收影片（mp4／mov／webm）。
+        allowVideo = true;
     } else if (purpose === 'adjustment') {
         if (!(await access.isOwner(project))) {
             abort(403);
@@ -902,6 +912,8 @@ web.put('/p/:slug/uploads', async (c) => {
         }
         maxBytes = PUBLIC_MAX_IMAGE_BYTES;
         limits = publicLimits();
+        // 首頁公開回報開單也收影片；公開回報者之後在單頁留言仍只收圖片。
+        allowVideo = true;
     } else {
         abort(404);
     }
@@ -1000,6 +1012,8 @@ async function loadThread(c: AppContext, project: Project, report: Report, isOwn
         viewerAccountId: viewerAccount?.id ?? null,
         // 「通過」只給客戶端（能結案的一方），且單還沒完成。
         canApprove: !isOwner && canManage && report.status !== 'completed',
+        // 留言串最下面的狀態切換鈕：客戶與開發團隊都有（公開回報者沒有）。
+        canSwitchStatus: canManage,
     };
 }
 
@@ -1054,8 +1068,10 @@ async function renderReport(
             messageAttachments={thread.messageAttachments}
             album={thread.album}
             canApprove={thread.canApprove}
+            canSwitchStatus={thread.canSwitchStatus}
             latestRequestId={thread.latestRequestId}
             viewerAccountId={thread.viewerAccountId}
+            mergedInto={isOwner ? await mergedTarget(c.env.DB, report) : null}
             attachmentUrl={attachmentUrlFor(project, report)}
             success={flash.success}
             privateReportUrl={flash.private_report_url}
@@ -1139,6 +1155,7 @@ web.get('/p/:slug/reports/:publicId/activity', async (c) => {
             attachmentUrl={attachmentUrlFor(project, report)}
             viewerIsOwner={isOwner}
             canApprove={thread.canApprove}
+            canSwitchStatus={thread.canSwitchStatus}
             latestRequestId={thread.latestRequestId}
             viewerAccountId={thread.viewerAccountId}
         />,
@@ -1194,7 +1211,7 @@ web.get('/p/:slug/conversations', async (c) => {
                     (SELECT d.name FROM developers d WHERE d.id = numbered.creator_developer_id) AS creator_developer_name,
                     ${latest(`substr(lm2.body, 1, ${PREVIEW_SOURCE_CHARS})`)} AS latest_body,
                     ${latest('lm2.author_type')} AS latest_author${isOwner ? ', (SELECT COUNT(*) FROM message_drafts md WHERE md.report_id = numbered.id) AS drafts_count' : ''}
-                FROM numbered ${isOwner ? '' : 'WHERE client_deleted_at IS NULL'}
+                FROM numbered WHERE client_deleted_at IS NULL
             ) listed
             ORDER BY ${conversationOrderSql({ unread: 'unread_count', messagesCount: 'messages_count', latestMessageAt: 'latest_message_at', createdAt: 'created_at', number: 'seq' })}`,
         )
@@ -1337,6 +1354,7 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             messageAttachments={thread.messageAttachments}
             adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
             canApprove={thread.canApprove}
+            canSwitchStatus={thread.canSwitchStatus}
             latestRequestId={thread.latestRequestId}
             viewerAccountId={thread.viewerAccountId}
             attachmentUrl={attachmentUrlFor(project, report)}
@@ -1346,7 +1364,7 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
     // 詳情視窗右側窄欄（狀態、完成鈕、時間）：留言可能讓狀態改變，跟著對話一起更新。
     // 附件（相簿）不放在對話串裡：詳情視窗放在說明下方，面板用相簿鈕切到附件頁；草稿附件只在團隊端的 album 裡。
     const albumHtml = thread.album.length === 0 ? '' : await (<Album v={v} publicId={report.public_id} items={thread.album} />).toString();
-    const sideHtml = await (<DetailSide v={v} slug={project.slug} report={report} isOwner={isOwner} canManage creatorLabel={isPublicReporter ? null : creator} />).toString();
+    const sideHtml = await (<DetailSide v={v} slug={project.slug} report={report} isOwner={isOwner} canManage creatorLabel={isPublicReporter ? null : creator} mergedInto={isOwner ? await mergedTarget(c.env.DB, report) : null} />).toString();
     // 客戶端面板自動彈出時只「偷看」第一張（peek=1），使用者還沒操作前不標已讀，免得漏看新留言；團隊端照常標已讀。
     if (isOwner || c.req.query('peek') !== '1') {
         await markRead(c.env, report, isOwner ? 'owner' : 'client', c.get('now'), viewer);
@@ -1648,29 +1666,22 @@ web.on(['POST', 'PATCH'], '/p/:slug/reports/:publicId/status', async (c) => {
     const form = await readForm(c);
     const status = field(form, 'status');
     const isOwner = await access.isOwner(project);
-    // 網頁上不能手動改狀態：留言時自動切換（等工程師／等客戶），只有客戶能按「完成」結單。
-    // 排程 API 與 CLI（feedback-desk status）照舊可以改。
-    const refused = `狀態會依留言自動切換；網頁上只有${config(c.env).labels.client}能按「完成」結單。`;
-    if (isOwner) {
-        abort(403, refused);
-    }
+    // 客戶與開發團隊都能在網頁上隨時切換狀態（狀態切換鈕「完成」／「待處理」，2026-11-19 使用者）；留言時另有自動切換。
     if (!isStatus(status)) {
         if (wantsJson(c)) {
             return c.json({ message: '選擇的 狀態 無效。', errors: { status: ['選擇的 狀態 無效。'] } }, 422);
         }
         return c.redirect(backUrl(c, form, paths.report(project.slug, report.public_id)), 302);
     }
-    if (status !== 'completed') {
-        abort(403, refused);
-    }
-    await changeStatus(c.env, report, status, c.get('now'), await access.author(project));
+    // 客戶改回等工程師另記事件，團隊看得出是客戶手動重新開啟。
+    await changeStatus(c.env, report, status, c.get('now'), await access.author(project), status === 'new' && !isOwner ? 'reopen_by_client' : 'status');
     const statusLabels = config(c.env).statusLabels;
     const message = `狀態已更新為「${statusLabel(status, statusLabels)}」。`;
     if (wantsJson(c)) {
         return c.json({
             status,
             label: statusLabel(status, statusLabels),
-            counts: await statusCounts(c.env.DB, project.id, { includeClientDeleted: isOwner, clientCreatedOnly: !isOwner }),
+            counts: await statusCounts(c.env.DB, project.id, { includeClientDeleted: false, clientCreatedOnly: !isOwner }),
             message,
         });
     }

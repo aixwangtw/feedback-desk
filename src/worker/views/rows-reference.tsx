@@ -6,7 +6,7 @@
 import type { FC } from 'hono/jsx';
 import { CARD_HOVER_CLASS, ROW_CLICK_CLASS } from './chat-classes';
 import { paths } from '../routes/paths';
-import { AttachmentThumbs, CompleteButton, cx, ReportLink, StatusText, Time, UnreadDot, type ViewContext } from './components';
+import { AttachmentThumbs, DraftBadge, StatusSwitch, cx, ReportLink, StatusText, Time, UnreadDot, type ViewContext } from './components';
 import type { PortalRow } from './portal';
 import { CategoryAutosave } from './report';
 
@@ -33,6 +33,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
                 <div class="flex items-start gap-2">
                     <ReportLink slug={slug} publicId={report.public_id} class="min-w-0 break-words text-left font-semibold">{report.title}</ReportLink>
                     <UnreadDot publicId={report.public_id} unread={row.unread} />
+                    <DraftBadge publicId={report.public_id} drafts={row.drafts ?? 0} />
                 </div>
                 {isOwner && deleted ? (
                     <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500" data-client-deleted>
@@ -56,7 +57,7 @@ export const ListRow: FC<RowProps> = ({ v, row, slug, isOwner, backPath, showCat
             <td class="block sm:table-cell sm:whitespace-nowrap sm:px-2 sm:py-3 sm:align-middle sm:text-center">
                 <div class="flex flex-nowrap items-center gap-1 sm:justify-center" data-report-row-actions>
                     <button type="button" class="inline-flex min-h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" data-dialog-open={`edit-report-${report.public_id}`}>編輯</button>
-                    <CompleteButton slug={slug} publicId={report.public_id} status={report.status} isOwner={isOwner} clientLabel={labels.client} backPath={backPath} />
+                    <StatusSwitch slug={slug} publicId={report.public_id} status={report.status} labels={v.cfg.statusLabels} backPath={backPath} />
                     {isOwner && deleted ? (
                         <form method="post" action={paths.reportRestore(slug, report.public_id)}>
 <input type="hidden" name="_back" value={backPath} />
@@ -85,7 +86,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
                     {(categories ?? []).length > 0 ? <CategoryAutosave slug={slug} report={report} categories={categories ?? []} backPath={backPath} idPrefix="card-category" compact class="mt-1" /> : null}
                 </div>
                 <div class="flex shrink-0 items-center gap-1" data-card-actions>
-                    <CompleteButton slug={slug} publicId={report.public_id} status={report.status} isOwner={isOwner} clientLabel={v.cfg.labels.client} backPath={backPath} compact cardAction />
+                    <StatusSwitch slug={slug} publicId={report.public_id} status={report.status} labels={v.cfg.statusLabels} backPath={backPath} compact cardAction />
                     <button type="button" class="grid size-8 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-teal-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600" aria-label={`編輯「${report.title}」`} title="編輯" data-card-action data-dialog-open={`edit-report-${report.public_id}`}>
                         <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                     </button>
@@ -107,6 +108,7 @@ export const BoardCard: FC<RowProps & { order: number }> = ({ v, row, order, slu
             <div class="mt-1 flex items-start gap-2">
                 <ReportLink slug={slug} publicId={report.public_id} class="min-w-0 break-words text-left text-sm font-semibold leading-5">{report.title}</ReportLink>
                 <UnreadDot publicId={report.public_id} unread={row.unread} />
+                <DraftBadge publicId={report.public_id} drafts={row.drafts ?? 0} class="mt-0.5" />
             </div>
             {isOwner && deleted ? (
                 <span class="mt-2 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-300" data-client-deleted>{v.cfg.labels.client}已刪除</span>

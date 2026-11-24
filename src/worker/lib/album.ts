@@ -5,6 +5,7 @@
  */
 import { type RowThumb } from '../../shared/album-thumbs';
 import { isVideoMime } from '../../shared/attachment-rules';
+import { numberedTitle } from '../../shared/attachment-list';
 import { paths } from '../routes/paths';
 import type { DraftView } from './drafts';
 import type { Attachment, Message, Report } from './models';
@@ -36,21 +37,26 @@ export function albumItems(input: {
 }): AlbumItem[] {
     const { slug, publicId } = input;
     const items: AlbumItem[] = [];
+    // 名稱一律是編號「圖N／影片N」：原始附件、每則留言、待審留言各自從 1 起算（shared/attachment-list.ts 的 numberedTitle）。
+    let originalNumber = 0;
     for (const attachment of input.attachments) {
         if (attachment.message_id === null && attachment.kind === 'feedback') {
-            items.push({ kind: 'original', url: paths.attachment(slug, publicId, attachment.id), name: attachment.original_name, isVideo: isVideoMime(attachment.mime_type), source: '原始附件', at: input.reportCreatedAt, uploadedAt: attachment.created_at || input.reportCreatedAt, id: attachment.id });
+            originalNumber += 1;
+            items.push({ kind: 'original', url: paths.attachment(slug, publicId, attachment.id), name: numberedTitle(originalNumber, isVideoMime(attachment.mime_type)), isVideo: isVideoMime(attachment.mime_type), source: '原始附件', at: input.reportCreatedAt, uploadedAt: attachment.created_at || input.reportCreatedAt, id: attachment.id });
         }
     }
     for (const message of input.messages) {
+        let messageNumber = 0;
         for (const attachment of input.attachments) {
             if (attachment.message_id === message.id) {
-                items.push({ kind: 'message', url: paths.attachment(slug, publicId, attachment.id), name: attachment.original_name, isVideo: isVideoMime(attachment.mime_type), source: `${input.authorLabel(message)} 的留言`, at: message.created_at, uploadedAt: attachment.created_at || message.created_at, id: attachment.id });
+                messageNumber += 1;
+                items.push({ kind: 'message', url: paths.attachment(slug, publicId, attachment.id), name: numberedTitle(messageNumber, isVideoMime(attachment.mime_type)), isVideo: isVideoMime(attachment.mime_type), source: `${input.authorLabel(message)} 的留言`, at: message.created_at, uploadedAt: attachment.created_at || message.created_at, id: attachment.id });
             }
         }
     }
     for (const draft of input.drafts ?? []) {
         draft.files.forEach((file, index) => {
-            items.push({ kind: 'draft', url: paths.draftFile(slug, publicId, draft.id, index), name: file.original_name, isVideo: isVideoMime(file.mime_type), source: '待審留言', at: draft.updated_at, uploadedAt: draft.updated_at, id: 0 });
+            items.push({ kind: 'draft', url: paths.draftFile(slug, publicId, draft.id, index), name: numberedTitle(index + 1, isVideoMime(file.mime_type)), isVideo: isVideoMime(file.mime_type), source: '待審留言', at: draft.updated_at, uploadedAt: draft.updated_at, id: 0 });
         });
     }
     return items;

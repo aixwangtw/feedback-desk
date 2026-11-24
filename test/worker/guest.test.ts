@@ -25,12 +25,12 @@ async function reportsOf(projectId: number): Promise<Report[]> {
 }
 
 describe('guest client entry', () => {
-    it('opens the portal without login and shows the category options', async () => {
+    it('opens the portal without login; the category options are in the list filter, not the new-issue form', async () => {
         const { slug, browser } = await guestSetup();
         const response = await browser().get(`/p/${slug}?tab=all`);
         expect(response.status).toBe(200);
         const html = await response.text();
-        expect(html).toContain('data-issue-category');
+        expect(html).not.toContain('data-issue-category');
         expect(html).toContain('經典排版');
         expect(html).not.toContain('data-logout');
         expect(html).not.toContain('data-account-link');
@@ -49,12 +49,14 @@ describe('guest client entry', () => {
         expect(page).toContain('張子元');
     });
 
-    it('rejects a missing or unknown category and the honeypot', async () => {
+    it('rejects an unknown category and the honeypot; no category is fine', async () => {
         const { seeded, slug, browser } = await guestSetup();
-        expect((await browser().post(`/p/${slug}/reports`, issue(null))).status).toBe(422);
         expect((await browser().post(`/p/${slug}/reports`, issue('亂填'))).status).toBe(422);
         expect((await browser().post(`/p/${slug}/reports`, issue('其他', { contact_website: 'spam' }))).status).toBe(422);
         expect(await reportsOf(seeded.project.id)).toHaveLength(0);
+        expect((await browser().post(`/p/${slug}/reports`, issue(null))).status).toBe(302);
+        const [report] = await reportsOf(seeded.project.id);
+        expect(report.category).toBeNull();
     });
 
     it('throttles guest submissions and messages per IP', async () => {

@@ -222,11 +222,13 @@ describe('new replies on the client side', () => {
         }
         await clientPosts(client, seeded, reports[0], '老師的留言');
         const owner = await new Browser().asOwner(seeded);
-        expect(await portal(owner, seeded)).toContain('"unread":1}');
+        expect(await portal(owner, seeded)).toContain('"unread":1,"drafts":0}');
 
         for (const query of ['', '?unread=1', '?view=board', '?sort=latest_message_at']) {
             const html = await portal(client, seeded, query);
-            expect(html).not.toContain('未讀留言');
+            // 清單頁說明「標題右邊的紅色數字是未讀留言數」兩端都有；團隊端的未讀摘要與篩選客戶看不到。
+            expect(html).not.toContain('張單有未讀留言');
+            expect(html).not.toContain('只看未讀留言');
             expect(html).not.toContain('owner_last_read_at');
             expect(html).not.toContain('data-unread-dot');
             expect(html).not.toContain('data-unread-summary');

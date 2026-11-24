@@ -17,7 +17,11 @@ export const MAX_ADJUSTMENT_NOTE = 20_000;
 export const MAX_REPORTER_NAME = 50;
 
 /** Kinds of entries in report_events (migration 0006). */
-export type EventKind = 'created' | 'message' | 'draft' | 'message_edit' | 'adjustment' | 'status' | 'claim' | 'release' | 'takeover' | 'handoff';
+/**
+ * 改狀態的事件預設 status；客戶把單改回等工程師時另記 reopen_by_message（已完成的單客戶又留言）
+ * 或 reopen_by_client（客戶按「待處理」），團隊看得出是誰、為什麼重新開啟。
+ */
+export type EventKind = 'created' | 'message' | 'draft' | 'message_edit' | 'adjustment' | 'status' | 'reopen_by_message' | 'reopen_by_client' | 'claim' | 'release' | 'takeover' | 'handoff' | 'merge';
 
 /** One activity-log row; `report` is the id, or the public_id of a report inserted in the same batch. */
 export function eventStatement(db: D1Database, report: { id: number } | { publicId: string }, kind: EventKind, author: Author, at: string, detail: string | null = null): D1PreparedStatement {
@@ -158,17 +162,18 @@ export async function deleteReport(env: Env, report: Report): Promise<void> {
 }
 
 /** Status change shared by the web pages, the API and MCP; completion time and activity time follow the same rule. */
-export async function changeStatus(env: Env, report: Report, status: ReportStatus, now = Date.now(), author?: Author): Promise<void> {
+export async function changeStatus(env: Env, report: Report, status: ReportStatus, now = Date.now(), author?: Author, eventKind: EventKind = 'status'): Promise<void> {
     const at = nowIso(now);
     await env.DB.batch([
         env.DB.prepare('UPDATE reports SET status = ?, completed_at = ?, latest_activity_at = ?, updated_at = ? WHERE id = ?').bind(status, status === 'completed' ? at : null, at, at, report.id),
-        ...(author && report.status !== status ? [eventStatement(env.DB, report, 'status', author, at, `${report.status}>${status}`)] : []),
+        ...(author && report.status !== status ? [eventStatement(env.DB, report, eventKind, author, at, `${report.status}>${status}`)] : []),
     ]);
 }
 
 export async function setClientDeleted(env: Env, report: Report, deleted: boolean, now = Date.now()): Promise<void> {
     const at = nowIso(now);
-    await env.DB.prepare('UPDATE reports SET client_deleted_at = ?, updated_at = ? WHERE id = ?')
+    // 還原時一併取消合併標記（搬到保留那張的待審留言不搬回）。
+    await env.DB.prepare(`UPDATE reports SET client_deleted_at = ?, updated_at = ?${deleted ? '' : ', merged_into_report_id = NULL'} WHERE id = ?`)
         .bind(deleted ? at : null, at, report.id)
         .run();
 }
@@ -180,13 +185,14 @@ export function statusChangeNotice(env: Env): string {
 
 /**
  * 留言自動切狀態：等客戶（needs_input）的單客戶留言 → 等工程師（new，要我方回覆）；團隊在等工程師的單留言 →
- * 等客戶。已完成的單不因留言改狀態。回傳要改成的狀態，不改時回 null。
+ * 等客戶；已完成的單客戶（含公開回報者）又留言 → 等工程師（重新開啟，事件記 reopen_by_message）。
+ * 團隊在已完成的單留言不改狀態。回傳要改成的狀態，不改時回 null。
  */
 export function statusAfterMessage(current: ReportStatus, byTeam: boolean): ReportStatus | null {
     if (byTeam && current === 'new') {
         return 'needs_input';
     }
-    if (!byTeam && current === 'needs_input') {
+    if (!byTeam && (current === 'needs_input' || current === 'completed')) {
         return 'new';
     }
     return null;
@@ -205,7 +211,7 @@ export function statusRuleStatements(db: D1Database, report: Pick<Report, 'id' |
         next,
         statements: [
             db.prepare('UPDATE reports SET status = ?, completed_at = NULL, updated_at = ? WHERE id = ? AND status = ?').bind(next, at, report.id, report.status),
-            ...(author ? [eventStatement(db, report, 'status', author, at, `${report.status}>${next}`)] : []),
+            ...(author ? [eventStatement(db, report, report.status === 'completed' ? 'reopen_by_message' : 'status', author, at, `${report.status}>${next}`)] : []),
         ],
     };
 }

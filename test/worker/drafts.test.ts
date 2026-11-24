@@ -103,7 +103,7 @@ describe('待審留言（草稿）', () => {
         expect(await clientUnread(report)).toBe(0);
     });
 
-    it('shows the team the draft with send, edit and discard buttons (and no draft tag on the list or board)', async () => {
+    it('shows the team the draft with send, edit and discard buttons, and a 待審留言 badge on the list and board', async () => {
         const { seeded, report, token } = await setup();
         await createDraftAs(token, seeded, report, { body: DRAFT_TEXT });
         const draft = await soleDraft(report);
@@ -115,12 +115,12 @@ describe('待審留言（草稿）', () => {
         for (const label of ['送出', '捨棄', '編輯', 'border-dashed']) {
             expect(page).toContain(label);
         }
-        // The list and the board carry no draft tag any more (it shows in the detail, the page and the panel only).
+        // 團隊端清單與看板的標題旁標「待審留言」（2026-11-20，對應 Laravel 版 d4707f8、beb3b16），說明寫出在哪裡審核。
         for (const query of ['', '?view=board', '?sort=created_at']) {
-            // The header bell still lists drafts; look at the list itself.
-            const portal = (await (await owner.get(`/p/${seeded.project.slug}${query}`)).text()).replace(/<details[^>]*data-notification-bell[\s\S]*?<\/details>/, '');
-            expect(portal).not.toContain('待審留言');
-            expect(portal).not.toContain('data-draft-badge');
+            const portal = await (await owner.get(`/p/${seeded.project.slug}${query}`)).text();
+            expect(portal).toContain(`data-draft-badge="${report.public_id}" title="有 1 則待審留言；點開這張單在留言區下方審核，按「送出」後會自動改成待回覆">待審留言</span>`);
+            expect(portal).toContain('標題旁的「待審留言」表示有回覆還沒送出');
+            expect(portal).toContain('在留言區下方的黃色「待審留言」框可以看內容、編輯、送出或捨棄');
         }
     });
 
@@ -304,10 +304,11 @@ describe('待審留言（草稿）', () => {
         expect((await patrol({ body: 'x', replace_message_id: 999999 })).status).toBe(422);
         expect((await patrol({ body: 'x' }, issued.token, `/api/patrol/projects/${seeded.project.slug}/reports/${crypto.randomUUID()}/drafts`)).status).toBe(404);
 
-        const { results: drafts } = await env.DB.prepare('SELECT author_developer_id, author_agent FROM message_drafts WHERE report_id = ? ORDER BY id').bind(report.id).all<{ author_developer_id: number; author_agent: string }>();
-        expect(drafts).toHaveLength(2);
-        expect(drafts[0]).toEqual({ author_developer_id: developer.id, author_agent: 'Claude Code' });
-        // 只有原本那則團隊留言算未讀；兩則草稿都不算。草稿不改狀態。
+        // 同一張單只留一則待審留言：第二次寫入接在原本那則後面，改寫原留言的設定也帶過去。
+        const { results: drafts } = await env.DB.prepare('SELECT author_developer_id, author_agent, body, replaces_message_id FROM message_drafts WHERE report_id = ? ORDER BY id').bind(report.id).all<{ author_developer_id: number; author_agent: string; body: string; replaces_message_id: number | null }>();
+        expect(drafts).toHaveLength(1);
+        expect(drafts[0]).toEqual({ author_developer_id: developer.id, author_agent: 'Claude Code', body: `${DRAFT_TEXT}\n\n改原留言`, replaces_message_id: originalId });
+        // 只有原本那則團隊留言算未讀；草稿不算。草稿不改狀態。
         expect(await messageCount(report)).toBe(1);
         expect(await clientUnread(report)).toBe(1);
         expect((await env.DB.prepare('SELECT status FROM reports WHERE id = ?').bind(report.id).first<{ status: string }>())?.status).toBe('new');

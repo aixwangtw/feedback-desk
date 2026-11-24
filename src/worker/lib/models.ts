@@ -75,6 +75,8 @@ export interface Report {
     status: ReportStatus;
     completed_at: string | null;
     client_deleted_at: string | null;
+    /** 重複的單合併進的那張單（合併後這張也算客戶已刪除，只留紀錄；migration 0016）。 */
+    merged_into_report_id?: number | null;
     /** 1: 團隊開的單分享給客戶（客戶看得到、算進客戶編號）；客戶自己開的單不看這個欄位（migration 0011）。 */
     shared_with_client: number;
     latest_activity_at: string;

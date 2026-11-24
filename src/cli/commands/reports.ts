@@ -239,8 +239,8 @@ function printAttachments(rt: Runtime, label: string, attachments: AttachmentInf
 }
 
 /**
- * Reads and checks local files before anything is sent. `allowVideo`（create、message、draft 的 --attach）另收
- * mp4／mov／webm 影片，每支 50 MB；圖片每張 10 MB。調整重點只收圖片。
+ * Reads and checks local files before anything is sent. `allowVideo`（開單、message、draft 的 --attach）另收影片
+ * （mp4、mov、webm），每支 100 MB；圖片每張 10 MB。調整重點只收圖片。
  */
 export function readImages(paths: string[], options: { allowVideo?: boolean } = {}): Array<{ path: string; name: string; bytes: Uint8Array; mime: string }> {
     const allowVideo = options.allowVideo === true;
@@ -603,7 +603,7 @@ export async function create(rt: Runtime, argv: string[]): Promise<number> {
     if (paths.length > MAX_IMAGES) {
         throw new CliError(`一張單最多附 ${MAX_IMAGES} 個圖片或影片。`);
     }
-    // 先全部檢查過再上傳：任何一個不合格，整張單都不建立。開單也收影片（mp4／mov／webm）。
+    // 先全部檢查過再上傳：任何一張不合格，整張單都不建立。
     const images = readImages(paths, { allowVideo: true });
     const api = apiFor(rt, str(args, 'url'));
     const uploadIds: string[] = [];

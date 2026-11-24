@@ -866,7 +866,7 @@ web.put('/p/:slug/uploads', async (c) => {
     const reportPublicId = c.req.query('report') ?? '';
     let maxBytes = MAX_IMAGE_BYTES;
     let reportId: number | null = null;
-    // 留言（含團隊與客戶）另收 mp4 影片；開單、調整重點、公開回報只收圖片。
+    // 開單、補上傳、留言（含團隊與客戶）、公開回報都收影片；只有調整重點與公開回報者在單頁留言只收圖片。
     let allowVideo = false;
     const ip = clientIp(c.req.raw);
     const publicLimits = (): Limit[] => {
@@ -882,7 +882,6 @@ web.put('/p/:slug/uploads', async (c) => {
         if (!(await access.canManage(project))) {
             abort(403);
         }
-        // 開單與補上傳也收影片（mp4／mov／webm）。
         allowVideo = true;
     } else if (purpose === 'adjustment') {
         if (!(await access.isOwner(project))) {
@@ -910,10 +909,10 @@ web.put('/p/:slug/uploads', async (c) => {
         if (!active || active.id !== project.id) {
             abort(404);
         }
-        maxBytes = PUBLIC_MAX_IMAGE_BYTES;
-        limits = publicLimits();
         // 首頁公開回報開單也收影片；公開回報者之後在單頁留言仍只收圖片。
         allowVideo = true;
+        maxBytes = PUBLIC_MAX_IMAGE_BYTES;
+        limits = publicLimits();
     } else {
         abort(404);
     }
@@ -1387,7 +1386,7 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             upload_url: `${paths.uploads(project.slug)}?purpose=message&report=${encodeURIComponent(report.public_id)}`,
             max_files: isPublicReporter ? PUBLIC_MAX_SCREENSHOTS : MAX_SCREENSHOTS,
             max_bytes: isPublicReporter ? PUBLIC_MAX_IMAGE_BYTES : MAX_IMAGE_BYTES,
-            // 留言另收 mp4 影片（每支 50 MB）；公開回報只收圖片。
+            // 留言另收影片（mp4／mov／webm，每支 100 MB）；公開回報者在單頁留言只收圖片。
             allow_video: !isPublicReporter,
             html,
         },

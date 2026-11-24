@@ -74,9 +74,8 @@ export async function storeImageStream(
     env: Env,
     input: Request | ImageSource,
     /**
-     * maxBytes is the image limit. allowVideo（開單、補上傳、留言、待審留言、首頁公開回報；公開回報者在單頁留言除外）
-     * also takes mp4／mov／webm up to MAX_VIDEO_BYTES;
-     * the body is still streamed into R2 (a 50 MB video is never held in memory).
+     * maxBytes is the image limit. allowVideo also takes mp4／mov／webm up to MAX_VIDEO_BYTES;
+     * the body is still streamed into R2 (a 100 MB video is never held in memory).
      */
     options: { projectId: number; reportId: number | null; purpose: UploadPurpose; maxBytes: number; nowIso: string; allowVideo?: boolean },
 ): Promise<Upload> {

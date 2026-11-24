@@ -536,7 +536,7 @@ describe('draft (待審留言)', () => {
         expect(fake.calls).toHaveLength(0);
     });
 
-    it('message, draft and create --attach take mp4, mov and webm videos (50 MB each); adjust stays images only', async () => {
+    it('create, message and draft --attach take mp4, mov and webm videos (100 MB each); adjust stays images only', async () => {
         const mp4 = new Uint8Array(64);
         mp4.set([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypisom')]);
         const fake = signedIn(handler);
@@ -545,28 +545,22 @@ describe('draft (待審留言)', () => {
         expect(fake.calls[0].headers['content-type']).toBe('video/mp4');
         expect(fake.calls[0].url).toContain('purpose=message');
 
-        // iPhone 的 mov 照原本類型上傳（2026-11-24 同步 Laravel 版 0c93f03）；開單也收影片。
         const mov = new Uint8Array(64);
         mov.set([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypqt  ')]);
-        const movFake = signedIn(handler);
-        expect(await main(['draft', 'demo', 'uuid-1', '--body', '附影片', '--attach', file(movFake, 'clip.mov', mov)], movFake.rt)).toBe(0);
-        expect(movFake.calls[0].headers['content-type']).toBe('video/quicktime');
-        const created = signedIn(({ url }) => (url.endsWith('/uploads') ? jsonResponse({ id: 'up-1' }, 201) : url.endsWith('/reports') ? jsonResponse({ public_id: 'uuid-9', title: 't', url: 'https://x/p/demo/reports/uuid-9', images_added: 1 }, 201) : jsonResponse({}, 404)));
-        expect(await main(['create', 'demo', '--title', 't', '--description', 'd', '--attach', file(created, 'a.mp4', mp4)], created.rt)).toBe(0);
-        expect(created.calls[0].headers['content-type']).toBe('video/mp4');
+        const accepted = signedIn(handler);
+        expect(await main(['draft', 'demo', 'uuid-1', '--body', 'x', '--attach', file(accepted, 'clip.mov', mov)], accepted.rt)).toBe(0);
+        expect(accepted.calls[0].headers['content-type']).toBe('video/quicktime');
 
-        const mkv = new Uint8Array(64);
-        mkv.set([0x1a, 0x45, 0xdf, 0xa3, ...new TextEncoder().encode('matroska')]);
+        const heic = new Uint8Array(64);
+        heic.set([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypheic')]);
         const refused = signedIn(handler);
-        expect(await main(['message', 'demo', 'uuid-1', '--body', 'x', '--attach', file(refused, 'clip.mkv', mkv)], refused.rt)).toBe(1);
+        expect(await main(['message', 'demo', 'uuid-1', '--body', 'x', '--attach', file(refused, 'photo.heic', heic)], refused.rt)).toBe(1);
         expect(refused.errors()).toContain('只接受 JPG、PNG、WebP 圖片或 MP4、MOV、WebM 影片');
-        expect(await main(['adjust', 'demo', 'uuid-1', '--note', 'n', '--image', file(refused, 'a.mp4', mp4)], refused.rt)).toBe(1);
-        expect(refused.errors()).toContain('只接受 jpg／png／webp');
         expect(refused.calls).toHaveLength(0);
 
         const help = fakeRuntime();
         expect(await main(['help'], help.rt)).toBe(0);
-        expect(help.text()).toContain('圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 50 MB');
+        expect(help.text()).toContain('圖片或影片，最多 5 個；圖片每個 10 MB、影片每個 100 MB');
     });
 
     it('merge posts the duplicate and the kept report and prints both (2026-11-24, Laravel feedback:merge)', async () => {

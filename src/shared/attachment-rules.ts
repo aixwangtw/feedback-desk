@@ -1,27 +1,26 @@
 /**
  * 附件規則（Worker 上傳、命令列 --attach、網頁與對話面板的前端檢查共用）。
- * 圖片：jpg／png／webp，每張 10 MB；影片：mp4、mov（iPhone）、webm，每支 50 MB，一次最多 5 個檔。
- * 開單、補上傳、留言、待審留言、公開回報（首頁開單）都收圖片與影片；調整重點與公開回報者在單頁留言只收圖片。
- * 影片上限比 Laravel 版（100 MB）小：Workers 免費方案每個請求的內容上限是 100 MB，一個檔一個 PUT，留餘裕。
+ * 圖片：jpg／png／webp，每張 10 MB；影片：mp4、mov（iPhone）、webm，每支 100 MB，一次最多 5 個檔。
+ * 開單、補上傳、留言、待審留言、公開回報都收圖片與影片；調整重點與公開回報者在單頁留言仍只收圖片。
  */
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
 
 /**
  * mp4 依判斷方式可能是 video/mp4 或 application/mp4（同一種檔案），兩者都收，存檔與播放一律當 video/mp4；
- * video/quicktime 是 iPhone 錄的 .mov，video/webm 是 webm，存檔時保留原本的類型，不轉檔。
+ * video/quicktime 是 iPhone 錄的 .mov，video/webm 是 webm，這兩種存檔時保留原本的類型，不轉檔。
  */
 export const VIDEO_MIME_TYPES = ['video/mp4', 'application/mp4', 'video/quicktime', 'video/webm'] as const;
 export const STORED_VIDEO_MIME = 'video/mp4';
-export type VideoMime = typeof STORED_VIDEO_MIME | 'video/quicktime' | 'video/webm';
+export type VideoMime = 'video/mp4' | 'video/quicktime' | 'video/webm';
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_FILES = 5;
 
 /** 留言檔案欄位的 accept 屬性。 */
 export const MESSAGE_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm';
-/** 只收圖片的欄位（調整重點、公開回報者在單頁留言）。 */
+/** 只收圖片的欄位（開單、調整重點、公開回報）。 */
 export const IMAGE_ACCEPT = IMAGE_MIME_TYPES.join(',');
 
 const MB = 1024 * 1024;
@@ -44,15 +43,12 @@ export function isVideoMime(mime: string | null | undefined): boolean {
     return (VIDEO_MIME_TYPES as readonly string[]).includes(mime ?? '');
 }
 
-/** 存進附件紀錄的 MIME：application/mp4 記成 video/mp4，瀏覽器才會用影片播放；mov、webm 保留原本類型。 */
+/** 存進附件紀錄的 MIME：application/mp4 記成 video/mp4，瀏覽器才會用影片播放；mov、webm 與圖片保留原本的類型。 */
 export function storedMime(mime: string | null | undefined): string {
-    if (mime === 'application/mp4') {
-        return STORED_VIDEO_MIME;
-    }
-    return mime ?? 'application/octet-stream';
+    return mime === 'application/mp4' ? STORED_VIDEO_MIME : mime ?? 'application/octet-stream';
 }
 
-/** 單檔上限：影片 50 MB、圖片 10 MB。 */
+/** 單檔上限：影片 100 MB、圖片 10 MB。 */
 export function maxBytesFor(mime: string | null | undefined): number {
     return isVideoMime(mime) ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
 }
@@ -62,12 +58,7 @@ export function maxBytesFor(mime: string | null | undefined): number {
  */
 const MP4_BRANDS = new Set(['isom', 'iso2', 'iso3', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'mp4v', 'dash', 'f4v ', 'MSNV', 'NDAS']);
 
-/** 辨識檔頭要讀的位元組數（webm 的 DocType 在 EBML 標頭裡，前 64 bytes 內）。 */
-export const DETECT_HEAD_BYTES = 64;
-
-/**
- * Detects jpg/png/webp (and mp4/mov/webm when `allowVideo`) from the first bytes; the declared type is ignored.
- */
+/** Detects jpg/png/webp (and mp4 when `allowVideo`) from the first 12 bytes; the declared type is ignored. */
 export function detectAttachmentType(head: Uint8Array, allowVideo: boolean): ImageMime | VideoMime | null {
     if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) {
         return 'image/jpeg';
@@ -91,26 +82,28 @@ export function detectAttachmentType(head: Uint8Array, allowVideo: boolean): Ima
     return null;
 }
 
-/** QuickTime（iPhone 的 .mov）：bytes 4–7 是 ftyp、主品牌 "qt  "。 */
-export function isQuickTime(head: Uint8Array): boolean {
-    return head.length >= 12 && String.fromCharCode(head[4], head[5], head[6], head[7]) === 'ftyp' && String.fromCharCode(head[8], head[9], head[10], head[11]) === 'qt  ';
-}
+/** 檔頭要看的位元組數：webm 的 DocType 在檔頭 EBML 區塊裡，要多讀一些。 */
+export const DETECT_HEAD_BYTES = 64;
 
-/** webm：EBML 標頭（1A 45 DF A3），DocType 是 "webm"（Matroska 的 mkv 不收）。 */
-export function isWebm(head: Uint8Array): boolean {
-    if (head.length < 8 || head[0] !== 0x1a || head[1] !== 0x45 || head[2] !== 0xdf || head[3] !== 0xa3) {
-        return false;
-    }
-    const text = String.fromCharCode(...head.subarray(0, Math.min(head.length, DETECT_HEAD_BYTES)));
-    return text.includes('webm');
-}
-
-/** Bytes 4–7 are "ftyp" and bytes 8–11 a known mp4 brand（QuickTime 的 "qt  " 另由 isQuickTime 判斷）。 */
+/** Bytes 4–7 are "ftyp" and bytes 8–11 a known mp4 brand. */
 export function isMp4(head: Uint8Array): boolean {
     if (head.length < 12 || String.fromCharCode(head[4], head[5], head[6], head[7]) !== 'ftyp') {
         return false;
     }
     return MP4_BRANDS.has(String.fromCharCode(head[8], head[9], head[10], head[11]));
+}
+
+/** iPhone 的 .mov：bytes 4–7 是 "ftyp"，主品牌是 "qt  "。 */
+export function isQuickTime(head: Uint8Array): boolean {
+    return head.length >= 12 && String.fromCharCode(head[4], head[5], head[6], head[7]) === 'ftyp' && String.fromCharCode(head[8], head[9], head[10], head[11]) === 'qt  ';
+}
+
+/** webm：檔頭是 EBML 標記（1A 45 DF A3），且檔頭內 DocType 寫著 "webm"（同為 EBML 的 mkv 不收）。 */
+export function isWebm(head: Uint8Array): boolean {
+    if (head.length < 12 || head[0] !== 0x1a || head[1] !== 0x45 || head[2] !== 0xdf || head[3] !== 0xa3) {
+        return false;
+    }
+    return String.fromCharCode(...head.subarray(4, DETECT_HEAD_BYTES)).includes('webm');
 }
 
 /**

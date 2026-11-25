@@ -4,7 +4,9 @@ namespace Tests\Feature\Feedback;
 
 use App\Actions\CreateFeedbackReportAction;
 use App\Actions\MergeFeedbackReportAction;
+use App\Enums\FeedbackAuthorType;
 use App\Enums\FeedbackCreatorType;
+use App\Enums\FeedbackReportStatus;
 use App\Jobs\ResolveFeedbackReport;
 use App\Models\FeedbackClientAccount;
 use App\Models\FeedbackMessage;
@@ -13,8 +15,10 @@ use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Models\FeedbackReportEvent;
 use App\Support\FeedbackActor;
+use App\Support\FeedbackAlbum;
 use App\Support\FeedbackServiceException;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -140,18 +144,116 @@ class FeedbackMergeDuplicateReportsTest extends TestCase
         $this->assertSame(1, $created['report']->events()->where('kind', 'merged')->count());
     }
 
-    public function test_shared_client_link_without_account_counts_as_the_same_person(): void
+    public function test_shared_client_link_without_account_is_not_treated_as_the_same_person(): void
     {
+        // 共用連結登入沒有帳號，可能是不同人，不自動合併。
         $this->actingAsTeacher();
         $issue = ['title' => '圖片不見', 'description' => '第三題的圖沒有顯示'];
 
         $this->post(route('feedback.reports.store', $this->project), ['issues' => [$issue]])->assertSessionHas('success', '已新增 1 個問題。');
-        $this->post(route('feedback.reports.store', $this->project), ['issues' => [$issue]])
-            ->assertSessionHas('success', '這次送出的內容和剛才送出的單一樣，已自動合併成一張。');
+        $this->post(route('feedback.reports.store', $this->project), ['issues' => [$issue]])->assertSessionHas('success', '已新增 1 個問題。');
 
-        $this->assertSame(2, FeedbackReport::count());
-        $this->assertSame(1, FeedbackReport::whereNull('merged_into_report_id')->count());
-        Queue::assertPushed(ResolveFeedbackReport::class, 1);
+        $this->assertSame(2, FeedbackReport::whereNull('merged_into_report_id')->count());
+        Queue::assertPushed(ResolveFeedbackReport::class, 2);
+    }
+
+    public function test_auto_merge_moves_original_attachments_to_the_kept_report(): void
+    {
+        $account = FeedbackClientAccount::factory()->for($this->project)->create();
+        $first = $this->createAsClient($account, '儲存失敗', '按了沒反應', [$this->png('a.png')]);
+        $created = $this->createAsClient($account, '儲存失敗', '按了沒反應', [$this->png('b.png'), $this->png('c.png')]);
+
+        $kept = $first['report'];
+        $this->assertTrue($created['merged_into']->is($kept));
+        $this->assertSame(0, $created['report']->feedbackAttachments()->count());
+        $this->assertSame(3, $kept->feedbackAttachments()->count());
+        $this->assertSame(['圖1', '圖2', '圖3'], app(FeedbackAlbum::class)->items($kept->refresh(), false)->pluck('name')->all());
+        $this->assertStringEndsWith('，搬來 2 個原始附件', $kept->events()->where('kind', 'merged')->sole()->detail);
+
+        $this->actingAsTeacher();
+        foreach ($kept->feedbackAttachments as $attachment) {
+            $this->get(route('feedback.attachments.show', [$this->project, $kept, $attachment]))->assertOk();
+        }
+    }
+
+    public function test_does_not_auto_merge_into_a_completed_report(): void
+    {
+        $account = FeedbackClientAccount::factory()->for($this->project)->create();
+        $first = $this->createAsClient($account, '標題', '說明');
+        $first['report']->update(['status' => FeedbackReportStatus::Completed]);
+
+        $created = $this->createAsClient($account, '標題', '說明');
+
+        $this->assertNull($created['merged_into']);
+        $this->assertNull($created['report']->refresh()->merged_into_report_id);
+        $this->assertNull($created['report']->client_deleted_at);
+    }
+
+    public function test_client_report_cannot_be_merged_into_a_report_the_client_cannot_see(): void
+    {
+        $merge = app(MergeFeedbackReportAction::class);
+        $actor = FeedbackActor::sharedOwner();
+        $clientReport = FeedbackReport::factory()->for($this->project)->create();
+        $hiddenTargets = [
+            '團隊內部單' => FeedbackReport::factory()->for($this->project)->create(['creator_type' => FeedbackCreatorType::Developer, 'shared_with_client' => false]),
+            '公開回報單' => FeedbackReport::factory()->for($this->project)->create(['creator_type' => FeedbackCreatorType::Public, 'creator_developer_id' => null]),
+        ];
+
+        foreach ($hiddenTargets as $label => $target) {
+            try {
+                $merge->handle($clientReport, $target, $actor);
+                $this->fail("不應該併進{$label}");
+            } catch (FeedbackServiceException $exception) {
+                $this->assertSame('target_hidden_from_client', $exception->errorCode);
+            }
+        }
+        $this->assertNull($clientReport->refresh()->merged_into_report_id);
+
+        $shared = FeedbackReport::factory()->for($this->project)->create(['creator_type' => FeedbackCreatorType::Developer, 'shared_with_client' => true]);
+        $merge->handle($clientReport, $shared, $actor);
+        $this->assertSame($shared->id, $clientReport->refresh()->merged_into_report_id);
+
+        // 團隊內部單併進客戶的單不受限。
+        $internal = $hiddenTargets['團隊內部單'];
+        $merge->handle($internal, $shared, $actor);
+        $this->assertSame($shared->id, $internal->refresh()->merged_into_report_id);
+    }
+
+    public function test_manual_merge_joins_new_drafts_and_keeps_rewrites_separate(): void
+    {
+        $target = FeedbackReport::factory()->for($this->project)->create(['created_at' => now()->subMinute()]);
+        $duplicate = FeedbackReport::factory()->for($this->project)->create();
+        $message = FeedbackMessage::factory()->for($duplicate)->create(['author_type' => FeedbackAuthorType::Owner, 'body' => '原單留言']);
+        $kept = FeedbackMessageDraft::create(['feedback_report_id' => $target->id, 'author_name' => 'Alex', 'body' => '保留單的草稿']);
+        $moved = FeedbackMessageDraft::create(['feedback_report_id' => $duplicate->id, 'author_name' => 'Alex', 'body' => '重複單的草稿']);
+        $rewrite = FeedbackMessageDraft::create(['feedback_report_id' => $duplicate->id, 'replaces_message_id' => $message->id, 'author_name' => 'Alex', 'body' => '改寫原單留言']);
+
+        app(MergeFeedbackReportAction::class)->handle($duplicate, $target, FeedbackActor::sharedOwner());
+
+        $drafts = $target->messageDrafts()->orderBy('id')->get();
+        $this->assertCount(2, $drafts);
+        $this->assertTrue($drafts[0]->is($kept));
+        $this->assertSame("保留單的草稿\n\n重複單的草稿", $drafts[0]->body);
+        $this->assertNull($moved->fresh());
+        $this->assertTrue($drafts[1]->is($rewrite));
+        $this->assertNull($drafts[1]->replaces_message_id);
+        $this->assertSame('改寫原單留言', $drafts[1]->body);
+        $this->assertSame('原單留言', $message->refresh()->body);
+    }
+
+    public function test_manual_merge_keeps_a_moved_draft_separate_when_attachments_would_exceed_the_limit(): void
+    {
+        $target = FeedbackReport::factory()->for($this->project)->create(['created_at' => now()->subMinute()]);
+        $duplicate = FeedbackReport::factory()->for($this->project)->create();
+        $file = ['disk' => 'local', 'path' => 'x.png', 'original_name' => 'x.png', 'mime_type' => 'image/png', 'size' => 1];
+        FeedbackMessageDraft::create(['feedback_report_id' => $target->id, 'author_name' => 'Alex', 'body' => '保留單', 'attachments' => array_fill(0, 3, $file)]);
+        $moved = FeedbackMessageDraft::create(['feedback_report_id' => $duplicate->id, 'author_name' => 'Alex', 'body' => '重複單', 'attachments' => array_fill(0, 3, $file)]);
+
+        app(MergeFeedbackReportAction::class)->handle($duplicate, $target, FeedbackActor::sharedOwner());
+
+        $this->assertSame(2, $target->messageDrafts()->count());
+        $this->assertSame($target->id, $moved->refresh()->feedback_report_id);
+        $this->assertSame('重複單', $moved->body);
     }
 
     public function test_reports_that_should_not_be_merged(): void
@@ -248,7 +350,7 @@ class FeedbackMergeDuplicateReportsTest extends TestCase
 
     public function test_both_list_pages_explain_auto_merge(): void
     {
-        $guide = '同一個人 30 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張）。';
+        $guide = '同一個帳號 30 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張，附件一起搬過去；先送出的那張已完成就不合併）。';
         $this->assertSame($guide, MergeFeedbackReportAction::AUTO_MERGE_GUIDE);
 
         $this->actingAsTeacher();
@@ -261,16 +363,22 @@ class FeedbackMergeDuplicateReportsTest extends TestCase
     }
 
     /**
+     * @param  list<UploadedFile>  $screenshots
      * @return array{report: FeedbackReport, reporter_token: string, merged_into: FeedbackReport|null}
      */
-    private function createAsClient(FeedbackClientAccount $account, string $title, string $description): array
+    private function createAsClient(FeedbackClientAccount $account, string $title, string $description, array $screenshots = []): array
     {
         return app(CreateFeedbackReportAction::class)->handle(
             $this->project,
-            ['title' => $title, 'description' => $description],
+            ['title' => $title, 'description' => $description, 'screenshots' => $screenshots],
             ['creator_type' => FeedbackCreatorType::Client, 'creator_developer_id' => null, 'creator_client_account_id' => $account->id],
             FeedbackActor::client($account),
         );
+    }
+
+    private function png(string $name): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent($name, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='));
     }
 
     private function actingAsTeacher(): void

@@ -13,8 +13,10 @@ use App\Models\FeedbackPatrolToken;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
 use App\Support\FeedbackActor;
+use App\Support\FeedbackServiceException;
 use App\Support\StandardInput;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\ViewErrorBag;
@@ -257,16 +259,17 @@ class FeedbackMessageDraftTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('draft.body', self::DRAFT_TEXT)
             ->assertJsonPath('draft.replaces_message_id', null);
-        // 同一張單只留一則待審留言：第二次建立併進原本那則，內容接在後面。
+        // 改寫某則留言的草稿不接進新留言草稿，另成一則（否則送出時會覆蓋舊留言）。
         $this->withToken($plain)->postJson($url, ['body' => '改原留言', 'replace_message_id' => $original->id])
             ->assertCreated()
-            ->assertJsonPath('draft.body', self::DRAFT_TEXT."\n\n改原留言");
+            ->assertJsonPath('draft.body', '改原留言')
+            ->assertJsonPath('draft.replaces_message_id', $original->id);
         $this->withToken($plain)->postJson($url, ['body' => ' '])->assertUnprocessable();
         $this->withToken($plain)->postJson($url, ['body' => 'x', 'replace_message_id' => 999999])->assertUnprocessable();
         $this->withToken($plain)->postJson(route('feedback.patrol.draft', ['site', Str::uuid()->toString()]), ['body' => 'x'])->assertNotFound();
 
         $drafts = FeedbackMessageDraft::orderBy('id')->get();
-        $this->assertCount(1, $drafts);
+        $this->assertCount(2, $drafts);
         $this->assertSame($alex->id, $drafts[0]->author_developer_id);
         $this->assertSame('Claude Code', $drafts[0]->author_agent);
         // 只有原本那則團隊留言算未讀；草稿不算。
@@ -290,7 +293,124 @@ class FeedbackMessageDraftTest extends TestCase
         $this->assertSame(1, FeedbackMessageDraft::where('feedback_report_id', $this->report->id)->count());
         $this->assertSame("第一段\n\n第二段", $again->body);
         // 待審留言區的說明寫出同一張單只留一則。
-        $this->assertStringContainsString('同一張單只留一則，之後新增的內容會接在這一則後面', view('feedback.reports._drafts', ['project' => $this->project, 'report' => $this->report, 'drafts' => FeedbackMessageDraft::where('feedback_report_id', $this->report->id)->get(), 'errors' => new ViewErrorBag])->render());
+        $this->assertStringContainsString('同一張單的新留言只留一則，之後新增的內容會接在這一則後面；改寫舊留言的草稿另成一則', view('feedback.reports._drafts', ['project' => $this->project, 'report' => $this->report, 'drafts' => FeedbackMessageDraft::where('feedback_report_id', $this->report->id)->get(), 'errors' => new ViewErrorBag])->render());
+    }
+
+    public function test_new_draft_does_not_join_a_rewrite_draft_so_sending_keeps_the_old_message(): void
+    {
+        // 情境 A：先有改寫舊留言的草稿，再建新留言草稿；送出新留言草稿不能覆蓋舊留言。
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner('Claude Code');
+        $old = $this->teamMessage('舊留言原文');
+
+        $rewrite = $action->create($this->report, $actor, '舊留言改寫後', $old->id);
+        $fresh = $action->create($this->report, $actor, '新的回覆');
+
+        $this->assertNotSame($rewrite->id, $fresh->id);
+        $this->assertNull($fresh->replaces_message_id);
+        $this->assertSame('新的回覆', $fresh->body);
+        $this->assertSame('舊留言改寫後', $rewrite->refresh()->body);
+
+        $sent = $action->send($fresh, $actor);
+        $this->assertNotSame($old->id, $sent->id);
+        $this->assertSame('舊留言原文', $old->refresh()->body);
+        $this->assertSame(2, FeedbackMessage::count());
+
+        $action->send($rewrite->refresh(), $actor);
+        $this->assertSame('舊留言改寫後', $old->refresh()->body);
+        $this->assertSame('新的回覆', $sent->refresh()->body);
+    }
+
+    public function test_rewrite_draft_does_not_join_a_new_draft_so_new_text_is_not_lost(): void
+    {
+        // 情境 B：先有新留言草稿，再建改寫舊留言的草稿；新留言草稿送出後仍是新的一則，舊留言只照改寫草稿改。
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner('Claude Code');
+        $old = $this->teamMessage('舊留言原文');
+
+        $fresh = $action->create($this->report, $actor, '新的回覆');
+        $rewrite = $action->create($this->report, $actor, '舊留言改寫後', $old->id);
+
+        $this->assertNotSame($fresh->id, $rewrite->id);
+        $this->assertSame($old->id, $rewrite->replaces_message_id);
+        $this->assertSame('新的回覆', $fresh->refresh()->body);
+        $this->assertNull($fresh->replaces_message_id);
+
+        $action->send($fresh->refresh(), $actor);
+        $this->assertSame('舊留言原文', $old->refresh()->body);
+        $this->assertSame(1, FeedbackMessage::where('body', '新的回覆')->count());
+    }
+
+    public function test_rewrites_of_the_same_message_share_one_draft_and_the_latest_wins(): void
+    {
+        // 情境 C：同一則留言改寫兩次只留一則改寫草稿（後來的取代），改寫另一則留言各自一則。
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner('Claude Code');
+        $first = $this->teamMessage('第一則');
+        $second = $this->teamMessage('第二則');
+
+        $draft = $action->create($this->report, $actor, '第一則改寫 v1', $first->id);
+        $again = $action->create($this->report, $actor, '第一則改寫 v2', $first->id);
+        $other = $action->create($this->report, $actor, '第二則改寫', $second->id);
+
+        $this->assertSame($draft->id, $again->id);
+        $this->assertSame('第一則改寫 v2', $again->body);
+        $this->assertNotSame($draft->id, $other->id);
+        $this->assertSame(2, FeedbackMessageDraft::count());
+
+        $action->send($again, $actor);
+        $action->send($other, $actor);
+        $this->assertSame('第一則改寫 v2', $first->refresh()->body);
+        $this->assertSame('第二則改寫', $second->refresh()->body);
+        $this->assertSame(2, FeedbackMessage::count());
+    }
+
+    public function test_text_that_only_appears_inside_the_draft_is_still_appended(): void
+    {
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner();
+
+        $action->create($this->report, $actor, '好的，第三題已修正');
+        $draft = $action->create($this->report, $actor, '好的');
+
+        $this->assertSame("好的，第三題已修正\n\n好的", $draft->body);
+    }
+
+    public function test_attachments_over_the_per_message_limit_go_to_another_new_draft(): void
+    {
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner();
+
+        $first = $action->create($this->report, $actor, '第一段', images: $this->images(3));
+        $second = $action->create($this->report, $actor, '第二段', images: $this->images(3));
+        $third = $action->create($this->report, $actor, '第三段', images: $this->images(2));
+
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame($first->id, $third->id);
+        $this->assertCount(5, $third->attachmentList());
+        $this->assertSame("第一段\n\n第三段", $third->body);
+        $this->assertCount(3, $second->refresh()->attachmentList());
+        $this->assertSame('第二段', $second->body);
+    }
+
+    public function test_rewrite_draft_rejects_attachments_over_the_limit_and_keeps_no_files(): void
+    {
+        $action = app(ManageFeedbackMessageDraftAction::class);
+        $actor = FeedbackActor::sharedOwner();
+        $old = $this->teamMessage('舊留言');
+        $draft = $action->create($this->report, $actor, '改寫 v1', $old->id, $this->images(3));
+
+        try {
+            $action->create($this->report, $actor, '改寫 v2', $old->id, $this->images(3));
+            $this->fail('附件超過上限應該擋下');
+        } catch (FeedbackServiceException $exception) {
+            $this->assertSame('too_many_attachments', $exception->errorCode);
+        }
+
+        $this->assertSame('改寫 v1', $draft->refresh()->body);
+        $this->assertCount(3, $draft->attachmentList());
+        $this->assertSame(1, FeedbackMessageDraft::count());
+        $this->assertCount(3, Storage::disk('local')->allFiles());
     }
 
     public function test_deleting_the_report_removes_its_drafts(): void
@@ -300,6 +420,19 @@ class FeedbackMessageDraftTest extends TestCase
         $this->report->delete();
 
         $this->assertModelMissing($draft);
+    }
+
+    private function teamMessage(string $body): FeedbackMessage
+    {
+        return FeedbackMessage::factory()->for($this->report)->create(['author_type' => FeedbackAuthorType::Owner, 'body' => $body]);
+    }
+
+    /**
+     * @return list<UploadedFile>
+     */
+    private function images(int $count): array
+    {
+        return array_map(fn (int $index): UploadedFile => UploadedFile::fake()->createWithContent("shot{$index}.png", base64_decode(self::PNG)), range(1, $count));
     }
 
     private function draft(): FeedbackMessageDraft

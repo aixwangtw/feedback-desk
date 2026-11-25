@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Enums\FeedbackCreatorType;
+use App\Enums\FeedbackReportStatus;
 use App\Jobs\ResolveFeedbackReport;
 use App\Models\FeedbackProject;
 use App\Models\FeedbackReport;
@@ -89,12 +90,12 @@ class CreateFeedbackReportAction
     }
 
     /**
-     * 客戶建立的單才自動合併（公開回報與開發團隊的單不合併）：同專案、同一個客戶帳號（都沒有帳號也算同一人）、
-     * 標題與說明去頭尾空白後完全相同、在合併時限內建立、還沒刪除或合併的較早一張。
+     * 客戶建立的單才自動合併（公開回報與開發團隊的單不合併）：同專案、同一個客戶帳號（沒有帳號的不合併，共用連結可能是不同人）、
+     * 標題與說明去頭尾空白後完全相同、在合併時限內建立、還沒刪除、合併或完成的較早一張（已完成的單不併進去，新單照常保留）。
      */
     private function findDuplicateOf(FeedbackReport $report): ?FeedbackReport
     {
-        if ($report->creator_type !== FeedbackCreatorType::Client) {
+        if ($report->creator_type !== FeedbackCreatorType::Client || $report->creator_client_account_id === null) {
             return null;
         }
 
@@ -104,11 +105,8 @@ class CreateFeedbackReportAction
         return FeedbackReport::query()
             ->where('feedback_project_id', $report->feedback_project_id)
             ->where('creator_type', FeedbackCreatorType::Client->value)
-            ->when(
-                $report->creator_client_account_id === null,
-                fn ($query) => $query->whereNull('creator_client_account_id'),
-                fn ($query) => $query->where('creator_client_account_id', $report->creator_client_account_id),
-            )
+            ->where('creator_client_account_id', $report->creator_client_account_id)
+            ->where('status', '!=', FeedbackReportStatus::Completed->value)
             ->whereKeyNot($report->id)
             ->where('id', '<', $report->id)
             ->whereNull('client_deleted_at')

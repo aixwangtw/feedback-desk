@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Storage;
 /**
  * 待審留言（草稿）的新增、修改、送出、捨棄；artisan 指令、排程 API、網頁共用。
  * 草稿只存在 feedback_message_drafts，送出前不會建立任何留言或附件紀錄，客戶端讀不到、也不算未讀。
- * 同一張單最多一則待審留言：再建立時併進原本那一則（見 create）。
+ * 同一張單的新留言草稿只留一則：再建立時併進原本那一則；改寫某則留言的草稿與新留言分開，同一則留言只留一則改寫草稿（見 draftToJoin）。
  */
 class ManageFeedbackMessageDraftAction
 {
@@ -48,18 +48,10 @@ class ManageFeedbackMessageDraftAction
             }
 
             return DB::transaction(function () use ($report, $actor, $body, $replacesMessageId, $stored): FeedbackMessageDraft {
-                // 同一張單只留一則待審留言（2026-11-21 使用者：「留言草稿也不用分2則」）：
-                // 已有一則時把新內容接在後面、附件接在後面，不另建一則；內容完全相同就不重複接。
-                $existing = FeedbackMessageDraft::query()
-                    ->where('feedback_report_id', $report->id)
-                    ->orderBy('id')
-                    ->lockForUpdate()
-                    ->first();
+                $existing = $this->draftToJoin($report, $replacesMessageId, count($stored));
                 if ($existing !== null) {
-                    $mergedBody = str_contains($existing->body, $body) ? $existing->body : $this->validatedBody($existing->body."\n\n".$body);
                     $existing->update([
-                        'body' => $mergedBody,
-                        'replaces_message_id' => $existing->replaces_message_id ?? $replacesMessageId,
+                        'body' => $this->joinedBody($existing->body, $body, $replacesMessageId !== null),
                         'attachments' => [...$existing->attachmentList(), ...$stored] ?: null,
                     ]);
                     $report->recordEvent('draft', $actor);
@@ -133,6 +125,62 @@ class ManageFeedbackMessageDraftAction
 
             return $message;
         });
+    }
+
+    /**
+     * 新建的草稿要接進哪一則既有草稿（2026-11-21 使用者：「留言草稿也不用分2則」）：
+     * 新留言（replaces_message_id 為 null）只接進新留言草稿，附件接上後超過每則上限就另存一則；
+     * 改寫某則留言的草稿只接進改寫同一則留言的草稿，附件超過上限直接回錯誤（同一則留言不能有兩則改寫草稿）。
+     */
+    public function draftToJoin(FeedbackReport $report, ?int $replacesMessageId, int $incomingAttachments): ?FeedbackMessageDraft
+    {
+        $candidates = FeedbackMessageDraft::query()
+            ->where('feedback_report_id', $report->id)
+            ->when(
+                $replacesMessageId === null,
+                fn ($query) => $query->whereNull('replaces_message_id'),
+                fn ($query) => $query->where('replaces_message_id', $replacesMessageId),
+            )
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $roomy = $candidates->first(
+            fn (FeedbackMessageDraft $draft): bool => count($draft->attachmentList()) + $incomingAttachments <= FeedbackAttachmentRules::MAX_FILES,
+        );
+        if ($roomy === null && $replacesMessageId !== null && $candidates->isNotEmpty()) {
+            throw new FeedbackServiceException('too_many_attachments', '這則留言的待審改寫已有附件，合起來會超過每則 '.FeedbackAttachmentRules::MAX_FILES.' 個上限，請先送出或捨棄原本那則。');
+        }
+
+        return $roomy;
+    }
+
+    /**
+     * 新留言草稿：新內容接在後面；和整則內容或最後接上的那段完全相同時不重複接（重送同一段）。
+     * 改寫草稿：內容是改寫後的整則留言，後來的取代先前的。
+     */
+    public function joinedBody(string $existingBody, string $incomingBody, bool $isRewrite): string
+    {
+        if ($isRewrite) {
+            return $incomingBody;
+        }
+        if ($existingBody === $incomingBody || str_ends_with($existingBody, "\n\n".$incomingBody)) {
+            return $existingBody;
+        }
+
+        return $this->validatedBody($existingBody."\n\n".$incomingBody);
+    }
+
+    /**
+     * 合併單時搬草稿用：接起來超過留言字數上限就回 null，讓呼叫端各自保留，不讓整個合併失敗。
+     */
+    public function joinedBodyOrNull(string $existingBody, string $incomingBody): ?string
+    {
+        try {
+            return $this->joinedBody($existingBody, $incomingBody, false);
+        } catch (FeedbackServiceException) {
+            return null;
+        }
     }
 
     public function discard(FeedbackMessageDraft $draft): void

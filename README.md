@@ -177,11 +177,11 @@ FEEDBACK_PORTAL_TITLE=專案開發追蹤
 | `feedback:adjust {project} {report} {--by-id} {--note=} {--append} {--image=*} {--as=} {--agent=} {--force}` | 【已停用，改用 `feedback:message` 留言】照常寫入調整重點與圖片但附警告，不改動狀態。別人認領中要加 `--force`（記錄為接手）。 |
 | `feedback:request-completion {project} {report} {--text=} {--as=} {--agent=} {--force}` | 請客戶確認完成：只發一則附「通過」按鈕的確認留言（沒給文字用預設），單維持等客戶，不會直接結案；已完成的單會被拒絕。 |
 | `feedback:message {project} {report} {--text=} {--attach=*} {--as=} {--agent=}` | 以開發團隊身分在問題留言（可附圖；等工程師的單會自動改成等客戶），完成後輸出留言 id；未給 `--text` 時從標準輸入讀取，客戶端會出現紅色未讀數字。 |
-| `feedback:draft {project} {report} {--text=} {--replace-message=} {--attach=*} {--as=} {--agent=}` | 新增待審留言（草稿）：只有開發團隊看得到、不算客戶未讀；團隊在單頁或右下角對話面板審過按「送出」才發出。`--replace-message` 指定要改寫的團隊留言 id。排程可用 `POST /api/patrol/projects/{slug}/reports/{public_id}/drafts`（JSON `body`、`replace_message_id`）。 |
+| `feedback:draft {project} {report} {--text=} {--replace-message=} {--attach=*} {--as=} {--agent=}` | 新增待審留言（草稿）：只有開發團隊看得到、不算客戶未讀；團隊在單頁或右下角對話面板審過按「送出」才發出。`--replace-message` 指定要改寫的團隊留言 id。同一張單的新留言草稿只留一則（再建立會接在後面，附件超過 5 個另存一則），改寫某則留言的草稿各自一則、後來的取代先前的。排程可用 `POST /api/patrol/projects/{slug}/reports/{public_id}/drafts`（JSON `body`、`replace_message_id`）。 |
 | `feedback:reports {project} {--status=*} {--creator=} {--include-deleted} {--unread} {--json}` | 列出專案的問題，最新在前；可依狀態、建立者（`client`、`client:<id>`、`public`、`shared`、`developer:<id>`）篩選，並顯示誰認領中。 |
 | `feedback:report {project} {report} {--json}` | 讀取單張問題的完整內容（含認領、交接紀錄、最近動態），附件與調整附圖會印出檔案路徑。 |
 | `feedback:status {project} {report} {status} {--as=} {--agent=} {--force}` | 改變問題狀態，輸出前後狀態；狀態可用 `new`／`needs_input`／`completed` 或目前的中文名稱（等工程師／等客戶／已完成），舊名稱「待處理／待審核」也接受。別人認領中要加 `--force`。 |
-| `feedback:merge {project} {duplicate} {target} {--as=} {--agent=}` | 把重複的單合併進保留的單：重複單隱藏（團隊端單頁顯示「已合併到編號 N」）、待審留言搬到保留的單，兩張各記一筆動態。客戶 30 分鐘內重複送出標題與說明都一樣的單，建立時會自動合併。 |
+| `feedback:merge {project} {duplicate} {target} {--as=} {--agent=}` | 把重複的單合併進保留的單：重複單隱藏（團隊端單頁顯示「已合併到編號 N」）、待審留言與開單時的原始附件搬到保留的單，兩張各記一筆動態；客戶看得到的單不能併進客戶看不到的單。同一個客戶帳號 30 分鐘內重複送出標題與說明都一樣的單，建立時會自動合併（沒有帳號的共用連結、已完成的單不自動合併）。 |
 | `feedback:claim` / `feedback:release {project} {report} {--as=} {--agent=} {--force}` | 認領／釋放，讓其他人與 AI 知道誰在處理。需要 `--as`（團隊個人帳號）。 |
 | `feedback:handoff {project} {report} {--note=} {--release} {--as=} {--agent=}` | 寫交接紀錄（做到哪、下一步），只有團隊看得到。需要 `--as`。 |
 

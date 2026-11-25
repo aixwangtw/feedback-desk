@@ -353,7 +353,7 @@ export const DraftsSection: FC<{ v: ViewContext; slug: string; publicId: string;
         <div id={anchor ? 'message-drafts' : undefined} class="border-t border-amber-200 bg-amber-50/70 px-5 py-4 sm:px-7" data-message-drafts>
             <h3 class="text-sm font-bold text-amber-900">
                 待審留言 {drafts.length}
-                <span class="ml-2 text-xs font-normal text-amber-800">只有{labels.owner}看得到，按「送出」才會發給{labels.client}；同一張單只留一則，之後新增的內容會接在這一則後面</span>
+                <span class="ml-2 text-xs font-normal text-amber-800">只有{labels.owner}看得到，按「送出」才會發給{labels.client}；同一張單的新留言只留一則，之後新增的內容會接在這一則後面；改寫舊留言的草稿另成一則</span>
             </h3>
             <ol class="mt-3 grid gap-3">
                 {drafts.map((draft) => {

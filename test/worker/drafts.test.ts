@@ -304,10 +304,12 @@ describe('待審留言（草稿）', () => {
         expect((await patrol({ body: 'x', replace_message_id: 999999 })).status).toBe(422);
         expect((await patrol({ body: 'x' }, issued.token, `/api/patrol/projects/${seeded.project.slug}/reports/${crypto.randomUUID()}/drafts`)).status).toBe(404);
 
-        // 同一張單只留一則待審留言：第二次寫入接在原本那則後面，改寫原留言的設定也帶過去。
+        // 改寫某則留言的草稿不接進新留言草稿，另成一則（否則送出時會覆蓋舊留言）。
         const { results: drafts } = await env.DB.prepare('SELECT author_developer_id, author_agent, body, replaces_message_id FROM message_drafts WHERE report_id = ? ORDER BY id').bind(report.id).all<{ author_developer_id: number; author_agent: string; body: string; replaces_message_id: number | null }>();
-        expect(drafts).toHaveLength(1);
-        expect(drafts[0]).toEqual({ author_developer_id: developer.id, author_agent: 'Claude Code', body: `${DRAFT_TEXT}\n\n改原留言`, replaces_message_id: originalId });
+        expect(drafts).toEqual([
+            { author_developer_id: developer.id, author_agent: 'Claude Code', body: DRAFT_TEXT, replaces_message_id: null },
+            { author_developer_id: developer.id, author_agent: 'Claude Code', body: '改原留言', replaces_message_id: originalId },
+        ]);
         // 只有原本那則團隊留言算未讀；草稿不算。草稿不改狀態。
         expect(await messageCount(report)).toBe(1);
         expect(await clientUnread(report)).toBe(1);

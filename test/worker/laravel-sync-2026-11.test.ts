@@ -25,8 +25,10 @@ const issue = (title: string, description: string) => ({ 'issues[0][title]': tit
 
 describe('重複單合併', () => {
     it('merges a client report sent again within 30 minutes into the earlier one, and both sides stop listing it', async () => {
-        const seeded = await seedProject();
-        const client = await new Browser().asClient(seeded);
+        const username = unique('amy');
+        const seeded = await seedProject({ clientUsername: username, clientPassword: 'amy-password-123456' });
+        const client = new Browser();
+        expect((await client.loginAs(slugOf(seeded), username, 'amy-password-123456')).status).toBe(302);
         expect((await client.post(`/p/${slugOf(seeded)}/reports`, issue('登入按鈕沒反應', '按了沒有跳頁'))).status).toBe(302);
         const again = await client.post(`/p/${slugOf(seeded)}/reports`, issue('  登入按鈕沒反應 ', '按了沒有跳頁\n'));
         expect(again.status).toBe(302);
@@ -121,7 +123,7 @@ describe('重複單合併', () => {
 });
 
 describe('同一張單只留一則待審留言', () => {
-    it('appends new text and files to the existing draft and skips text it already has', async () => {
+    it('appends new text and files to the existing draft and skips a resend of the last part', async () => {
         const seeded = await seedProject();
         const { report } = await seedReport(seeded.project);
         const { developer } = await seedDeveloper();
@@ -141,7 +143,8 @@ describe('同一張單只留一則待審留言', () => {
         const draft = (body: Record<string, unknown>) => api('POST', `/projects/${slugOf(seeded)}/reports/${report.public_id}/drafts`, token, body);
         expect((await draft({ body: '第一段', upload_ids: [await upload()] })).status).toBe(201);
         expect((await draft({ body: '第二段', upload_ids: [await upload()] })).status).toBe(201);
-        expect((await draft({ body: '第一段' })).status).toBe(201);
+        // 重送最後接上的那段不重複接（只比完全相同，不用子字串判斷）。
+        expect((await draft({ body: '第二段' })).status).toBe(201);
         const { results } = await env.DB.prepare('SELECT body, attachments FROM message_drafts WHERE report_id = ?').bind(report.id).all<{ body: string; attachments: string }>();
         expect(results).toHaveLength(1);
         expect(results[0].body).toBe('第一段\n\n第二段');
@@ -149,7 +152,7 @@ describe('同一張單只留一則待審留言', () => {
 
         const owner = await new Browser().asOwner(seeded);
         const page = await (await owner.get(`/p/${slugOf(seeded)}/reports/${report.public_id}`)).text();
-        expect(page).toContain('同一張單只留一則，之後新增的內容會接在這一則後面');
+        expect(page).toContain('同一張單的新留言只留一則，之後新增的內容會接在這一則後面；改寫舊留言的草稿另成一則');
     });
 });
 

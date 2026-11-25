@@ -3,6 +3,7 @@
  * 草稿只存在 message_drafts，送出前不會建立任何留言或附件紀錄，客戶端讀不到、也不算未讀，
  * 草稿本身也不改狀態。送出時才照一般留言流程（含留言自動切狀態）。
  */
+import { MAX_FILES } from '../../shared/attachment-rules';
 import { charLength } from '../../shared/text';
 import { nowIso } from '../../shared/time';
 import type { Env } from '../env';
@@ -84,8 +85,9 @@ export function parseReplaceMessageId(value: unknown): number | null {
  * Stores a draft. Uploaded images move from `uploads` into the draft's JSON (the R2 objects stay
  * where they are), so the cleanup job no longer sees them as unclaimed.
  *
- * 同一張單只留一則待審留言（2026-11-21 使用者：「留言草稿也不用分2則」）：已有一則時把新內容接在後面、
- * 附件也接在後面，不另建一則；內容完全相同（已包含在原本那則裡）就不重複接。網頁、CLI、團隊 API、排程 API 都走這裡。
+ * 同一張單的新留言草稿只留一則（2026-11-21 使用者：「留言草稿也不用分2則」）：已有一則時把新內容接在後面、
+ * 附件也接在後面，不另建一則；和整則或最後接上的那段完全相同就不重複接。改寫某則留言的草稿與新留言分開，
+ * 同一則留言只留一則改寫草稿（後來的取代）。規則在 draftToJoin、joinedDraftBody。網頁、CLI、團隊 API、排程 API 都走這裡。
  */
 export async function createDraft(
     env: Env,
@@ -100,14 +102,14 @@ export async function createDraft(
     const at = nowIso(now);
     const files: StoredFile[] = data.uploads.map((upload) => ({ object_key: upload.object_key, original_name: upload.original_name, mime_type: upload.mime_type, size: upload.size }));
     const db = env.DB;
-    const existing = await db.prepare('SELECT * FROM message_drafts WHERE report_id = ? ORDER BY id LIMIT 1').bind(report.id).first<MessageDraft>();
+    const existing = await draftToJoin(db, report.id, data.replacesMessageId, files.length);
     if (existing) {
-        const mergedBody = existing.body.includes(body) ? existing.body : validatedDraftBody(`${existing.body}\n\n${body}`);
+        const mergedBody = joinedDraftBody(existing.body, body, data.replacesMessageId !== null);
         const mergedFiles = [...parseStoredFiles(existing.attachments), ...files];
         const [updated] = await db.batch([
             db
-                .prepare('UPDATE message_drafts SET body = ?, replaces_message_id = ?, attachments = ?, updated_at = ? WHERE id = ? RETURNING *')
-                .bind(mergedBody, existing.replaces_message_id ?? data.replacesMessageId, mergedFiles.length > 0 ? JSON.stringify(mergedFiles) : null, at, existing.id),
+                .prepare('UPDATE message_drafts SET body = ?, attachments = ?, updated_at = ? WHERE id = ? RETURNING *')
+                .bind(mergedBody, mergedFiles.length > 0 ? JSON.stringify(mergedFiles) : null, at, existing.id),
             ...data.uploads.map((upload) => db.prepare('DELETE FROM uploads WHERE id = ?').bind(upload.id)),
             eventStatement(db, report, 'draft', data.author, at),
         ]);
@@ -123,6 +125,49 @@ export async function createDraft(
         eventStatement(db, report, 'draft', data.author, at),
     ]);
     return inserted.results[0] as MessageDraft;
+}
+
+/**
+ * 新建的草稿要接進哪一則既有草稿（對應 Laravel 版 ManageFeedbackMessageDraftAction::draftToJoin）：
+ * 新留言（replaces_message_id 為 null）只接進新留言草稿，附件接上後超過每則上限就另存一則；
+ * 改寫某則留言的草稿只接進改寫同一則留言的草稿，附件超過上限回 422（同一則留言不能有兩則改寫草稿）。
+ */
+export async function draftToJoin(db: D1Database, reportId: number, replacesMessageId: number | null, incomingFiles: number): Promise<MessageDraft | null> {
+    const { results } = await (replacesMessageId === null
+        ? db.prepare('SELECT * FROM message_drafts WHERE report_id = ? AND replaces_message_id IS NULL ORDER BY id').bind(reportId)
+        : db.prepare('SELECT * FROM message_drafts WHERE report_id = ? AND replaces_message_id = ? ORDER BY id').bind(reportId, replacesMessageId)
+    ).all<MessageDraft>();
+    const roomy = results.find((draft) => parseStoredFiles(draft.attachments).length + incomingFiles <= MAX_FILES) ?? null;
+    if (!roomy && replacesMessageId !== null && results.length > 0) {
+        throw new ServiceError('too_many_attachments', `這則留言的待審改寫已有附件，合起來會超過每則 ${MAX_FILES} 個上限，請先送出或捨棄原本那則。`, 422);
+    }
+    return roomy;
+}
+
+/**
+ * 新留言草稿：新內容接在後面；和整則內容或最後接上的那段完全相同時不重複接（重送同一段）。
+ * 改寫草稿：內容是改寫後的整則留言，後來的取代先前的。
+ */
+export function joinedDraftBody(existingBody: string, incomingBody: string, isRewrite: boolean): string {
+    if (isRewrite) {
+        return incomingBody;
+    }
+    if (existingBody === incomingBody || existingBody.endsWith(`\n\n${incomingBody}`)) {
+        return existingBody;
+    }
+    return validatedDraftBody(`${existingBody}\n\n${incomingBody}`);
+}
+
+/** 合併單時搬草稿用：接起來超過字數上限回 null，讓呼叫端各自保留，不讓整個合併失敗。 */
+export function joinedDraftBodyOrNull(existingBody: string, incomingBody: string): string | null {
+    try {
+        return joinedDraftBody(existingBody, incomingBody, false);
+    } catch (error) {
+        if (error instanceof ServiceError) {
+            return null;
+        }
+        throw error;
+    }
 }
 
 /** Drafts of a report for the team's page, oldest first. One query. */

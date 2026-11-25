@@ -69,7 +69,7 @@ describe('清單頁籤與等誰標示', () => {
         expect(html).toContain('待處理（等工程師）');
         expect(html).toContain('待回覆（等客戶）');
         expect(html).toContain('問題已解決；之後客戶再留言會自動改回「待處理」。');
-        expect(html).toContain('同一個人 30 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張）。');
+        expect(html).toContain('同一個帳號 30 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張，附件一起搬過去；先送出的那張已完成就不合併）。');
     });
 
     it('client side opens on the 等{客戶} tab (status needs_input)', async () => {

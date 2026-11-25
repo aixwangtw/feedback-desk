@@ -6,7 +6,7 @@
 export const AUTO_MERGE_MINUTES = 30;
 
 /** 清單頁的自動合併說明（客戶端與團隊端共用）。 */
-export const AUTO_MERGE_GUIDE = `同一個人 ${AUTO_MERGE_MINUTES} 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張）。`;
+export const AUTO_MERGE_GUIDE = `同一個帳號 ${AUTO_MERGE_MINUTES} 分鐘內重複送出標題與說明都一樣的單，系統會自動合併成一張（保留先送出的那張，附件一起搬過去；先送出的那張已完成就不合併）。`;
 
 /**
  * 開發團隊端標題右邊的「待審留言」標示：這張單有還沒送出的回覆草稿。草稿送出前客戶還沒收到回覆，單會停在「待處理」；

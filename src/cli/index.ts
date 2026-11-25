@@ -69,7 +69,7 @@ export const HELP = `feedback-desk ${VERSION}：在 Cloudflare Workers 免費方
                                    舊名稱待處理／待審核也接受；completed（已完成）只由客戶在網頁上按「完成」或確認留言上的「通過」，會被擋下
   merge <project> <要併掉的單> <保留的單>
                                    把重複的單合併進保留的單（public_id 或團隊端清單編號）：重複單兩端都不再列出，
-                                   待審留言搬到保留的單；客戶 30 分鐘內重複送出標題與說明都一樣的單，開單時會自動合併
+                                   待審留言與原始附件搬到保留的單；同一個客戶帳號 30 分鐘內重複送出標題與說明都一樣的單，開單時會自動合併
   message <project> <public_id|編號> --body 文字 [--attach 圖片／影片]...
                                    --attach 附件：${MESSAGE_HINT}（mp4、mov、webm）
                                    等工程師（new）的單留言後自動改成等客戶（needs_input）

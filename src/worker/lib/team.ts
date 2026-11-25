@@ -320,6 +320,7 @@ export async function mergeTeamReport(ctx: TeamContext, slug: string, duplicateR
         duplicate: { public_id: duplicate.public_id, number: result.duplicateNumber, title: duplicate.title },
         target: { public_id: target.public_id, number: result.targetNumber, title: target.title, url: absolute(ctx, paths.report(project.slug, target.public_id)) },
         moved_drafts: result.movedDrafts,
+        moved_attachments: result.movedAttachments,
     };
 }
 

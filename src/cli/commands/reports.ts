@@ -384,7 +384,7 @@ export async function merge(rt: Runtime, argv: string[]): Promise<number> {
     const duplicate = requirePositional(args, 1, '<要併掉的單>');
     const target = requirePositional(args, 2, '<保留的單>');
     const api = apiFor(rt, str(args, 'url'));
-    const result = await api.post<{ duplicate: { public_id: string; number: number; title: string }; target: { public_id: string; number: number; title: string; url: string }; moved_drafts: number }>(
+    const result = await api.post<{ duplicate: { public_id: string; number: number; title: string }; target: { public_id: string; number: number; title: string; url: string }; moved_drafts: number; moved_attachments: number }>(
         `/projects/${encodePath(slug)}/reports/${encodePath(duplicate)}/merge`,
         { into: target },
     );
@@ -396,6 +396,7 @@ export async function merge(rt: Runtime, argv: string[]): Promise<number> {
     rt.out(twoColumn('併掉', `編號 ${result.duplicate.number}｜${escapeInline(result.duplicate.title)} (${result.duplicate.public_id})`));
     rt.out(twoColumn('保留', `編號 ${result.target.number}｜${escapeInline(result.target.title)} (${result.target.public_id})`));
     rt.out(twoColumn('搬過去的待審留言', String(result.moved_drafts)));
+    rt.out(twoColumn('搬過去的原始附件', String(result.moved_attachments ?? 0)));
     rt.out(result.target.url);
     return 0;
 }

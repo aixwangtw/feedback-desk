@@ -1,0 +1,11 @@
+node_modules
+dist
+.wrangler
+.feedback-desk
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.log
+npm-debug.log*
+.DS_Store

@@ -291,6 +291,19 @@ class FeedbackConversationPanelTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<details[^>]*open[^>]*data-chat-adjustment/', $html);
     }
 
+    public function test_panel_conversation_shows_the_report_description_on_both_sides(): void
+    {
+        $report = $this->report('只看標題看不懂的單', now()->subDay(), ['description' => "匯入後第 3 題的圖不見了\n請幫忙看"]);
+
+        foreach (['actingAsOwner', 'actingAsClient'] as $actingAs) {
+            $this->{$actingAs}();
+            $html = $this->getJson(route('feedback.conversations.show', [$this->project, $report]))->assertOk()->json('html');
+            $this->assertStringContainsString('data-chat-report-description', $html);
+            $this->assertStringContainsString('匯入後第 3 題的圖不見了', $html);
+            $this->assertStringContainsString('請幫忙看', $html);
+        }
+    }
+
     public function test_reply_from_the_panel_returns_json_and_stores_images(): void
     {
         $report = $this->report('要回覆的單', now()->subDay());

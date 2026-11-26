@@ -292,11 +292,27 @@ export const PastNotes: FC<{ report: Report; adjustmentAttachments: Attachment[]
     );
 };
 
-/** What the chat panel shows for one report: the past notes (collapsed, only when there are any), the album and the timeline. */
-export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[] }> = (props) => {
+/**
+ * 開單內容：面板只有標題列，說明放在對話最上面（建立者、時間、說明全文），老師／業主開的單不會只剩標題。
+ * 詳情視窗自己已經顯示說明，載入對話時會拿掉這塊（data-chat-report-description）。
+ */
+const ReportDescriptionCard: FC<{ v: ViewContext; report: Report; creatorLabel: string | null }> = ({ v, report, creatorLabel }) => (
+    <section class="mb-4 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm leading-6 text-slate-800 shadow-sm" aria-label="開單內容" data-chat-report-description>
+        <p class="mb-1.5 flex flex-wrap items-baseline gap-x-2 text-xs">
+            <span class="font-semibold text-slate-700">開單內容</span>
+            {creatorLabel ? <span class="text-slate-500" data-chat-report-creator>{creatorLabel}</span> : null}
+            <Time v={v} at={report.created_at} relative class="text-slate-500" />
+        </p>
+        <div class="break-words"><RichText text={report.description} compact /></div>
+    </section>
+);
+
+/** What the chat panel shows for one report: the description, the past notes (collapsed, only when there are any) and the timeline. */
+export const ConversationFragment: FC<ActivityProps & { adjustmentAttachments: Attachment[]; creatorLabel: string | null }> = (props) => {
     const { report, adjustmentAttachments } = props;
     return (
         <>
+            <ReportDescriptionCard v={props.v} report={report} creatorLabel={props.creatorLabel} />
             <PastNotes report={report} adjustmentAttachments={adjustmentAttachments} attachmentUrl={props.attachmentUrl} panel />
             <Thread {...props} compact />
         </>

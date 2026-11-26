@@ -1352,6 +1352,7 @@ web.get('/p/:slug/conversations/:publicId', async (c) => {
             messages={thread.messages}
             messageAttachments={thread.messageAttachments}
             adjustmentAttachments={thread.attachments.filter((attachment) => attachment.kind === 'adjustment')}
+            creatorLabel={isPublicReporter ? null : creator}
             canApprove={thread.canApprove}
             canSwitchStatus={thread.canSwitchStatus}
             latestRequestId={thread.latestRequestId}

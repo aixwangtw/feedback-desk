@@ -124,8 +124,8 @@ const setupThread = (section) => {
             if (data.html !== state.lastHtml && !isEditingMessage(body)) {
                 const template = document.createElement('template');
                 template.innerHTML = data.html;
-                // 調整重點已在視窗上方顯示，這裡只放留言串。
-                template.content.querySelectorAll('[data-chat-adjustment]').forEach((node) => node.remove());
+                // 開單內容與調整重點已在視窗上方顯示，這裡只放留言串。
+                template.content.querySelectorAll('[data-chat-report-description], [data-chat-adjustment]').forEach((node) => node.remove());
                 // 使用者展開的相簿、過去的處理說明換新後維持展開。
                 replaceKeepingOpen(body, () => body.replaceChildren(template.content));
                 state.lastHtml = data.html;
